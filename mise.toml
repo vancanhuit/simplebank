@@ -1,0 +1,38 @@
+[settings]
+auto_install = false
+
+[tools]
+go = "1.26.5"
+golangci-lint = "2.12.2"
+
+[tasks."app:serve"]
+description = "Run the application"
+run = 'go run cmd/app/main.go'
+
+[tasks."app:build"]
+description = "Build the application"
+env = { CGO_ENABLED = "0" }
+run = 'go build -ldflags="-s -w" -o dist/simplebank cmd/app/main.go'
+
+[tasks."compose:dev:up"]
+description = "Run docker compose for development"
+run = 'docker compose up -d --wait --build'
+
+[tasks."compose:dev:down"]
+description = "Stop docker compose for development"
+run = 'docker compose down -v'
+
+[tasks."golangci-lint:fmt"]
+description = "Format code with golangci-lint"
+run = 'golangci-lint run -v --fix ./cmd/...'
+
+[tasks.golangci-lint]
+description = "Run golangci-lint"
+run = 'golangci-lint run -v ./cmd/...'
+
+[tasks.govulncheck]
+description = "Run govulncheck"
+run = [
+  'go install golang.org/x/vuln/cmd/govulncheck@latest',
+  'govulncheck -show verbose ./cmd/...',
+]

@@ -1,0 +1,12 @@
+name: simplebank
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    networks:
+      - dev
+
+networks:
+  dev:
