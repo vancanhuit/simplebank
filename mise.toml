@@ -24,7 +24,7 @@ run = 'docker compose down -v'
 
 [tasks."golangci-lint:fmt"]
 description = "Format code with golangci-lint"
-run = 'golangci-lint run -v --fix ./cmd/...'
+run = 'golangci-lint fmt -v ./cmd/...'
 
 [tasks.golangci-lint]
 description = "Run golangci-lint"
