@@ -61,6 +61,7 @@ jobs:
         id: buildx
       - run: |
           docker buildx use ${{ steps.buildx.outputs.name }}
+          docker buildx ls
           mise run docker:build
           docker image ls
           docker image inspect simplebank:latest
