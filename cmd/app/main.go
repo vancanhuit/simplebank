@@ -22,6 +22,7 @@ func main() {
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Secure())
 	e.Use(middleware.BodyLimit(1 << 20)) // 1 MB
+	e.Use(middleware.ContextTimeout(30 * time.Second))
 	e.Use(middleware.Recover())
 
 	e.GET("/livez", func(c *echo.Context) error {

@@ -16,11 +16,11 @@ run = 'go build -ldflags="-s -w" -o dist/simplebank cmd/app/main.go'
 
 [tasks."compose:dev:up"]
 description = "Run docker compose for development"
-run = 'docker compose up -d --wait --build'
+run = 'docker compose --profile dev up -d --wait --build'
 
 [tasks."compose:dev:down"]
 description = "Stop docker compose for development"
-run = 'docker compose down -v'
+run = 'docker compose --profile dev down -v'
 
 [tasks."golangci-lint:fmt"]
 description = "Format code with golangci-lint"
@@ -36,3 +36,21 @@ run = [
   'go install golang.org/x/vuln/cmd/govulncheck@latest',
   'govulncheck -show verbose ./cmd/...',
 ]
+
+[tasks."test:unit"]
+description = "Run unit tests"
+run = 'go test -cover -v ./cmd/...'
+
+[tasks."compose:test:up"]
+description = "Run docker compose for testing"
+run = 'docker compose --profile test up -d --wait'
+
+[tasks."compose:test:down"]
+description = "Stop docker compose for testing"
+run = 'docker compose --profile test down -v'
+
+[tasks."test:integration"]
+description = "Run integration tests"
+depends = ["compose:test:up"]
+depends_post = ["compose:test:down"]
+run = 'go test -cover -v ./cmd/... -tags=integration'

@@ -1,12 +1,84 @@
 name: simplebank
 
+x-postgres: &x-postgres-base
+  image: postgres:18-trixie
+  restart: unless-stopped
+
+x-mailpit: &x-mailpit-base
+  image: axllent/mailpit:latest
+  restart: unless-stopped
+  ports:
+    - "8025:8025"
+    - "1025:1025"
+  healthcheck:
+    test: ["CMD", "/mailpit", "readyz"]
+    interval: 5s
+    timeout: 30s
+    retries: 5
+    start_period: 5s
+
 services:
-  app:
+  postgres-test:
+    <<: *x-postgres-base
+    profiles:
+      - test
+    environment:
+      POSTGRES_USER: simplebank_test
+      POSTGRES_PASSWORD: simplebank_test
+      POSTGRES_DB: simplebank_test
+    ports:
+      - "5433:5432"
+    networks:
+      - test
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "simplebank_test", "-d", "simplebank_test"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 5s
+
+  mailpit-test:
+    <<: *x-mailpit-base
+    profiles:
+      - test
+    networks:
+      - test
+
+  postgres-dev:
+    <<: *x-postgres-base
+    profiles:
+      - dev
+    environment:
+      POSTGRES_USER: simplebank_dev
+      POSTGRES_PASSWORD: simplebank_dev
+      POSTGRES_DB: simplebank_dev
+    ports:
+      - "5432:5432"
+    networks:
+      - dev
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "simplebank_dev", "-d", "simplebank_dev"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 5s
+
+  mailpit-dev:
+    <<: *x-mailpit-base
+    profiles:
+      - dev
+    networks:
+      - dev
+
+  app-dev:
     build: .
     ports:
       - "8080:8080"
     networks:
       - dev
+    profiles:
+      - dev
 
 networks:
   dev:
+  test:
