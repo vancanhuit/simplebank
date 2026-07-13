@@ -54,3 +54,7 @@ description = "Run integration tests"
 depends = ["compose:test:up"]
 depends_post = ["compose:test:down"]
 run = 'go test -cover -v ./cmd/... -tags=integration'
+
+[tasks."docker:build"]
+description = "Build docker image"
+run = 'docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --load .'
