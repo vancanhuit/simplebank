@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 
 	store "github.com/vancanhuit/simplebank/internal/db"
@@ -53,18 +54,20 @@ func (s *Server) createUser(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	user, err := s.store.CreateUser(ctx, sqlcdb.CreateUserParams{
-		Username:       req.Username,
-		HashedPassword: hashed,
-		FullName:       req.FullName,
-		Email:          req.Email,
+	user, err := s.store.CreateUserTx(ctx, store.CreateUserTxParams{
+		CreateUserParams: sqlcdb.CreateUserParams{
+			Username:       req.Username,
+			HashedPassword: hashed,
+			FullName:       req.FullName,
+			Email:          req.Email,
+		},
+		AfterCreate: func(tx pgx.Tx, u sqlcdb.User) error {
+			_, err := s.riverClient.InsertTx(ctx, tx, worker.SendVerifyEmailArgs{Username: u.Username}, nil)
+			return err
+		},
 	})
 	if err != nil {
 		return store.ClassifyError(err)
-	}
-
-	if _, err := s.riverClient.Insert(ctx, worker.SendVerifyEmailArgs{Username: user.Username}, nil); err != nil {
-		return err
 	}
 
 	return c.JSON(http.StatusCreated, newUserResponse(user))
@@ -186,7 +189,7 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	ve, err := s.store.UpdateVerifyEmail(ctx, sqlcdb.UpdateVerifyEmailParams{
+	_, err = s.store.VerifyEmailTx(ctx, store.VerifyEmailTxParams{
 		ID:         id,
 		SecretCode: code,
 	})
@@ -195,9 +198,6 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
 		}
 		return err
-	}
-	if _, err := s.store.VerifyUserEmail(ctx, ve.Username); err != nil {
-		return store.ClassifyError(err)
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"is_verified": true})
 }

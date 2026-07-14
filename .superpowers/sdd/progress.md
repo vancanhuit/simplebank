@@ -17,6 +17,10 @@ Task 10: complete (commit ab5832e, review clean) [go-mail v0.8.1]
 Task 11: complete (commits ab5832e..cb88c21, review clean) [River v0.40.0; crypto secret_code; html-escape fix cb88c21]
 Task 12: complete (commit 982ee86, review clean) [api scaffold; UnwrapResponse committed-check]
 Task 13: complete (commits 982ee86..ba6e48e, review clean) [handlers+auth; user decided keep 403; logger path-only fix; self-transfer/role-const/size-clamp fixes ba6e48e]
+Task 14: complete (commits ba6e48e..8f330c5, review clean) [goose v3.27.2 Provider+session locker; serve/worker; graceful drain fix 8f330c5]
+Task 15: complete (commit bb20f72, review clean) [rate limiter on auth routes; handler 400 test]
+Task 16: complete (commit af9d7a5, review clean) [compose app-dev + Dockerfile copy internal; docker build + startup migrations verified]
+Task 17: complete (verification, no fixups) [build/vet/lint(0)/unit/integration all green; govulncheck 0 on call path, 1 module advisory x/crypto/openpgp not called]
 
 ## Minor findings roll-up
 - Task 1: mise `sqlc:generate` uses `sqlc@latest` (unpinned). Plan-mandated. Consider pinning a version before merge.

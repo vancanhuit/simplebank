@@ -25,6 +25,25 @@ func toHTTPStatus(err error) int {
 	}
 }
 
+func clientMessage(err error) string {
+	switch {
+	case errors.Is(err, store.ErrRecordNotFound):
+		return "resource not found"
+	case errors.Is(err, store.ErrUniqueViolation):
+		return "resource already exists"
+	case errors.Is(err, store.ErrForeignKeyViolation):
+		return "related resource not found"
+	case errors.Is(err, store.ErrInsufficientBalance):
+		return "insufficient balance"
+	case errors.Is(err, token.ErrExpiredToken):
+		return "token has expired"
+	case errors.Is(err, token.ErrInvalidToken):
+		return "token is invalid"
+	default:
+		return "request failed"
+	}
+}
+
 func errorHandler(c *echo.Context, err error) {
 	if r, _ := echo.UnwrapResponse(c.Response()); r != nil && r.Committed {
 		return
@@ -39,7 +58,7 @@ func errorHandler(c *echo.Context, err error) {
 	status := toHTTPStatus(err)
 	message := "internal server error"
 	if status != http.StatusInternalServerError {
-		message = err.Error()
+		message = clientMessage(err)
 	} else {
 		c.Logger().Error("request failed", "error", err)
 	}

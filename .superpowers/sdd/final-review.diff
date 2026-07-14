@@ -1,0 +1,3123 @@
+== commits ==
+af9d7a5 chore: wire app service env and docker build for internal
+bb20f72 feat: add auth rate limiting and user handler validation test
+8f330c5 fix: graceful worker drain via Stop and close migration sql.DB
+434d12d feat: wire serve and worker subcommands with startup migrations
+ba6e48e fix: harden api - no query in logs, reject self-transfer, role const, clamp page size
+6f244ae feat: add user, account, transfer handlers with JWT auth routes
+982ee86 feat: add api server scaffold, error handler, and validator
+cb88c21 fix: html-escape user full name in verification email
+7d3e145 feat: add River verify-email worker with crypto-secure secret code
+ab5832e feat: add generic SMTP mailer using go-mail
+ba4a379 feat: add JWT token maker with access and refresh payloads
+c88bdd5 test: add store integration and TransferTx concurrency tests
+61a7bf6 feat: add store interface, execTx, error translation, and TransferTx
+4ef3f0d feat: add sqlc queries and generated db code
+be6a9cd feat: add initial domain schema goose migration
+304878e feat: add password hashing, random, and currency helpers
+8fa0709 feat: add config with cli flags and env value sources
+da36896 chore: add pgx sqlc goose river go-mail cli deps and sqlc config
+
+== stat ==
+ .superpowers/sdd/progress.md                 |  37 ++
+ .superpowers/sdd/task-1-brief.md             |  75 +++
+ .superpowers/sdd/task-1-report.md            |  43 ++
+ .superpowers/sdd/task-1-review.diff          | 186 +++++++
+ .superpowers/sdd/task-10-brief.md            | 101 ++++
+ .superpowers/sdd/task-10-report.md           |  50 ++
+ .superpowers/sdd/task-10-review.diff         |  75 +++
+ .superpowers/sdd/task-11-brief.md            | 199 ++++++++
+ .superpowers/sdd/task-11-report.md           |  60 +++
+ .superpowers/sdd/task-11-review.diff         | 175 +++++++
+ .superpowers/sdd/task-12-brief.md            | 213 ++++++++
+ .superpowers/sdd/task-12-report.md           |  49 ++
+ .superpowers/sdd/task-12-review.diff         | 192 +++++++
+ .superpowers/sdd/task-13-brief.md            | 489 ++++++++++++++++++
+ .superpowers/sdd/task-13-report.md           |  61 +++
+ .superpowers/sdd/task-13-review.diff         | 519 +++++++++++++++++++
+ .superpowers/sdd/task-14-brief.md            | 229 +++++++++
+ .superpowers/sdd/task-14-report.md           |  65 +++
+ .superpowers/sdd/task-14-review.diff         | 222 ++++++++
+ .superpowers/sdd/task-2-brief.md             | 133 +++++
+ .superpowers/sdd/task-2-report.md            |  33 ++
+ .superpowers/sdd/task-2-review.diff          | 113 ++++
+ .superpowers/sdd/task-3-brief.md             | 153 ++++++
+ .superpowers/sdd/task-3-report.md            |  38 ++
+ .superpowers/sdd/task-3-review.diff          | 134 +++++
+ .superpowers/sdd/task-4-brief.md             | 109 ++++
+ .superpowers/sdd/task-4-report.md            |  29 ++
+ .superpowers/sdd/task-4-review.diff          |  95 ++++
+ .superpowers/sdd/task-5-brief.md             | 120 +++++
+ .superpowers/sdd/task-5-report.md            | 133 +++++
+ .superpowers/sdd/task-5-review.diff          | 739 +++++++++++++++++++++++++++
+ .superpowers/sdd/task-6-brief.md             | 261 ++++++++++
+ .superpowers/sdd/task-6-report.md            |  32 ++
+ .superpowers/sdd/task-6-review.diff          | 237 +++++++++
+ .superpowers/sdd/task-8-brief.md             | 175 +++++++
+ .superpowers/sdd/task-8-report.md            |  45 ++
+ .superpowers/sdd/task-8-review.diff          | 189 +++++++
+ .superpowers/sdd/task-9-brief.md             | 191 +++++++
+ .superpowers/sdd/task-9-report.md            |  30 ++
+ .superpowers/sdd/task-9-review.diff          | 172 +++++++
+ Dockerfile                                   |   1 +
+ app                                          | Bin 0 -> 9835460 bytes
+ cmd/app/main.go                              | 140 ++++-
+ compose.yaml                                 |  11 +
+ go.mod                                       |  40 +-
+ go.sum                                       |  75 +++
+ internal/api/account.go                      | 100 ++++
+ internal/api/errors.go                       |  47 ++
+ internal/api/errors_test.go                  |  25 +
+ internal/api/middleware.go                   |  36 ++
+ internal/api/routes.go                       |  25 +
+ internal/api/server.go                       | 105 ++++
+ internal/api/transfer.go                     |  73 +++
+ internal/api/user.go                         | 203 ++++++++
+ internal/api/user_test.go                    |  35 ++
+ internal/api/validator.go                    |  23 +
+ internal/config/config.go                    |  67 +++
+ internal/config/config_test.go               |  25 +
+ internal/db/errors.go                        |  34 ++
+ internal/db/errors_test.go                   |  27 +
+ internal/db/main_test.go                     |  42 ++
+ internal/db/migrate.go                       |  38 ++
+ internal/db/migrations/00001_init_schema.sql |  68 +++
+ internal/db/migrations/embed.go              |   6 +
+ internal/db/query/accounts.sql               |  22 +
+ internal/db/query/entries.sql                |   4 +
+ internal/db/query/sessions.sql               |   7 +
+ internal/db/query/transfers.sql              |   4 +
+ internal/db/query/users.sql                  |  12 +
+ internal/db/query/verify_emails.sql          |  13 +
+ internal/db/sqlc/accounts.sql.go             | 135 +++++
+ internal/db/sqlc/db.go                       |  32 ++
+ internal/db/sqlc/entries.sql.go              |  35 ++
+ internal/db/sqlc/models.go                   |  66 +++
+ internal/db/sqlc/querier.go                  |  30 ++
+ internal/db/sqlc/sessions.sql.go             |  73 +++
+ internal/db/sqlc/transfers.sql.go            |  37 ++
+ internal/db/sqlc/users.sql.go                |  86 ++++
+ internal/db/sqlc/verify_emails.sql.go        |  69 +++
+ internal/db/store.go                         |  40 ++
+ internal/db/transfer_tx.go                   | 101 ++++
+ internal/db/transfer_tx_test.go              |  94 ++++
+ internal/mail/mailer.go                      |   7 +
+ internal/mail/smtp.go                        |  47 ++
+ internal/token/jwt_maker.go                  |  51 ++
+ internal/token/jwt_maker_test.go             |  48 ++
+ internal/token/maker.go                      |  45 ++
+ internal/util/currency.go                    |  15 +
+ internal/util/currency_test.go               |  12 +
+ internal/util/password.go                    |  15 +
+ internal/util/password_test.go               |  30 ++
+ internal/util/random.go                      |  20 +
+ internal/util/secure.go                      |  16 +
+ internal/util/secure_test.go                 |  23 +
+ internal/worker/client.go                    |  42 ++
+ internal/worker/verify_email.go              |  60 +++
+ mise.toml                                    |   9 +-
+ sqlc.yaml                                    |  18 +
+ 98 files changed, 8748 insertions(+), 17 deletions(-)
+
+== full diff ==
+diff --git a/Dockerfile b/Dockerfile
+index 63f9f7f..b275f33 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -25,16 +25,17 @@ RUN --mount=type=cache,target=/mise/cache \
+ 
+ COPY go.mod .
+ COPY go.sum .
+ RUN --mount=type=cache,target=/root/.cache/go-build \
+     --mount=type=cache,target=/root/go/pkg/mod \
+     go mod download
+ 
+ COPY cmd cmd
++COPY internal internal
+ 
+ ARG TARGETOS
+ ARG TARGETARCH
+ RUN --mount=type=cache,target=/root/.cache/go-build \
+     --mount=type=cache,target=/root/go/pkg/mod \
+     GOOS=$TARGETOS GOARCH=$TARGETARCH mise run app:build
+ 
+ FROM gcr.io/distroless/base-debian13
+diff --git a/app b/app
+new file mode 100755
+index 0000000..a7164e9
+Binary files /dev/null and b/app differ
+diff --git a/cmd/app/main.go b/cmd/app/main.go
+index 08208b4..5626048 100644
+--- a/cmd/app/main.go
++++ b/cmd/app/main.go
+@@ -1,40 +1,150 @@
+ package main
+ 
+ import (
+ 	"context"
++	"errors"
++	"log/slog"
+ 	"net/http"
+ 	"os"
+ 	"os/signal"
+ 	"syscall"
+ 	"time"
+ 
++	"github.com/jackc/pgx/v5/pgxpool"
+ 	"github.com/labstack/echo/v5"
+-	"github.com/labstack/echo/v5/middleware"
++	"github.com/urfave/cli/v3"
++
++	"github.com/vancanhuit/simplebank/internal/api"
++	"github.com/vancanhuit/simplebank/internal/config"
++	store "github.com/vancanhuit/simplebank/internal/db"
++	"github.com/vancanhuit/simplebank/internal/mail"
++	"github.com/vancanhuit/simplebank/internal/token"
++	"github.com/vancanhuit/simplebank/internal/worker"
+ )
+ 
+ func main() {
++	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
++	slog.SetDefault(logger)
++
++	cmd := &cli.Command{
++		Name:  "simplebank",
++		Usage: "SimpleBank cloud-native service",
++		Flags: config.Flags(),
++		Commands: []*cli.Command{
++			{Name: "serve", Usage: "Run the HTTP API server", Action: runServe},
++			{Name: "worker", Usage: "Run the background worker", Action: runWorker},
++		},
++	}
++
+ 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+ 	defer stop()
+ 
+-	e := echo.New()
++	if err := cmd.Run(ctx, os.Args); err != nil {
++		logger.Error("command failed", "error", err)
++		os.Exit(1)
++	}
++}
++
++func mustConfig(cmd *cli.Command) (config.Config, error) {
++	cfg := config.FromCommand(cmd)
++	return cfg, cfg.Validate()
++}
++
++func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
++	if err := store.MigrateSchema(ctx, pool); err != nil {
++		return err
++	}
++	slog.Info("domain migrations applied")
++	if err := worker.Migrate(ctx, pool); err != nil {
++		return err
++	}
++	slog.Info("river migrations applied")
++	return nil
++}
++
++func runServe(ctx context.Context, cmd *cli.Command) error {
++	cfg, err := mustConfig(cmd)
++	if err != nil {
++		return err
++	}
++	pool, err := pgxpool.New(ctx, cfg.DBSource)
++	if err != nil {
++		return err
++	}
++	defer pool.Close()
++
++	if err := runMigrations(ctx, pool); err != nil {
++		return err
++	}
++
++	st := store.NewStore(pool)
++	maker, err := token.NewJWTMaker(cfg.JWTSecret)
++	if err != nil {
++		return err
++	}
++	mailer, err := mail.NewSMTPMailer(cfg)
++	if err != nil {
++		return err
++	}
++	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, "http://localhost"+cfg.HTTPAddr)
++	if err != nil {
++		return err
++	}
+ 
+-	e.Use(middleware.RequestID())
+-	e.Use(middleware.RequestLogger())
+-	e.Use(middleware.Secure())
+-	e.Use(middleware.BodyLimit(1 << 20)) // 1 MB
+-	e.Use(middleware.ContextTimeout(30 * time.Second))
+-	e.Use(middleware.Recover())
++	server, err := api.NewServer(cfg, st, maker, riverClient)
++	if err != nil {
++		return err
++	}
+ 
+-	e.GET("/livez", func(c *echo.Context) error {
+-		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
++	e := server.Handler()
++	e.GET("/readyz", func(c *echo.Context) error {
++		pingCtx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
++		defer cancel()
++		if err := pool.Ping(pingCtx); err != nil {
++			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
++		}
++		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
+ 	})
+ 
+-	sc := echo.StartConfig{
+-		Address:         ":8080",
+-		GracefulTimeout: 10 * time.Second,
++	sc := echo.StartConfig{Address: cfg.HTTPAddr, GracefulTimeout: 10 * time.Second}
++	if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
++		return err
++	}
++	return nil
++}
++
++func runWorker(ctx context.Context, cmd *cli.Command) error {
++	cfg, err := mustConfig(cmd)
++	if err != nil {
++		return err
++	}
++	pool, err := pgxpool.New(ctx, cfg.DBSource)
++	if err != nil {
++		return err
++	}
++	defer pool.Close()
++
++	if err := runMigrations(ctx, pool); err != nil {
++		return err
+ 	}
+ 
+-	if err := sc.Start(ctx, e); err != nil {
+-		e.Logger.Error("failed to start server", "error", err)
++	st := store.NewStore(pool)
++	mailer, err := mail.NewSMTPMailer(cfg)
++	if err != nil {
++		return err
+ 	}
++	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, "http://localhost"+cfg.HTTPAddr)
++	if err != nil {
++		return err
++	}
++
++	if err := riverClient.Start(context.Background()); err != nil {
++		return err
++	}
++	slog.Info("worker started")
++
++	<-ctx.Done()
++	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++	defer cancel()
++	return riverClient.Stop(shutdownCtx)
+ }
+diff --git a/compose.yaml b/compose.yaml
+index d61ff8f..6f19bef 100644
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -67,18 +67,29 @@ services:
+     <<: *x-mailpit-base
+     profiles:
+       - dev
+     networks:
+       - dev
+ 
+   app-dev:
+     build: .
++    command: ["serve"]
++    environment:
++      HTTP_ADDR: ":8080"
++      DB_SOURCE: "postgres://simplebank_dev:simplebank_dev@postgres-dev:5432/simplebank_dev?sslmode=disable"
++      JWT_SECRET: "0123456789012345678901234567890123456789"
++      SMTP_HOST: "mailpit-dev"
++      SMTP_PORT: "1025"
++      SMTP_FROM: "no-reply@simplebank.local"
+     ports:
+       - "8080:8080"
+     networks:
+       - dev
++    depends_on:
++      postgres-dev:
++        condition: service_healthy
+     profiles:
+       - dev
+ 
+ networks:
+   dev:
+   test:
+diff --git a/go.mod b/go.mod
+index 8179170..94c3424 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,7 +1,45 @@
+ module github.com/vancanhuit/simplebank
+ 
+ go 1.26.5
+ 
+ require github.com/labstack/echo/v5 v5.3.0
+ 
+-require golang.org/x/time v0.15.0 // indirect
++require (
++	github.com/davecgh/go-spew v1.1.1 // indirect
++	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
++	github.com/go-playground/locales v0.14.1 // indirect
++	github.com/go-playground/universal-translator v0.18.1 // indirect
++	github.com/go-playground/validator/v10 v10.30.3 // indirect
++	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
++	github.com/google/uuid v1.6.0 // indirect
++	github.com/jackc/pgpassfile v1.0.0 // indirect
++	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
++	github.com/jackc/pgx/v5 v5.10.0 // indirect
++	github.com/jackc/puddle/v2 v2.2.2 // indirect
++	github.com/labstack/echo-jwt/v5 v5.0.2 // indirect
++	github.com/leodido/go-urn v1.4.0 // indirect
++	github.com/mfridman/interpolate v0.0.2 // indirect
++	github.com/pmezard/go-difflib v1.0.0 // indirect
++	github.com/pressly/goose/v3 v3.27.2 // indirect
++	github.com/riverqueue/river v0.40.0 // indirect
++	github.com/riverqueue/river/riverdriver v0.40.0 // indirect
++	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.40.0 // indirect
++	github.com/riverqueue/river/rivershared v0.40.0 // indirect
++	github.com/riverqueue/river/rivertype v0.40.0 // indirect
++	github.com/sethvargo/go-retry v0.3.0 // indirect
++	github.com/stretchr/testify v1.11.1 // indirect
++	github.com/tidwall/gjson v1.19.0 // indirect
++	github.com/tidwall/match v1.2.0 // indirect
++	github.com/tidwall/pretty v1.2.1 // indirect
++	github.com/tidwall/sjson v1.2.5 // indirect
++	github.com/urfave/cli/v3 v3.10.1 // indirect
++	github.com/wneessen/go-mail v0.8.1 // indirect
++	go.uber.org/goleak v1.3.0 // indirect
++	go.uber.org/multierr v1.11.0 // indirect
++	golang.org/x/crypto v0.54.0 // indirect
++	golang.org/x/sync v0.22.0 // indirect
++	golang.org/x/sys v0.47.0 // indirect
++	golang.org/x/text v0.40.0 // indirect
++	golang.org/x/time v0.15.0 // indirect
++	gopkg.in/yaml.v3 v3.0.1 // indirect
++)
+diff --git a/go.sum b/go.sum
+index 2929860..046c266 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,16 +1,91 @@
++github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/gabriel-vasile/mimetype v1.4.13 h1:46nXokslUBsAJE/wMsp5gtO500a4F3Nkz9Ufpk2AcUM=
++github.com/gabriel-vasile/mimetype v1.4.13/go.mod h1:d+9Oxyo1wTzWdyVUPMmXFvp4F9tea18J8ufA774AB3s=
++github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=
++github.com/go-playground/locales v0.14.1/go.mod h1:hxrqLVvrK65+Rwrd5Fc6F2O76J/NuW9t0sjnWqG1slY=
++github.com/go-playground/universal-translator v0.18.1 h1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=
++github.com/go-playground/universal-translator v0.18.1/go.mod h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY=
++github.com/go-playground/validator/v10 v10.30.3 h1:4MU6YkEwx7GbcPJOZxrtbu+QfF3pJLJuaYTeAH0DYy8=
++github.com/go-playground/validator/v10 v10.30.3/go.mod h1:4Axh7oCNGcoGkqLoE4YWt6n20mcEIsPRlB7vPk3lpyc=
++github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
++github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
++github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
++github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
++github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
++github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
++github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
++github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
++github.com/jackc/pgx/v5 v5.10.0 h1:VhSvgU2jSli8o3AqIEOTJr7rZwAEUVo4E4XhR94Zfr0=
++github.com/jackc/pgx/v5 v5.10.0/go.mod h1:mal1tBGAFfLHvZzaYh77YS/eC6IX9OWbRV1QIIM0Jn4=
++github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
++github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
++github.com/labstack/echo-jwt/v5 v5.0.2 h1:ECmHEjwbR30fv90LvpQ0XZbEJWhCF/c3Zp8ug/iVrCE=
++github.com/labstack/echo-jwt/v5 v5.0.2/go.mod h1:jNxekWlI4+M+UoV8dozKwIHN9MJ2psUR+U1B0nEutIg=
+ github.com/labstack/echo/v5 v5.3.0 h1:KT74Mprk053PQEHwSZdeCDIz1BigTZOZhavMD0c9Fjs=
+ github.com/labstack/echo/v5 v5.3.0/go.mod h1:Q3j2+clBRgJr0O3DDONQeXNsM7RHgSwUhcuo47unqm8=
++github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
++github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
++github.com/mfridman/interpolate v0.0.2 h1:pnuTK7MQIxxFz1Gr+rjSIx9u7qVjf5VOoM/u6BbAxPY=
++github.com/mfridman/interpolate v0.0.2/go.mod h1:p+7uk6oE07mpE/Ik1b8EckO0O4ZXiGAfshKBWLUM9Xg=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/pressly/goose/v3 v3.27.2 h1:FjKNzcmMdGrQlSIu5alMSmakQtJFBgtw+A0bb1p/LC8=
++github.com/pressly/goose/v3 v3.27.2/go.mod h1:qWW+/8dkVtJYjJrbIpwD5xxnEJTUKvxkQ9JKQp9LaIM=
++github.com/riverqueue/river v0.40.0 h1:4dynKqqU1P22iPmwWDfDj/YZXnuUTZysXXF3wNHekNw=
++github.com/riverqueue/river v0.40.0/go.mod h1:auvB4kHqM97tnshEQxzy2E7aFvJFhl010NB6N29DXXc=
++github.com/riverqueue/river/riverdriver v0.40.0 h1:QjBHHh+kaxgUgK9tPumrfx7W14vhAHLIt+0dK40ikI8=
++github.com/riverqueue/river/riverdriver v0.40.0/go.mod h1:7wEqxsqvtjGk3hBKGKK3IvdnULlPZltpAfkbMr9M2VY=
++github.com/riverqueue/river/riverdriver/riverpgxv5 v0.40.0 h1:WbzXgGukvOqYpsORX4rr03sPZfasjoMckLr4On+Je+4=
++github.com/riverqueue/river/riverdriver/riverpgxv5 v0.40.0/go.mod h1:HtgFIcn/eJ9O3f371S1cSb0ttS7xJMMkkTD/K6gQKQg=
++github.com/riverqueue/river/rivershared v0.40.0 h1:6ZX1Ok94Nkcx/WpHPhexpfdkRB1BqRWFEWrbDszg+JY=
++github.com/riverqueue/river/rivershared v0.40.0/go.mod h1:Z77wB2/ctD+zSvlNDKjxC1SW9c1Y2jyE+PXR2CxBlzQ=
++github.com/riverqueue/river/rivertype v0.40.0 h1:6sFLhs0OtkxDZ/iyZIUqaQJb/G1krnb2bh9lfXdCimg=
++github.com/riverqueue/river/rivertype v0.40.0/go.mod h1:D1Ad+EaZiaXbQbJcJcfeicXJMBKno0n6UcfKI5Q7DIQ=
++github.com/sethvargo/go-retry v0.3.0 h1:EEt31A35QhrcRZtrYFDTBg91cqZVnFL2navjDrah2SE=
++github.com/sethvargo/go-retry v0.3.0/go.mod h1:mNX17F0C/HguQMyMyJxcnU471gOZGxCLyYaFyAZraas=
++github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
++github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
++github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
+ github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
++github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
++github.com/tidwall/gjson v1.19.0 h1:xwxm7n691Uf3u5OFjzngavjGTh55KX5q/9w9xHW88JU=
++github.com/tidwall/gjson v1.19.0/go.mod h1:V37/opeE/JbLUOfH0QTXiNez2l0RUjYUhpT4szFQAfc=
++github.com/tidwall/match v1.1.1/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JTxsfmM=
++github.com/tidwall/match v1.2.0 h1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM=
++github.com/tidwall/match v1.2.0/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JTxsfmM=
++github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
++github.com/tidwall/pretty v1.2.1 h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=
++github.com/tidwall/pretty v1.2.1/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
++github.com/tidwall/sjson v1.2.5 h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=
++github.com/tidwall/sjson v1.2.5/go.mod h1:Fvgq9kS/6ociJEDnK0Fk1cpYF4FIW6ZF7LAe+6jwd28=
++github.com/urfave/cli/v3 v3.10.1 h1:7Kx9H50hrHbRbyxgO1KP6/BcbiGRz0uYh5YyQ30JEEY=
++github.com/urfave/cli/v3 v3.10.1/go.mod h1:ysVLtOEmg2tOy6PknnYVhDoouyC/6N42TMeoMzskhso=
++github.com/wneessen/go-mail v0.8.1 h1:tVcncj02/QySVFw3zr/kXOzZcuFQqBNT6K+Rbgm/pcM=
++github.com/wneessen/go-mail v0.8.1/go.mod h1:dWZ61zadzCIyvB4y1/YzC5O7MrbbzBfPkARmbosdf8w=
++go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
++go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
++go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
++go.uber.org/multierr v1.11.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=
++golang.org/x/crypto v0.54.0 h1:YLIA59K4fiNzHzjnZt2tUJQjQtUWfWbeHBqKtk3eScw=
++golang.org/x/crypto v0.54.0/go.mod h1:KWL8ny2AZdGR2cWmzeHrp2azQPGogOv+HeQaVEXC2dk=
+ golang.org/x/net v0.56.0 h1:Rw8j/hFzGvJUZwNBXnAtf5sVDVt+65SK2C7IxCxZt5o=
+ golang.org/x/net v0.56.0/go.mod h1:D3Ku6r+V6JROoZK144D2XfMHFcMq/0zSfLelVTCFKec=
++golang.org/x/sync v0.21.0 h1:HLII4xRRTtCRkxYp4HNFF0Js/Og6q2i++KXbg0gHCwM=
++golang.org/x/sync v0.21.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
++golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
++golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
++golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
++golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+ golang.org/x/text v0.38.0 h1:sXmwo9DwP3OK9EZ7PqAdaooSGozfl/3a6/xJcbzPRhE=
+ golang.org/x/text v0.38.0/go.mod h1:YXZt3QhHUKYT53r2lLKFIVi6Ao1jdzrTR/KQ09qyxF4=
++golang.org/x/text v0.40.0 h1:Ub2Z6/xjgF1WrYQz2nuITOEegKFtiIy+rieRJ5lHZKs=
++golang.org/x/text v0.40.0/go.mod h1:hpnzDAfGV753zIKo+wk3u1bVKCGPbrnF7+7LBF/UHVY=
+ golang.org/x/time v0.15.0 h1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U=
+ golang.org/x/time v0.15.0/go.mod h1:Y4YMaQmXwGQZoFaVFk4YpCt4FLQMYKZe9oeV/f4MSno=
++gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+ gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+diff --git a/internal/api/account.go b/internal/api/account.go
+new file mode 100644
+index 0000000..2f04153
+--- /dev/null
++++ b/internal/api/account.go
+@@ -0,0 +1,100 @@
++package api
++
++import (
++	"net/http"
++
++	"github.com/google/uuid"
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++	"github.com/vancanhuit/simplebank/internal/util"
++)
++
++type createAccountRequest struct {
++	Currency string `json:"currency" validate:"required"`
++}
++
++func (s *Server) createAccount(c *echo.Context) error {
++	var req createAccountRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++	if !util.IsSupportedCurrency(req.Currency) {
++		return echo.NewHTTPError(http.StatusBadRequest, "unsupported currency")
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++
++	account, err := s.store.CreateAccount(c.Request().Context(), sqlcdb.CreateAccountParams{
++		Owner:    payload.Username,
++		Balance:  0,
++		Currency: req.Currency,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++	return c.JSON(http.StatusCreated, account)
++}
++
++func (s *Server) getAccount(c *echo.Context) error {
++	id, err := uuid.Parse(c.Param("id"))
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid account id")
++	}
++
++	account, err := s.store.GetAccount(c.Request().Context(), id)
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++	if account.Owner != payload.Username {
++		return echo.NewHTTPError(http.StatusForbidden, "account does not belong to you")
++	}
++	return c.JSON(http.StatusOK, account)
++}
++
++func (s *Server) listAccounts(c *echo.Context) error {
++	page, err := echo.QueryParamOr[int32](c, "page", 1)
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid page")
++	}
++	size, err := echo.QueryParamOr[int32](c, "size", 5)
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
++	}
++	if page < 1 {
++		page = 1
++	}
++	if size < 1 {
++		size = 5
++	}
++	if size > 100 {
++		size = 100
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++
++	accounts, err := s.store.ListAccounts(c.Request().Context(), sqlcdb.ListAccountsParams{
++		Owner:  payload.Username,
++		Limit:  size,
++		Offset: (page - 1) * size,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++	return c.JSON(http.StatusOK, accounts)
++}
+diff --git a/internal/api/errors.go b/internal/api/errors.go
+new file mode 100644
+index 0000000..fe68323
+--- /dev/null
++++ b/internal/api/errors.go
+@@ -0,0 +1,47 @@
++package api
++
++import (
++	"errors"
++	"net/http"
++
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	"github.com/vancanhuit/simplebank/internal/token"
++)
++
++func toHTTPStatus(err error) int {
++	switch {
++	case errors.Is(err, store.ErrRecordNotFound):
++		return http.StatusNotFound
++	case errors.Is(err, store.ErrUniqueViolation), errors.Is(err, store.ErrForeignKeyViolation):
++		return http.StatusConflict
++	case errors.Is(err, store.ErrInsufficientBalance):
++		return http.StatusUnprocessableEntity
++	case errors.Is(err, token.ErrExpiredToken), errors.Is(err, token.ErrInvalidToken):
++		return http.StatusUnauthorized
++	default:
++		return http.StatusInternalServerError
++	}
++}
++
++func errorHandler(c *echo.Context, err error) {
++	if r, _ := echo.UnwrapResponse(c.Response()); r != nil && r.Committed {
++		return
++	}
++
++	var he *echo.HTTPError
++	if errors.As(err, &he) {
++		_ = c.JSON(he.StatusCode(), map[string]string{"error": he.Message})
++		return
++	}
++
++	status := toHTTPStatus(err)
++	message := "internal server error"
++	if status != http.StatusInternalServerError {
++		message = err.Error()
++	} else {
++		c.Logger().Error("request failed", "error", err)
++	}
++	_ = c.JSON(status, map[string]string{"error": message})
++}
+diff --git a/internal/api/errors_test.go b/internal/api/errors_test.go
+new file mode 100644
+index 0000000..e5457c3
+--- /dev/null
++++ b/internal/api/errors_test.go
+@@ -0,0 +1,25 @@
++package api
++
++import (
++	"net/http"
++	"testing"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	"github.com/vancanhuit/simplebank/internal/token"
++)
++
++func TestToHTTPStatus(t *testing.T) {
++	cases := map[error]int{
++		store.ErrRecordNotFound:      http.StatusNotFound,
++		store.ErrUniqueViolation:     http.StatusConflict,
++		store.ErrForeignKeyViolation: http.StatusConflict,
++		store.ErrInsufficientBalance: http.StatusUnprocessableEntity,
++		token.ErrExpiredToken:        http.StatusUnauthorized,
++		token.ErrInvalidToken:        http.StatusUnauthorized,
++	}
++	for err, want := range cases {
++		if got := toHTTPStatus(err); got != want {
++			t.Errorf("%v: got %d want %d", err, got, want)
++		}
++	}
++}
+diff --git a/internal/api/middleware.go b/internal/api/middleware.go
+new file mode 100644
+index 0000000..c14d495
+--- /dev/null
++++ b/internal/api/middleware.go
+@@ -0,0 +1,36 @@
++package api
++
++import (
++	jwt "github.com/golang-jwt/jwt/v5"
++	echojwt "github.com/labstack/echo-jwt/v5"
++	"github.com/labstack/echo/v5"
++
++	"github.com/vancanhuit/simplebank/internal/token"
++)
++
++const (
++	authContextKey = "user"
++	roleDepositor  = "depositor"
++)
++
++func (s *Server) authMiddleware() echo.MiddlewareFunc {
++	return echojwt.WithConfig(echojwt.Config{
++		SigningKey: []byte(s.config.JWTSecret),
++		ContextKey: authContextKey,
++		NewClaimsFunc: func(c *echo.Context) jwt.Claims {
++			return new(token.Payload)
++		},
++	})
++}
++
++func authPayload(c *echo.Context) (*token.Payload, error) {
++	jwtToken, err := echo.ContextGet[*jwt.Token](c, authContextKey)
++	if err != nil {
++		return nil, echo.ErrUnauthorized
++	}
++	payload, ok := jwtToken.Claims.(*token.Payload)
++	if !ok {
++		return nil, echo.ErrUnauthorized
++	}
++	return payload, nil
++}
+diff --git a/internal/api/routes.go b/internal/api/routes.go
+new file mode 100644
+index 0000000..56828b6
+--- /dev/null
++++ b/internal/api/routes.go
+@@ -0,0 +1,25 @@
++package api
++
++import (
++	"github.com/labstack/echo/v5/middleware"
++)
++
++func (s *Server) registerRoutes() {
++	s.router.GET("/livez", s.livez)
++
++	v1 := s.router.Group("/api/v1")
++
++	authLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5))
++
++	v1.POST("/users", s.createUser)
++	v1.POST("/users/login", s.loginUser, authLimiter)
++	v1.POST("/tokens/renew", s.renewToken, authLimiter)
++	v1.GET("/users/verify_email", s.verifyEmail)
++
++	auth := v1.Group("")
++	auth.Use(s.authMiddleware())
++	auth.POST("/accounts", s.createAccount)
++	auth.GET("/accounts/:id", s.getAccount)
++	auth.GET("/accounts", s.listAccounts)
++	auth.POST("/transfers", s.createTransfer)
++}
+diff --git a/internal/api/server.go b/internal/api/server.go
+new file mode 100644
+index 0000000..d3a0011
+--- /dev/null
++++ b/internal/api/server.go
+@@ -0,0 +1,105 @@
++package api
++
++import (
++	"context"
++	"log/slog"
++	"net/http"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/labstack/echo/v5"
++	"github.com/labstack/echo/v5/middleware"
++	"github.com/riverqueue/river"
++
++	"github.com/vancanhuit/simplebank/internal/config"
++	store "github.com/vancanhuit/simplebank/internal/db"
++	"github.com/vancanhuit/simplebank/internal/token"
++)
++
++type Server struct {
++	config      config.Config
++	store       store.Store
++	tokenMaker  token.Maker
++	riverClient *river.Client[pgx.Tx]
++	router      *echo.Echo
++}
++
++func NewServer(
++	cfg config.Config,
++	st store.Store,
++	maker token.Maker,
++	riverClient *river.Client[pgx.Tx],
++) (*Server, error) {
++	e := echo.NewWithConfig(echo.Config{
++		HTTPErrorHandler: errorHandler,
++		Validator:        newValidator(),
++	})
++
++	e.Use(middleware.RequestID())
++	e.Use(requestLogger())
++	e.Use(middleware.Secure())
++	e.Use(middleware.BodyLimit(1 << 20))
++	e.Use(middleware.ContextTimeout(30 * time.Second))
++	e.Use(middleware.Recover())
++
++	s := &Server{
++		config:      cfg,
++		store:       st,
++		tokenMaker:  maker,
++		riverClient: riverClient,
++		router:      e,
++	}
++	s.registerRoutes()
++	return s, nil
++}
++
++func (s *Server) Handler() *echo.Echo { return s.router }
++
++func (s *Server) livez(c *echo.Context) error {
++	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
++}
++
++// requestLogger returns a request logger middleware that logs the request path
++// only (never the raw URI/query string) so that sensitive query parameters such
++// as the verify-email `code` are never written to logs.
++func requestLogger() echo.MiddlewareFunc {
++	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
++		LogLatency:       true,
++		LogRemoteIP:      true,
++		LogHost:          true,
++		LogMethod:        true,
++		LogURIPath:       true,
++		LogRequestID:     true,
++		LogUserAgent:     true,
++		LogStatus:        true,
++		LogContentLength: true,
++		LogResponseSize:  true,
++		HandleError:      true,
++		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
++			logger := c.Logger()
++			level := slog.LevelInfo
++			msg := "REQUEST"
++			if v.Error != nil {
++				level = slog.LevelError
++				msg = "REQUEST_ERROR"
++			}
++			attrs := []slog.Attr{
++				slog.String("method", v.Method),
++				slog.String("path", v.URIPath),
++				slog.Int("status", v.Status),
++				slog.Duration("latency", v.Latency),
++				slog.String("host", v.Host),
++				slog.String("bytes_in", v.ContentLength),
++				slog.Int64("bytes_out", v.ResponseSize),
++				slog.String("user_agent", v.UserAgent),
++				slog.String("remote_ip", v.RemoteIP),
++				slog.String("request_id", v.RequestID),
++			}
++			if v.Error != nil {
++				attrs = append(attrs, slog.String("error", v.Error.Error()))
++			}
++			logger.LogAttrs(context.Background(), level, msg, attrs...)
++			return nil
++		},
++	})
++}
+diff --git a/internal/api/transfer.go b/internal/api/transfer.go
+new file mode 100644
+index 0000000..55f83ae
+--- /dev/null
++++ b/internal/api/transfer.go
+@@ -0,0 +1,73 @@
++package api
++
++import (
++	"context"
++	"net/http"
++
++	"github.com/google/uuid"
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++)
++
++type transferRequest struct {
++	FromAccountID string `json:"from_account_id" validate:"required,uuid"`
++	ToAccountID   string `json:"to_account_id" validate:"required,uuid"`
++	Amount        int64  `json:"amount" validate:"required,gt=0"`
++	Currency      string `json:"currency" validate:"required"`
++}
++
++func (s *Server) createTransfer(c *echo.Context) error {
++	var req transferRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	fromID, _ := uuid.Parse(req.FromAccountID)
++	toID, _ := uuid.Parse(req.ToAccountID)
++	if fromID == toID {
++		return echo.NewHTTPError(http.StatusBadRequest, "cannot transfer to the same account")
++	}
++	ctx := c.Request().Context()
++
++	fromAccount, err := s.validAccount(ctx, fromID, req.Currency)
++	if err != nil {
++		return err
++	}
++	if _, err := s.validAccount(ctx, toID, req.Currency); err != nil {
++		return err
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++	if fromAccount.Owner != payload.Username {
++		return echo.NewHTTPError(http.StatusForbidden, "from account does not belong to you")
++	}
++
++	result, err := s.store.TransferTx(ctx, store.TransferTxParams{
++		FromAccountID: fromID,
++		ToAccountID:   toID,
++		Amount:        req.Amount,
++	})
++	if err != nil {
++		return err
++	}
++	return c.JSON(http.StatusOK, result)
++}
++
++func (s *Server) validAccount(ctx context.Context, id uuid.UUID, currency string) (sqlcdb.Account, error) {
++	account, err := s.store.GetAccount(ctx, id)
++	if err != nil {
++		return account, store.ClassifyError(err)
++	}
++	if account.Currency != currency {
++		return account, echo.NewHTTPError(http.StatusBadRequest, "currency mismatch")
++	}
++	return account, nil
++}
+diff --git a/internal/api/user.go b/internal/api/user.go
+new file mode 100644
+index 0000000..0ab6ba5
+--- /dev/null
++++ b/internal/api/user.go
+@@ -0,0 +1,203 @@
++package api
++
++import (
++	"net/http"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++	"github.com/vancanhuit/simplebank/internal/util"
++	"github.com/vancanhuit/simplebank/internal/worker"
++)
++
++type createUserRequest struct {
++	Username string `json:"username" validate:"required,alphanum"`
++	Password string `json:"password" validate:"required,min=6"`
++	FullName string `json:"full_name" validate:"required"`
++	Email    string `json:"email" validate:"required,email"`
++}
++
++type userResponse struct {
++	Username        string    `json:"username"`
++	FullName        string    `json:"full_name"`
++	Email           string    `json:"email"`
++	IsEmailVerified bool      `json:"is_email_verified"`
++	CreatedAt       time.Time `json:"created_at"`
++}
++
++func newUserResponse(u sqlcdb.User) userResponse {
++	return userResponse{
++		Username:        u.Username,
++		FullName:        u.FullName,
++		Email:           u.Email,
++		IsEmailVerified: u.IsEmailVerified,
++		CreatedAt:       u.CreatedAt,
++	}
++}
++
++func (s *Server) createUser(c *echo.Context) error {
++	var req createUserRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	hashed, err := util.HashPassword(req.Password)
++	if err != nil {
++		return err
++	}
++
++	ctx := c.Request().Context()
++	user, err := s.store.CreateUser(ctx, sqlcdb.CreateUserParams{
++		Username:       req.Username,
++		HashedPassword: hashed,
++		FullName:       req.FullName,
++		Email:          req.Email,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++
++	if _, err := s.riverClient.Insert(ctx, worker.SendVerifyEmailArgs{Username: user.Username}, nil); err != nil {
++		return err
++	}
++
++	return c.JSON(http.StatusCreated, newUserResponse(user))
++}
++
++type loginUserRequest struct {
++	Username string `json:"username" validate:"required,alphanum"`
++	Password string `json:"password" validate:"required"`
++}
++
++type loginUserResponse struct {
++	AccessToken           string       `json:"access_token"`
++	AccessTokenExpiresAt  time.Time    `json:"access_token_expires_at"`
++	RefreshToken          string       `json:"refresh_token"`
++	RefreshTokenExpiresAt time.Time    `json:"refresh_token_expires_at"`
++	SessionID             string       `json:"session_id"`
++	User                  userResponse `json:"user"`
++}
++
++func (s *Server) loginUser(c *echo.Context) error {
++	var req loginUserRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	ctx := c.Request().Context()
++	user, err := s.store.GetUser(ctx, req.Username)
++	if err != nil {
++		if e := store.ClassifyError(err); e == store.ErrRecordNotFound {
++			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
++		}
++		return err
++	}
++	if err := util.CheckPassword(req.Password, user.HashedPassword); err != nil {
++		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
++	}
++
++	accessToken, accessPayload, err := s.tokenMaker.CreateToken(user.Username, roleDepositor, s.config.AccessTTL)
++	if err != nil {
++		return err
++	}
++	refreshToken, refreshPayload, err := s.tokenMaker.CreateToken(user.Username, roleDepositor, s.config.RefreshTTL)
++	if err != nil {
++		return err
++	}
++
++	session, err := s.store.CreateSession(ctx, sqlcdb.CreateSessionParams{
++		ID:           refreshPayload.ID,
++		Username:     user.Username,
++		RefreshToken: refreshToken,
++		UserAgent:    c.Request().UserAgent(),
++		ClientIp:     c.RealIP(),
++		IsBlocked:    false,
++		ExpiresAt:    refreshPayload.ExpiresAt.Time,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++
++	return c.JSON(http.StatusOK, loginUserResponse{
++		AccessToken:           accessToken,
++		AccessTokenExpiresAt:  accessPayload.ExpiresAt.Time,
++		RefreshToken:          refreshToken,
++		RefreshTokenExpiresAt: refreshPayload.ExpiresAt.Time,
++		SessionID:             session.ID.String(),
++		User:                  newUserResponse(user),
++	})
++}
++
++type renewTokenRequest struct {
++	RefreshToken string `json:"refresh_token" validate:"required"`
++}
++
++func (s *Server) renewToken(c *echo.Context) error {
++	var req renewTokenRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	refreshPayload, err := s.tokenMaker.VerifyToken(req.RefreshToken)
++	if err != nil {
++		return err
++	}
++
++	ctx := c.Request().Context()
++	session, err := s.store.GetSession(ctx, refreshPayload.ID)
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++	if session.IsBlocked ||
++		session.Username != refreshPayload.Username ||
++		session.RefreshToken != req.RefreshToken ||
++		time.Now().After(session.ExpiresAt) {
++		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
++	}
++
++	accessToken, accessPayload, err := s.tokenMaker.CreateToken(refreshPayload.Username, refreshPayload.Role, s.config.AccessTTL)
++	if err != nil {
++		return err
++	}
++	return c.JSON(http.StatusOK, map[string]any{
++		"access_token":            accessToken,
++		"access_token_expires_at": accessPayload.ExpiresAt.Time,
++	})
++}
++
++func (s *Server) verifyEmail(c *echo.Context) error {
++	idStr := c.QueryParam("id")
++	code := c.QueryParam("code")
++	id, err := uuid.Parse(idStr)
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
++	}
++
++	ctx := c.Request().Context()
++	ve, err := s.store.UpdateVerifyEmail(ctx, sqlcdb.UpdateVerifyEmailParams{
++		ID:         id,
++		SecretCode: code,
++	})
++	if err != nil {
++		if e := store.ClassifyError(err); e == store.ErrRecordNotFound {
++			return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
++		}
++		return err
++	}
++	if _, err := s.store.VerifyUserEmail(ctx, ve.Username); err != nil {
++		return store.ClassifyError(err)
++	}
++	return c.JSON(http.StatusOK, map[string]bool{"is_verified": true})
++}
+diff --git a/internal/api/user_test.go b/internal/api/user_test.go
+new file mode 100644
+index 0000000..dca1aa8
+--- /dev/null
++++ b/internal/api/user_test.go
+@@ -0,0 +1,35 @@
++package api
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/vancanhuit/simplebank/internal/config"
++	"github.com/vancanhuit/simplebank/internal/token"
++)
++
++func newTestServer(t *testing.T) *Server {
++	t.Helper()
++	maker, err := token.NewJWTMaker("01234567890123456789012345678901")
++	if err != nil {
++		t.Fatal(err)
++	}
++	s, err := NewServer(config.Config{JWTSecret: "01234567890123456789012345678901"}, nil, maker, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return s
++}
++
++func TestCreateUserBadRequest(t *testing.T) {
++	s := newTestServer(t)
++	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(`{"username":""}`))
++	req.Header.Set("Content-Type", "application/json")
++	rec := httptest.NewRecorder()
++	s.Handler().ServeHTTP(rec, req)
++	if rec.Code != http.StatusBadRequest {
++		t.Fatalf("want 400, got %d", rec.Code)
++	}
++}
+diff --git a/internal/api/validator.go b/internal/api/validator.go
+new file mode 100644
+index 0000000..602a314
+--- /dev/null
++++ b/internal/api/validator.go
+@@ -0,0 +1,23 @@
++package api
++
++import (
++	"net/http"
++
++	"github.com/go-playground/validator/v10"
++	"github.com/labstack/echo/v5"
++)
++
++type customValidator struct {
++	validate *validator.Validate
++}
++
++func (cv *customValidator) Validate(i any) error {
++	if err := cv.validate.Struct(i); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request payload")
++	}
++	return nil
++}
++
++func newValidator() *customValidator {
++	return &customValidator{validate: validator.New()}
++}
+diff --git a/internal/config/config.go b/internal/config/config.go
+new file mode 100644
+index 0000000..f068c28
+--- /dev/null
++++ b/internal/config/config.go
+@@ -0,0 +1,67 @@
++package config
++
++import (
++	"errors"
++	"time"
++
++	"github.com/urfave/cli/v3"
++)
++
++type Config struct {
++	HTTPAddr        string
++	DBSource        string
++	JWTSecret       string
++	AccessTTL       time.Duration
++	RefreshTTL      time.Duration
++	SMTPHost        string
++	SMTPPort        int
++	SMTPUsername    string
++	SMTPPassword    string
++	SMTPFrom        string
++	RiverMaxWorkers int
++}
++
++func (c Config) Validate() error {
++	if c.DBSource == "" {
++		return errors.New("db-source is required")
++	}
++	if len(c.JWTSecret) < 32 {
++		return errors.New("jwt-secret must be at least 32 characters")
++	}
++	if c.SMTPFrom == "" {
++		return errors.New("smtp-from is required")
++	}
++	return nil
++}
++
++func Flags() []cli.Flag {
++	return []cli.Flag{
++		&cli.StringFlag{Name: "http-addr", Value: ":8080", Sources: cli.EnvVars("HTTP_ADDR")},
++		&cli.StringFlag{Name: "db-source", Sources: cli.EnvVars("DB_SOURCE")},
++		&cli.StringFlag{Name: "jwt-secret", Sources: cli.EnvVars("JWT_SECRET")},
++		&cli.DurationFlag{Name: "access-ttl", Value: 15 * time.Minute, Sources: cli.EnvVars("ACCESS_TTL")},
++		&cli.DurationFlag{Name: "refresh-ttl", Value: 24 * time.Hour, Sources: cli.EnvVars("REFRESH_TTL")},
++		&cli.StringFlag{Name: "smtp-host", Sources: cli.EnvVars("SMTP_HOST")},
++		&cli.IntFlag{Name: "smtp-port", Value: 1025, Sources: cli.EnvVars("SMTP_PORT")},
++		&cli.StringFlag{Name: "smtp-username", Sources: cli.EnvVars("SMTP_USERNAME")},
++		&cli.StringFlag{Name: "smtp-password", Sources: cli.EnvVars("SMTP_PASSWORD")},
++		&cli.StringFlag{Name: "smtp-from", Sources: cli.EnvVars("SMTP_FROM")},
++		&cli.IntFlag{Name: "river-max-workers", Value: 10, Sources: cli.EnvVars("RIVER_MAX_WORKERS")},
++	}
++}
++
++func FromCommand(cmd *cli.Command) Config {
++	return Config{
++		HTTPAddr:        cmd.String("http-addr"),
++		DBSource:        cmd.String("db-source"),
++		JWTSecret:       cmd.String("jwt-secret"),
++		AccessTTL:       cmd.Duration("access-ttl"),
++		RefreshTTL:      cmd.Duration("refresh-ttl"),
++		SMTPHost:        cmd.String("smtp-host"),
++		SMTPPort:        cmd.Int("smtp-port"),
++		SMTPUsername:    cmd.String("smtp-username"),
++		SMTPPassword:    cmd.String("smtp-password"),
++		SMTPFrom:        cmd.String("smtp-from"),
++		RiverMaxWorkers: cmd.Int("river-max-workers"),
++	}
++}
+diff --git a/internal/config/config_test.go b/internal/config/config_test.go
+new file mode 100644
+index 0000000..a535739
+--- /dev/null
++++ b/internal/config/config_test.go
+@@ -0,0 +1,25 @@
++package config
++
++import "testing"
++
++func TestValidate(t *testing.T) {
++	valid := Config{
++		DBSource:  "postgres://u:p@localhost:5432/db",
++		JWTSecret: "01234567890123456789012345678901",
++		SMTPFrom:  "no-reply@example.com",
++	}
++	if err := valid.Validate(); err != nil {
++		t.Fatalf("expected valid config, got %v", err)
++	}
++
++	tests := map[string]Config{
++		"missing db":   {JWTSecret: "01234567890123456789012345678901", SMTPFrom: "a@b.c"},
++		"short secret": {DBSource: "x", JWTSecret: "short", SMTPFrom: "a@b.c"},
++		"missing from": {DBSource: "x", JWTSecret: "01234567890123456789012345678901"},
++	}
++	for name, cfg := range tests {
++		if err := cfg.Validate(); err == nil {
++			t.Errorf("%s: expected error, got nil", name)
++		}
++	}
++}
+diff --git a/internal/db/errors.go b/internal/db/errors.go
+new file mode 100644
+index 0000000..0bf132d
+--- /dev/null
++++ b/internal/db/errors.go
+@@ -0,0 +1,34 @@
++package store
++
++import (
++	"errors"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgconn"
++)
++
++var (
++	ErrRecordNotFound      = errors.New("record not found")
++	ErrUniqueViolation     = errors.New("unique constraint violation")
++	ErrForeignKeyViolation = errors.New("foreign key violation")
++	ErrInsufficientBalance = errors.New("insufficient balance")
++)
++
++func ClassifyError(err error) error {
++	if err == nil {
++		return nil
++	}
++	if errors.Is(err, pgx.ErrNoRows) {
++		return ErrRecordNotFound
++	}
++	var pgErr *pgconn.PgError
++	if errors.As(err, &pgErr) {
++		switch pgErr.Code {
++		case "23505":
++			return ErrUniqueViolation
++		case "23503":
++			return ErrForeignKeyViolation
++		}
++	}
++	return err
++}
+diff --git a/internal/db/errors_test.go b/internal/db/errors_test.go
+new file mode 100644
+index 0000000..a7c00ae
+--- /dev/null
++++ b/internal/db/errors_test.go
+@@ -0,0 +1,27 @@
++package store
++
++import (
++	"errors"
++	"testing"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgconn"
++)
++
++func TestClassifyError(t *testing.T) {
++	if !errors.Is(ClassifyError(pgx.ErrNoRows), ErrRecordNotFound) {
++		t.Error("ErrNoRows should map to ErrRecordNotFound")
++	}
++	uniq := &pgconn.PgError{Code: "23505"}
++	if !errors.Is(ClassifyError(uniq), ErrUniqueViolation) {
++		t.Error("23505 should map to ErrUniqueViolation")
++	}
++	fk := &pgconn.PgError{Code: "23503"}
++	if !errors.Is(ClassifyError(fk), ErrForeignKeyViolation) {
++		t.Error("23503 should map to ErrForeignKeyViolation")
++	}
++	other := errors.New("boom")
++	if ClassifyError(other) != other {
++		t.Error("unknown error should pass through unchanged")
++	}
++}
+diff --git a/internal/db/main_test.go b/internal/db/main_test.go
+new file mode 100644
+index 0000000..f4c6441
+--- /dev/null
++++ b/internal/db/main_test.go
+@@ -0,0 +1,42 @@
++//go:build integration
++
++package store
++
++import (
++	"context"
++	"os"
++	"testing"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/jackc/pgx/v5/stdlib"
++	"github.com/pressly/goose/v3"
++
++	"github.com/vancanhuit/simplebank/internal/db/migrations"
++)
++
++var testStore Store
++
++func TestMain(m *testing.M) {
++	ctx := context.Background()
++	dsn := os.Getenv("DB_SOURCE")
++	if dsn == "" {
++		dsn = "postgres://simplebank_test:simplebank_test@localhost:5433/simplebank_test?sslmode=disable"
++	}
++
++	pool, err := pgxpool.New(ctx, dsn)
++	if err != nil {
++		panic(err)
++	}
++
++	sqlDB := stdlib.OpenDBFromPool(pool)
++	goose.SetBaseFS(migrations.FS)
++	if err := goose.SetDialect("postgres"); err != nil {
++		panic(err)
++	}
++	if err := goose.Up(sqlDB, "."); err != nil {
++		panic(err)
++	}
++
++	testStore = NewStore(pool)
++	os.Exit(m.Run())
++}
+diff --git a/internal/db/migrate.go b/internal/db/migrate.go
+new file mode 100644
+index 0000000..0faffc5
+--- /dev/null
++++ b/internal/db/migrate.go
+@@ -0,0 +1,38 @@
++package store
++
++import (
++	"context"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/jackc/pgx/v5/stdlib"
++	"github.com/pressly/goose/v3"
++	"github.com/pressly/goose/v3/lock"
++
++	"github.com/vancanhuit/simplebank/internal/db/migrations"
++)
++
++// MigrateSchema applies pending domain migrations under a PostgreSQL
++// session-level advisory lock, so concurrent replicas starting together
++// serialize migration application safely.
++func MigrateSchema(ctx context.Context, pool *pgxpool.Pool) error {
++	sqlDB := stdlib.OpenDBFromPool(pool)
++	defer sqlDB.Close()
++
++	locker, err := lock.NewPostgresSessionLocker()
++	if err != nil {
++		return err
++	}
++
++	provider, err := goose.NewProvider(
++		goose.DialectPostgres,
++		sqlDB,
++		migrations.FS,
++		goose.WithSessionLocker(locker),
++	)
++	if err != nil {
++		return err
++	}
++
++	_, err = provider.Up(ctx)
++	return err
++}
+diff --git a/internal/db/migrations/00001_init_schema.sql b/internal/db/migrations/00001_init_schema.sql
+new file mode 100644
+index 0000000..6ee342a
+--- /dev/null
++++ b/internal/db/migrations/00001_init_schema.sql
+@@ -0,0 +1,68 @@
++-- +goose Up
++CREATE TABLE users (
++    id                  uuid PRIMARY KEY DEFAULT uuidv7(),
++    username            text UNIQUE NOT NULL,
++    hashed_password     text NOT NULL,
++    full_name           text NOT NULL,
++    email               text UNIQUE NOT NULL,
++    is_email_verified   boolean NOT NULL DEFAULT false,
++    password_changed_at timestamptz NOT NULL DEFAULT '0001-01-01 00:00:00Z',
++    created_at          timestamptz NOT NULL DEFAULT now()
++);
++
++CREATE TABLE verify_emails (
++    id          uuid PRIMARY KEY DEFAULT uuidv7(),
++    username    text NOT NULL REFERENCES users(username),
++    email       text NOT NULL,
++    secret_code text NOT NULL,
++    is_used     boolean NOT NULL DEFAULT false,
++    created_at  timestamptz NOT NULL DEFAULT now(),
++    expired_at  timestamptz NOT NULL DEFAULT (now() + interval '15 minutes')
++);
++
++CREATE TABLE accounts (
++    id         uuid PRIMARY KEY DEFAULT uuidv7(),
++    owner      text NOT NULL REFERENCES users(username),
++    balance    bigint NOT NULL,
++    currency   text NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    UNIQUE (owner, currency)
++);
++CREATE INDEX idx_accounts_owner ON accounts (owner);
++
++CREATE TABLE entries (
++    id         uuid PRIMARY KEY DEFAULT uuidv7(),
++    account_id uuid NOT NULL REFERENCES accounts(id),
++    amount     bigint NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now()
++);
++CREATE INDEX idx_entries_account_id ON entries (account_id);
++
++CREATE TABLE transfers (
++    id              uuid PRIMARY KEY DEFAULT uuidv7(),
++    from_account_id uuid NOT NULL REFERENCES accounts(id),
++    to_account_id   uuid NOT NULL REFERENCES accounts(id),
++    amount          bigint NOT NULL CHECK (amount > 0),
++    created_at      timestamptz NOT NULL DEFAULT now()
++);
++CREATE INDEX idx_transfers_from_account_id ON transfers (from_account_id);
++CREATE INDEX idx_transfers_to_account_id ON transfers (to_account_id);
++
++CREATE TABLE sessions (
++    id            uuid PRIMARY KEY DEFAULT uuidv7(),
++    username      text NOT NULL REFERENCES users(username),
++    refresh_token text NOT NULL,
++    user_agent    text NOT NULL,
++    client_ip     text NOT NULL,
++    is_blocked    boolean NOT NULL DEFAULT false,
++    expires_at    timestamptz NOT NULL,
++    created_at    timestamptz NOT NULL DEFAULT now()
++);
++
++-- +goose Down
++DROP TABLE sessions;
++DROP TABLE transfers;
++DROP TABLE entries;
++DROP TABLE accounts;
++DROP TABLE verify_emails;
++DROP TABLE users;
+diff --git a/internal/db/migrations/embed.go b/internal/db/migrations/embed.go
+new file mode 100644
+index 0000000..91cca1c
+--- /dev/null
++++ b/internal/db/migrations/embed.go
+@@ -0,0 +1,6 @@
++package migrations
++
++import "embed"
++
++//go:embed *.sql
++var FS embed.FS
+diff --git a/internal/db/query/accounts.sql b/internal/db/query/accounts.sql
+new file mode 100644
+index 0000000..23bd652
+--- /dev/null
++++ b/internal/db/query/accounts.sql
+@@ -0,0 +1,22 @@
++-- name: CreateAccount :one
++INSERT INTO accounts (owner, balance, currency)
++VALUES ($1, $2, $3)
++RETURNING *;
++
++-- name: GetAccount :one
++SELECT * FROM accounts WHERE id = $1 LIMIT 1;
++
++-- name: GetAccountForUpdate :one
++SELECT * FROM accounts WHERE id = $1 LIMIT 1 FOR NO KEY UPDATE;
++
++-- name: ListAccounts :many
++SELECT * FROM accounts
++WHERE owner = $1
++ORDER BY id
++LIMIT $2 OFFSET $3;
++
++-- name: AddAccountBalance :one
++UPDATE accounts
++SET balance = balance + sqlc.arg(amount)
++WHERE id = sqlc.arg(id) AND balance + sqlc.arg(amount) >= 0
++RETURNING *;
+diff --git a/internal/db/query/entries.sql b/internal/db/query/entries.sql
+new file mode 100644
+index 0000000..df5ff90
+--- /dev/null
++++ b/internal/db/query/entries.sql
+@@ -0,0 +1,4 @@
++-- name: CreateEntry :one
++INSERT INTO entries (account_id, amount)
++VALUES ($1, $2)
++RETURNING *;
+diff --git a/internal/db/query/sessions.sql b/internal/db/query/sessions.sql
+new file mode 100644
+index 0000000..72b370e
+--- /dev/null
++++ b/internal/db/query/sessions.sql
+@@ -0,0 +1,7 @@
++-- name: CreateSession :one
++INSERT INTO sessions (id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at)
++VALUES ($1, $2, $3, $4, $5, $6, $7)
++RETURNING *;
++
++-- name: GetSession :one
++SELECT * FROM sessions WHERE id = $1 LIMIT 1;
+diff --git a/internal/db/query/transfers.sql b/internal/db/query/transfers.sql
+new file mode 100644
+index 0000000..cddb447
+--- /dev/null
++++ b/internal/db/query/transfers.sql
+@@ -0,0 +1,4 @@
++-- name: CreateTransfer :one
++INSERT INTO transfers (from_account_id, to_account_id, amount)
++VALUES ($1, $2, $3)
++RETURNING *;
+diff --git a/internal/db/query/users.sql b/internal/db/query/users.sql
+new file mode 100644
+index 0000000..b57183a
+--- /dev/null
++++ b/internal/db/query/users.sql
+@@ -0,0 +1,12 @@
++-- name: CreateUser :one
++INSERT INTO users (username, hashed_password, full_name, email)
++VALUES ($1, $2, $3, $4)
++RETURNING *;
++
++-- name: GetUser :one
++SELECT * FROM users WHERE username = $1 LIMIT 1;
++
++-- name: VerifyUserEmail :one
++UPDATE users SET is_email_verified = true
++WHERE username = $1
++RETURNING *;
+diff --git a/internal/db/query/verify_emails.sql b/internal/db/query/verify_emails.sql
+new file mode 100644
+index 0000000..45770ea
+--- /dev/null
++++ b/internal/db/query/verify_emails.sql
+@@ -0,0 +1,13 @@
++-- name: CreateVerifyEmail :one
++INSERT INTO verify_emails (username, email, secret_code)
++VALUES ($1, $2, $3)
++RETURNING *;
++
++-- name: UpdateVerifyEmail :one
++UPDATE verify_emails
++SET is_used = true
++WHERE id = sqlc.arg(id)
++  AND secret_code = sqlc.arg(secret_code)
++  AND is_used = false
++  AND expired_at > now()
++RETURNING *;
+diff --git a/internal/db/sqlc/accounts.sql.go b/internal/db/sqlc/accounts.sql.go
+new file mode 100644
+index 0000000..ddaf7aa
+--- /dev/null
++++ b/internal/db/sqlc/accounts.sql.go
+@@ -0,0 +1,135 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++// source: accounts.sql
++
++package db
++
++import (
++	"context"
++
++	"github.com/google/uuid"
++)
++
++const addAccountBalance = `-- name: AddAccountBalance :one
++UPDATE accounts
++SET balance = balance + $1
++WHERE id = $2 AND balance + $1 >= 0
++RETURNING id, owner, balance, currency, created_at
++`
++
++type AddAccountBalanceParams struct {
++	Amount int64     `json:"amount"`
++	ID     uuid.UUID `json:"id"`
++}
++
++func (q *Queries) AddAccountBalance(ctx context.Context, arg AddAccountBalanceParams) (Account, error) {
++	row := q.db.QueryRow(ctx, addAccountBalance, arg.Amount, arg.ID)
++	var i Account
++	err := row.Scan(
++		&i.ID,
++		&i.Owner,
++		&i.Balance,
++		&i.Currency,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const createAccount = `-- name: CreateAccount :one
++INSERT INTO accounts (owner, balance, currency)
++VALUES ($1, $2, $3)
++RETURNING id, owner, balance, currency, created_at
++`
++
++type CreateAccountParams struct {
++	Owner    string `json:"owner"`
++	Balance  int64  `json:"balance"`
++	Currency string `json:"currency"`
++}
++
++func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
++	row := q.db.QueryRow(ctx, createAccount, arg.Owner, arg.Balance, arg.Currency)
++	var i Account
++	err := row.Scan(
++		&i.ID,
++		&i.Owner,
++		&i.Balance,
++		&i.Currency,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const getAccount = `-- name: GetAccount :one
++SELECT id, owner, balance, currency, created_at FROM accounts WHERE id = $1 LIMIT 1
++`
++
++func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error) {
++	row := q.db.QueryRow(ctx, getAccount, id)
++	var i Account
++	err := row.Scan(
++		&i.ID,
++		&i.Owner,
++		&i.Balance,
++		&i.Currency,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const getAccountForUpdate = `-- name: GetAccountForUpdate :one
++SELECT id, owner, balance, currency, created_at FROM accounts WHERE id = $1 LIMIT 1 FOR NO KEY UPDATE
++`
++
++func (q *Queries) GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error) {
++	row := q.db.QueryRow(ctx, getAccountForUpdate, id)
++	var i Account
++	err := row.Scan(
++		&i.ID,
++		&i.Owner,
++		&i.Balance,
++		&i.Currency,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const listAccounts = `-- name: ListAccounts :many
++SELECT id, owner, balance, currency, created_at FROM accounts
++WHERE owner = $1
++ORDER BY id
++LIMIT $2 OFFSET $3
++`
++
++type ListAccountsParams struct {
++	Owner  string `json:"owner"`
++	Limit  int32  `json:"limit"`
++	Offset int32  `json:"offset"`
++}
++
++func (q *Queries) ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error) {
++	rows, err := q.db.Query(ctx, listAccounts, arg.Owner, arg.Limit, arg.Offset)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	items := []Account{}
++	for rows.Next() {
++		var i Account
++		if err := rows.Scan(
++			&i.ID,
++			&i.Owner,
++			&i.Balance,
++			&i.Currency,
++			&i.CreatedAt,
++		); err != nil {
++			return nil, err
++		}
++		items = append(items, i)
++	}
++	if err := rows.Err(); err != nil {
++		return nil, err
++	}
++	return items, nil
++}
+diff --git a/internal/db/sqlc/db.go b/internal/db/sqlc/db.go
+new file mode 100644
+index 0000000..468d1fa
+--- /dev/null
++++ b/internal/db/sqlc/db.go
+@@ -0,0 +1,32 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++
++package db
++
++import (
++	"context"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgconn"
++)
++
++type DBTX interface {
++	Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error)
++	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
++	QueryRow(context.Context, string, ...interface{}) pgx.Row
++}
++
++func New(db DBTX) *Queries {
++	return &Queries{db: db}
++}
++
++type Queries struct {
++	db DBTX
++}
++
++func (q *Queries) WithTx(tx pgx.Tx) *Queries {
++	return &Queries{
++		db: tx,
++	}
++}
+diff --git a/internal/db/sqlc/entries.sql.go b/internal/db/sqlc/entries.sql.go
+new file mode 100644
+index 0000000..5db164c
+--- /dev/null
++++ b/internal/db/sqlc/entries.sql.go
+@@ -0,0 +1,35 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++// source: entries.sql
++
++package db
++
++import (
++	"context"
++
++	"github.com/google/uuid"
++)
++
++const createEntry = `-- name: CreateEntry :one
++INSERT INTO entries (account_id, amount)
++VALUES ($1, $2)
++RETURNING id, account_id, amount, created_at
++`
++
++type CreateEntryParams struct {
++	AccountID uuid.UUID `json:"account_id"`
++	Amount    int64     `json:"amount"`
++}
++
++func (q *Queries) CreateEntry(ctx context.Context, arg CreateEntryParams) (Entry, error) {
++	row := q.db.QueryRow(ctx, createEntry, arg.AccountID, arg.Amount)
++	var i Entry
++	err := row.Scan(
++		&i.ID,
++		&i.AccountID,
++		&i.Amount,
++		&i.CreatedAt,
++	)
++	return i, err
++}
+diff --git a/internal/db/sqlc/models.go b/internal/db/sqlc/models.go
+new file mode 100644
+index 0000000..c0e09b9
+--- /dev/null
++++ b/internal/db/sqlc/models.go
+@@ -0,0 +1,66 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++
++package db
++
++import (
++	"time"
++
++	"github.com/google/uuid"
++)
++
++type Account struct {
++	ID        uuid.UUID `json:"id"`
++	Owner     string    `json:"owner"`
++	Balance   int64     `json:"balance"`
++	Currency  string    `json:"currency"`
++	CreatedAt time.Time `json:"created_at"`
++}
++
++type Entry struct {
++	ID        uuid.UUID `json:"id"`
++	AccountID uuid.UUID `json:"account_id"`
++	Amount    int64     `json:"amount"`
++	CreatedAt time.Time `json:"created_at"`
++}
++
++type Session struct {
++	ID           uuid.UUID `json:"id"`
++	Username     string    `json:"username"`
++	RefreshToken string    `json:"refresh_token"`
++	UserAgent    string    `json:"user_agent"`
++	ClientIp     string    `json:"client_ip"`
++	IsBlocked    bool      `json:"is_blocked"`
++	ExpiresAt    time.Time `json:"expires_at"`
++	CreatedAt    time.Time `json:"created_at"`
++}
++
++type Transfer struct {
++	ID            uuid.UUID `json:"id"`
++	FromAccountID uuid.UUID `json:"from_account_id"`
++	ToAccountID   uuid.UUID `json:"to_account_id"`
++	Amount        int64     `json:"amount"`
++	CreatedAt     time.Time `json:"created_at"`
++}
++
++type User struct {
++	ID                uuid.UUID `json:"id"`
++	Username          string    `json:"username"`
++	HashedPassword    string    `json:"hashed_password"`
++	FullName          string    `json:"full_name"`
++	Email             string    `json:"email"`
++	IsEmailVerified   bool      `json:"is_email_verified"`
++	PasswordChangedAt time.Time `json:"password_changed_at"`
++	CreatedAt         time.Time `json:"created_at"`
++}
++
++type VerifyEmail struct {
++	ID         uuid.UUID `json:"id"`
++	Username   string    `json:"username"`
++	Email      string    `json:"email"`
++	SecretCode string    `json:"secret_code"`
++	IsUsed     bool      `json:"is_used"`
++	CreatedAt  time.Time `json:"created_at"`
++	ExpiredAt  time.Time `json:"expired_at"`
++}
+diff --git a/internal/db/sqlc/querier.go b/internal/db/sqlc/querier.go
+new file mode 100644
+index 0000000..5b7cafe
+--- /dev/null
++++ b/internal/db/sqlc/querier.go
+@@ -0,0 +1,30 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++
++package db
++
++import (
++	"context"
++
++	"github.com/google/uuid"
++)
++
++type Querier interface {
++	AddAccountBalance(ctx context.Context, arg AddAccountBalanceParams) (Account, error)
++	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
++	CreateEntry(ctx context.Context, arg CreateEntryParams) (Entry, error)
++	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
++	CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error)
++	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
++	CreateVerifyEmail(ctx context.Context, arg CreateVerifyEmailParams) (VerifyEmail, error)
++	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
++	GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error)
++	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
++	GetUser(ctx context.Context, username string) (User, error)
++	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
++	UpdateVerifyEmail(ctx context.Context, arg UpdateVerifyEmailParams) (VerifyEmail, error)
++	VerifyUserEmail(ctx context.Context, username string) (User, error)
++}
++
++var _ Querier = (*Queries)(nil)
+diff --git a/internal/db/sqlc/sessions.sql.go b/internal/db/sqlc/sessions.sql.go
+new file mode 100644
+index 0000000..3bf2c4c
+--- /dev/null
++++ b/internal/db/sqlc/sessions.sql.go
+@@ -0,0 +1,73 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++// source: sessions.sql
++
++package db
++
++import (
++	"context"
++	"time"
++
++	"github.com/google/uuid"
++)
++
++const createSession = `-- name: CreateSession :one
++INSERT INTO sessions (id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at)
++VALUES ($1, $2, $3, $4, $5, $6, $7)
++RETURNING id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at, created_at
++`
++
++type CreateSessionParams struct {
++	ID           uuid.UUID `json:"id"`
++	Username     string    `json:"username"`
++	RefreshToken string    `json:"refresh_token"`
++	UserAgent    string    `json:"user_agent"`
++	ClientIp     string    `json:"client_ip"`
++	IsBlocked    bool      `json:"is_blocked"`
++	ExpiresAt    time.Time `json:"expires_at"`
++}
++
++func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
++	row := q.db.QueryRow(ctx, createSession,
++		arg.ID,
++		arg.Username,
++		arg.RefreshToken,
++		arg.UserAgent,
++		arg.ClientIp,
++		arg.IsBlocked,
++		arg.ExpiresAt,
++	)
++	var i Session
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.RefreshToken,
++		&i.UserAgent,
++		&i.ClientIp,
++		&i.IsBlocked,
++		&i.ExpiresAt,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const getSession = `-- name: GetSession :one
++SELECT id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at, created_at FROM sessions WHERE id = $1 LIMIT 1
++`
++
++func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error) {
++	row := q.db.QueryRow(ctx, getSession, id)
++	var i Session
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.RefreshToken,
++		&i.UserAgent,
++		&i.ClientIp,
++		&i.IsBlocked,
++		&i.ExpiresAt,
++		&i.CreatedAt,
++	)
++	return i, err
++}
+diff --git a/internal/db/sqlc/transfers.sql.go b/internal/db/sqlc/transfers.sql.go
+new file mode 100644
+index 0000000..a006488
+--- /dev/null
++++ b/internal/db/sqlc/transfers.sql.go
+@@ -0,0 +1,37 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++// source: transfers.sql
++
++package db
++
++import (
++	"context"
++
++	"github.com/google/uuid"
++)
++
++const createTransfer = `-- name: CreateTransfer :one
++INSERT INTO transfers (from_account_id, to_account_id, amount)
++VALUES ($1, $2, $3)
++RETURNING id, from_account_id, to_account_id, amount, created_at
++`
++
++type CreateTransferParams struct {
++	FromAccountID uuid.UUID `json:"from_account_id"`
++	ToAccountID   uuid.UUID `json:"to_account_id"`
++	Amount        int64     `json:"amount"`
++}
++
++func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error) {
++	row := q.db.QueryRow(ctx, createTransfer, arg.FromAccountID, arg.ToAccountID, arg.Amount)
++	var i Transfer
++	err := row.Scan(
++		&i.ID,
++		&i.FromAccountID,
++		&i.ToAccountID,
++		&i.Amount,
++		&i.CreatedAt,
++	)
++	return i, err
++}
+diff --git a/internal/db/sqlc/users.sql.go b/internal/db/sqlc/users.sql.go
+new file mode 100644
+index 0000000..76f9178
+--- /dev/null
++++ b/internal/db/sqlc/users.sql.go
+@@ -0,0 +1,86 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++// source: users.sql
++
++package db
++
++import (
++	"context"
++)
++
++const createUser = `-- name: CreateUser :one
++INSERT INTO users (username, hashed_password, full_name, email)
++VALUES ($1, $2, $3, $4)
++RETURNING id, username, hashed_password, full_name, email, is_email_verified, password_changed_at, created_at
++`
++
++type CreateUserParams struct {
++	Username       string `json:"username"`
++	HashedPassword string `json:"hashed_password"`
++	FullName       string `json:"full_name"`
++	Email          string `json:"email"`
++}
++
++func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
++	row := q.db.QueryRow(ctx, createUser,
++		arg.Username,
++		arg.HashedPassword,
++		arg.FullName,
++		arg.Email,
++	)
++	var i User
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.HashedPassword,
++		&i.FullName,
++		&i.Email,
++		&i.IsEmailVerified,
++		&i.PasswordChangedAt,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const getUser = `-- name: GetUser :one
++SELECT id, username, hashed_password, full_name, email, is_email_verified, password_changed_at, created_at FROM users WHERE username = $1 LIMIT 1
++`
++
++func (q *Queries) GetUser(ctx context.Context, username string) (User, error) {
++	row := q.db.QueryRow(ctx, getUser, username)
++	var i User
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.HashedPassword,
++		&i.FullName,
++		&i.Email,
++		&i.IsEmailVerified,
++		&i.PasswordChangedAt,
++		&i.CreatedAt,
++	)
++	return i, err
++}
++
++const verifyUserEmail = `-- name: VerifyUserEmail :one
++UPDATE users SET is_email_verified = true
++WHERE username = $1
++RETURNING id, username, hashed_password, full_name, email, is_email_verified, password_changed_at, created_at
++`
++
++func (q *Queries) VerifyUserEmail(ctx context.Context, username string) (User, error) {
++	row := q.db.QueryRow(ctx, verifyUserEmail, username)
++	var i User
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.HashedPassword,
++		&i.FullName,
++		&i.Email,
++		&i.IsEmailVerified,
++		&i.PasswordChangedAt,
++		&i.CreatedAt,
++	)
++	return i, err
++}
+diff --git a/internal/db/sqlc/verify_emails.sql.go b/internal/db/sqlc/verify_emails.sql.go
+new file mode 100644
+index 0000000..17adb79
+--- /dev/null
++++ b/internal/db/sqlc/verify_emails.sql.go
+@@ -0,0 +1,69 @@
++// Code generated by sqlc. DO NOT EDIT.
++// versions:
++//   sqlc v1.31.1
++// source: verify_emails.sql
++
++package db
++
++import (
++	"context"
++
++	"github.com/google/uuid"
++)
++
++const createVerifyEmail = `-- name: CreateVerifyEmail :one
++INSERT INTO verify_emails (username, email, secret_code)
++VALUES ($1, $2, $3)
++RETURNING id, username, email, secret_code, is_used, created_at, expired_at
++`
++
++type CreateVerifyEmailParams struct {
++	Username   string `json:"username"`
++	Email      string `json:"email"`
++	SecretCode string `json:"secret_code"`
++}
++
++func (q *Queries) CreateVerifyEmail(ctx context.Context, arg CreateVerifyEmailParams) (VerifyEmail, error) {
++	row := q.db.QueryRow(ctx, createVerifyEmail, arg.Username, arg.Email, arg.SecretCode)
++	var i VerifyEmail
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.Email,
++		&i.SecretCode,
++		&i.IsUsed,
++		&i.CreatedAt,
++		&i.ExpiredAt,
++	)
++	return i, err
++}
++
++const updateVerifyEmail = `-- name: UpdateVerifyEmail :one
++UPDATE verify_emails
++SET is_used = true
++WHERE id = $1
++  AND secret_code = $2
++  AND is_used = false
++  AND expired_at > now()
++RETURNING id, username, email, secret_code, is_used, created_at, expired_at
++`
++
++type UpdateVerifyEmailParams struct {
++	ID         uuid.UUID `json:"id"`
++	SecretCode string    `json:"secret_code"`
++}
++
++func (q *Queries) UpdateVerifyEmail(ctx context.Context, arg UpdateVerifyEmailParams) (VerifyEmail, error) {
++	row := q.db.QueryRow(ctx, updateVerifyEmail, arg.ID, arg.SecretCode)
++	var i VerifyEmail
++	err := row.Scan(
++		&i.ID,
++		&i.Username,
++		&i.Email,
++		&i.SecretCode,
++		&i.IsUsed,
++		&i.CreatedAt,
++		&i.ExpiredAt,
++	)
++	return i, err
++}
+diff --git a/internal/db/store.go b/internal/db/store.go
+new file mode 100644
+index 0000000..f7e493a
+--- /dev/null
++++ b/internal/db/store.go
+@@ -0,0 +1,40 @@
++package store
++
++import (
++	"context"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++)
++
++type Store interface {
++	sqlcdb.Querier
++	TransferTx(ctx context.Context, arg TransferTxParams) (TransferTxResult, error)
++}
++
++type SQLStore struct {
++	*sqlcdb.Queries
++	connPool *pgxpool.Pool
++}
++
++func NewStore(pool *pgxpool.Pool) Store {
++	return &SQLStore{
++		Queries:  sqlcdb.New(pool),
++		connPool: pool,
++	}
++}
++
++func (s *SQLStore) execTx(ctx context.Context, fn func(*sqlcdb.Queries) error) error {
++	tx, err := s.connPool.Begin(ctx)
++	if err != nil {
++		return err
++	}
++	defer func() { _ = tx.Rollback(ctx) }()
++
++	q := sqlcdb.New(tx)
++	if err := fn(q); err != nil {
++		return err
++	}
++	return tx.Commit(ctx)
++}
+diff --git a/internal/db/transfer_tx.go b/internal/db/transfer_tx.go
+new file mode 100644
+index 0000000..d2b3786
+--- /dev/null
++++ b/internal/db/transfer_tx.go
+@@ -0,0 +1,101 @@
++package store
++
++import (
++	"context"
++	"errors"
++
++	"github.com/google/uuid"
++
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++)
++
++type TransferTxParams struct {
++	FromAccountID uuid.UUID `json:"from_account_id"`
++	ToAccountID   uuid.UUID `json:"to_account_id"`
++	Amount        int64     `json:"amount"`
++}
++
++type TransferTxResult struct {
++	Transfer    sqlcdb.Transfer `json:"transfer"`
++	FromAccount sqlcdb.Account  `json:"from_account"`
++	ToAccount   sqlcdb.Account  `json:"to_account"`
++	FromEntry   sqlcdb.Entry    `json:"from_entry"`
++	ToEntry     sqlcdb.Entry    `json:"to_entry"`
++}
++
++func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (TransferTxResult, error) {
++	var result TransferTxResult
++
++	err := s.execTx(ctx, func(q *sqlcdb.Queries) error {
++		var err error
++
++		result.Transfer, err = q.CreateTransfer(ctx, sqlcdb.CreateTransferParams{
++			FromAccountID: arg.FromAccountID,
++			ToAccountID:   arg.ToAccountID,
++			Amount:        arg.Amount,
++		})
++		if err != nil {
++			return ClassifyError(err)
++		}
++
++		result.FromEntry, err = q.CreateEntry(ctx, sqlcdb.CreateEntryParams{
++			AccountID: arg.FromAccountID,
++			Amount:    -arg.Amount,
++		})
++		if err != nil {
++			return ClassifyError(err)
++		}
++		result.ToEntry, err = q.CreateEntry(ctx, sqlcdb.CreateEntryParams{
++			AccountID: arg.ToAccountID,
++			Amount:    arg.Amount,
++		})
++		if err != nil {
++			return ClassifyError(err)
++		}
++
++		// Deterministic lock order: update the smaller UUID first to avoid deadlocks.
++		if arg.FromAccountID.String() < arg.ToAccountID.String() {
++			result.FromAccount, result.ToAccount, err = moveMoney(ctx, q,
++				arg.FromAccountID, -arg.Amount, arg.ToAccountID, arg.Amount)
++		} else {
++			result.ToAccount, result.FromAccount, err = moveMoney(ctx, q,
++				arg.ToAccountID, arg.Amount, arg.FromAccountID, -arg.Amount)
++		}
++		return err
++	})
++
++	return result, err
++}
++
++func moveMoney(
++	ctx context.Context,
++	q *sqlcdb.Queries,
++	id1 uuid.UUID, amount1 int64,
++	id2 uuid.UUID, amount2 int64,
++) (account1, account2 sqlcdb.Account, err error) {
++	account1, err = q.AddAccountBalance(ctx, sqlcdb.AddAccountBalanceParams{
++		ID:     id1,
++		Amount: amount1,
++	})
++	if err != nil {
++		return account1, account2, mapBalanceError(err)
++	}
++	account2, err = q.AddAccountBalance(ctx, sqlcdb.AddAccountBalanceParams{
++		ID:     id2,
++		Amount: amount2,
++	})
++	if err != nil {
++		return account1, account2, mapBalanceError(err)
++	}
++	return account1, account2, nil
++}
++
++// mapBalanceError treats "no row updated" (pgx.ErrNoRows from AddAccountBalance's
++// RETURNING when the balance guard fails) as insufficient balance.
++func mapBalanceError(err error) error {
++	classified := ClassifyError(err)
++	if errors.Is(classified, ErrRecordNotFound) {
++		return ErrInsufficientBalance
++	}
++	return classified
++}
+diff --git a/internal/db/transfer_tx_test.go b/internal/db/transfer_tx_test.go
+new file mode 100644
+index 0000000..d199278
+--- /dev/null
++++ b/internal/db/transfer_tx_test.go
+@@ -0,0 +1,94 @@
++//go:build integration
++
++package store
++
++import (
++	"context"
++	"testing"
++
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++	"github.com/vancanhuit/simplebank/internal/util"
++)
++
++func createTestUser(t *testing.T) sqlcdb.User {
++	t.Helper()
++	hashed, err := util.HashPassword(util.RandomString(8))
++	if err != nil {
++		t.Fatal(err)
++	}
++	user, err := testStore.CreateUser(context.Background(), sqlcdb.CreateUserParams{
++		Username:       util.RandomOwner(),
++		HashedPassword: hashed,
++		FullName:       util.RandomOwner(),
++		Email:          util.RandomString(6) + "@example.com",
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return user
++}
++
++func createTestAccount(t *testing.T, owner string) sqlcdb.Account {
++	t.Helper()
++	acc, err := testStore.CreateAccount(context.Background(), sqlcdb.CreateAccountParams{
++		Owner:    owner,
++		Balance:  1000,
++		Currency: util.USD,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return acc
++}
++
++func TestTransferTxConcurrent(t *testing.T) {
++	u1 := createTestUser(t)
++	u2 := createTestUser(t)
++	acc1 := createTestAccount(t, u1.Username)
++	acc2 := createTestAccount(t, u2.Username)
++
++	n := 10
++	amount := int64(10)
++	errs := make(chan error, n)
++
++	for range n {
++		go func() {
++			_, err := testStore.TransferTx(context.Background(), TransferTxParams{
++				FromAccountID: acc1.ID,
++				ToAccountID:   acc2.ID,
++				Amount:        amount,
++			})
++			errs <- err
++		}()
++	}
++	for range n {
++		if err := <-errs; err != nil {
++			t.Fatalf("transfer failed: %v", err)
++		}
++	}
++
++	updated1, _ := testStore.GetAccount(context.Background(), acc1.ID)
++	updated2, _ := testStore.GetAccount(context.Background(), acc2.ID)
++	if updated1.Balance != 1000-int64(n)*amount {
++		t.Errorf("acc1 balance = %d, want %d", updated1.Balance, 1000-int64(n)*amount)
++	}
++	if updated2.Balance != 1000+int64(n)*amount {
++		t.Errorf("acc2 balance = %d, want %d", updated2.Balance, 1000+int64(n)*amount)
++	}
++}
++
++func TestTransferTxInsufficientBalance(t *testing.T) {
++	u1 := createTestUser(t)
++	u2 := createTestUser(t)
++	acc1 := createTestAccount(t, u1.Username)
++	acc2 := createTestAccount(t, u2.Username)
++
++	_, err := testStore.TransferTx(context.Background(), TransferTxParams{
++		FromAccountID: acc1.ID,
++		ToAccountID:   acc2.ID,
++		Amount:        100000,
++	})
++	if err != ErrInsufficientBalance {
++		t.Fatalf("want ErrInsufficientBalance, got %v", err)
++	}
++}
+diff --git a/internal/mail/mailer.go b/internal/mail/mailer.go
+new file mode 100644
+index 0000000..906eb81
+--- /dev/null
++++ b/internal/mail/mailer.go
+@@ -0,0 +1,7 @@
++package mail
++
++import "context"
++
++type Mailer interface {
++	Send(ctx context.Context, to, subject, htmlBody string) error
++}
+diff --git a/internal/mail/smtp.go b/internal/mail/smtp.go
+new file mode 100644
+index 0000000..9f6e3cc
+--- /dev/null
++++ b/internal/mail/smtp.go
+@@ -0,0 +1,47 @@
++package mail
++
++import (
++	"context"
++
++	"github.com/wneessen/go-mail"
++
++	"github.com/vancanhuit/simplebank/internal/config"
++)
++
++type SMTPMailer struct {
++	client *mail.Client
++	from   string
++}
++
++func NewSMTPMailer(cfg config.Config) (*SMTPMailer, error) {
++	opts := []mail.Option{
++		mail.WithPort(cfg.SMTPPort),
++		mail.WithTLSPolicy(mail.NoTLS),
++	}
++	if cfg.SMTPUsername != "" {
++		opts = append(opts,
++			mail.WithSMTPAuth(mail.SMTPAuthPlain),
++			mail.WithUsername(cfg.SMTPUsername),
++			mail.WithPassword(cfg.SMTPPassword),
++			mail.WithTLSPolicy(mail.TLSMandatory),
++		)
++	}
++	client, err := mail.NewClient(cfg.SMTPHost, opts...)
++	if err != nil {
++		return nil, err
++	}
++	return &SMTPMailer{client: client, from: cfg.SMTPFrom}, nil
++}
++
++func (m *SMTPMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
++	msg := mail.NewMsg()
++	if err := msg.From(m.from); err != nil {
++		return err
++	}
++	if err := msg.To(to); err != nil {
++		return err
++	}
++	msg.Subject(subject)
++	msg.SetBodyString(mail.TypeTextHTML, htmlBody)
++	return m.client.DialAndSendWithContext(ctx, msg)
++}
+diff --git a/internal/token/jwt_maker.go b/internal/token/jwt_maker.go
+new file mode 100644
+index 0000000..628e63a
+--- /dev/null
++++ b/internal/token/jwt_maker.go
+@@ -0,0 +1,51 @@
++package token
++
++import (
++	"errors"
++	"time"
++
++	"github.com/golang-jwt/jwt/v5"
++)
++
++type JWTMaker struct {
++	secretKey string
++}
++
++func NewJWTMaker(secretKey string) (*JWTMaker, error) {
++	if len(secretKey) < 32 {
++		return nil, errors.New("secret key must be at least 32 characters")
++	}
++	return &JWTMaker{secretKey: secretKey}, nil
++}
++
++func (m *JWTMaker) CreateToken(username, role string, duration time.Duration) (string, *Payload, error) {
++	payload, err := NewPayload(username, role, duration)
++	if err != nil {
++		return "", nil, err
++	}
++	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
++	signed, err := jwtToken.SignedString([]byte(m.secretKey))
++	return signed, payload, err
++}
++
++func (m *JWTMaker) VerifyToken(token string) (*Payload, error) {
++	keyFunc := func(t *jwt.Token) (any, error) {
++		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
++			return nil, ErrInvalidToken
++		}
++		return []byte(m.secretKey), nil
++	}
++	parsed, err := jwt.ParseWithClaims(token, &Payload{}, keyFunc,
++		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
++	if err != nil {
++		if errors.Is(err, jwt.ErrTokenExpired) {
++			return nil, ErrExpiredToken
++		}
++		return nil, ErrInvalidToken
++	}
++	payload, ok := parsed.Claims.(*Payload)
++	if !ok || !parsed.Valid {
++		return nil, ErrInvalidToken
++	}
++	return payload, nil
++}
+diff --git a/internal/token/jwt_maker_test.go b/internal/token/jwt_maker_test.go
+new file mode 100644
+index 0000000..a7ac95f
+--- /dev/null
++++ b/internal/token/jwt_maker_test.go
+@@ -0,0 +1,48 @@
++package token
++
++import (
++	"testing"
++	"time"
++
++	"github.com/golang-jwt/jwt/v5"
++)
++
++func TestJWTMaker(t *testing.T) {
++	maker, err := NewJWTMaker("01234567890123456789012345678901")
++	if err != nil {
++		t.Fatal(err)
++	}
++	token, payload, err := maker.CreateToken("alice", "depositor", time.Minute)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if token == "" || payload == nil {
++		t.Fatal("expected token and payload")
++	}
++	got, err := maker.VerifyToken(token)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Username != "alice" || got.Role != "depositor" {
++		t.Fatalf("unexpected payload: %+v", got)
++	}
++}
++
++func TestJWTMakerExpired(t *testing.T) {
++	maker, _ := NewJWTMaker("01234567890123456789012345678901")
++	token, _, _ := maker.CreateToken("alice", "depositor", -time.Minute)
++	_, err := maker.VerifyToken(token)
++	if err != ErrExpiredToken {
++		t.Fatalf("want ErrExpiredToken, got %v", err)
++	}
++}
++
++func TestJWTMakerInvalidAlg(t *testing.T) {
++	payload, _ := NewPayload("alice", "depositor", time.Minute)
++	jwtToken := jwt.NewWithClaims(jwt.SigningMethodNone, payload)
++	signed, _ := jwtToken.SignedString(jwt.UnsafeAllowNoneSignatureType)
++	maker, _ := NewJWTMaker("01234567890123456789012345678901")
++	if _, err := maker.VerifyToken(signed); err != ErrInvalidToken {
++		t.Fatalf("want ErrInvalidToken, got %v", err)
++	}
++}
+diff --git a/internal/token/maker.go b/internal/token/maker.go
+new file mode 100644
+index 0000000..3abc52b
+--- /dev/null
++++ b/internal/token/maker.go
+@@ -0,0 +1,45 @@
++package token
++
++import (
++	"errors"
++	"time"
++
++	"github.com/golang-jwt/jwt/v5"
++	"github.com/google/uuid"
++)
++
++var (
++	ErrExpiredToken = errors.New("token has expired")
++	ErrInvalidToken = errors.New("token is invalid")
++)
++
++type Payload struct {
++	ID       uuid.UUID `json:"id"`
++	Username string    `json:"username"`
++	Role     string    `json:"role"`
++	jwt.RegisteredClaims
++}
++
++func NewPayload(username, role string, duration time.Duration) (*Payload, error) {
++	id, err := uuid.NewV7()
++	if err != nil {
++		return nil, err
++	}
++	now := time.Now()
++	return &Payload{
++		ID:       id,
++		Username: username,
++		Role:     role,
++		RegisteredClaims: jwt.RegisteredClaims{
++			ID:        id.String(),
++			Subject:   username,
++			IssuedAt:  jwt.NewNumericDate(now),
++			ExpiresAt: jwt.NewNumericDate(now.Add(duration)),
++		},
++	}, nil
++}
++
++type Maker interface {
++	CreateToken(username, role string, duration time.Duration) (string, *Payload, error)
++	VerifyToken(token string) (*Payload, error)
++}
+diff --git a/internal/util/currency.go b/internal/util/currency.go
+new file mode 100644
+index 0000000..d97ac1b
+--- /dev/null
++++ b/internal/util/currency.go
+@@ -0,0 +1,15 @@
++package util
++
++const (
++	USD = "USD"
++	EUR = "EUR"
++	VND = "VND"
++)
++
++func IsSupportedCurrency(currency string) bool {
++	switch currency {
++	case USD, EUR, VND:
++		return true
++	}
++	return false
++}
+diff --git a/internal/util/currency_test.go b/internal/util/currency_test.go
+new file mode 100644
+index 0000000..8cdd2c9
+--- /dev/null
++++ b/internal/util/currency_test.go
+@@ -0,0 +1,12 @@
++package util
++
++import "testing"
++
++func TestIsSupportedCurrency(t *testing.T) {
++	if !IsSupportedCurrency(USD) {
++		t.Error("USD should be supported")
++	}
++	if IsSupportedCurrency("XYZ") {
++		t.Error("XYZ should not be supported")
++	}
++}
+diff --git a/internal/util/password.go b/internal/util/password.go
+new file mode 100644
+index 0000000..19250c2
+--- /dev/null
++++ b/internal/util/password.go
+@@ -0,0 +1,15 @@
++package util
++
++import "golang.org/x/crypto/bcrypt"
++
++func HashPassword(password string) (string, error) {
++	hashed, err := bcrypt.GenerateFromPassword([]byte(password), 12)
++	if err != nil {
++		return "", err
++	}
++	return string(hashed), nil
++}
++
++func CheckPassword(password, hashedPassword string) error {
++	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
++}
+diff --git a/internal/util/password_test.go b/internal/util/password_test.go
+new file mode 100644
+index 0000000..f3be9a5
+--- /dev/null
++++ b/internal/util/password_test.go
+@@ -0,0 +1,30 @@
++package util
++
++import (
++	"testing"
++
++	"golang.org/x/crypto/bcrypt"
++)
++
++func TestPassword(t *testing.T) {
++	password := RandomString(8)
++
++	hashed, err := HashPassword(password)
++	if err != nil {
++		t.Fatalf("hash: %v", err)
++	}
++	if err := CheckPassword(password, hashed); err != nil {
++		t.Fatalf("check should pass: %v", err)
++	}
++	if err := CheckPassword("wrong", hashed); err != bcrypt.ErrMismatchedHashAndPassword {
++		t.Fatalf("check should fail with mismatch, got %v", err)
++	}
++
++	hashed2, err := HashPassword(password)
++	if err != nil {
++		t.Fatalf("hash2: %v", err)
++	}
++	if hashed == hashed2 {
++		t.Fatal("hashes should differ due to salt")
++	}
++}
+diff --git a/internal/util/random.go b/internal/util/random.go
+new file mode 100644
+index 0000000..bb28011
+--- /dev/null
++++ b/internal/util/random.go
+@@ -0,0 +1,20 @@
++package util
++
++import (
++	"math/rand"
++	"strings"
++)
++
++const alphabet = "abcdefghijklmnopqrstuvwxyz"
++
++func RandomString(n int) string {
++	var sb strings.Builder
++	for range n {
++		sb.WriteByte(alphabet[rand.Intn(len(alphabet))])
++	}
++	return sb.String()
++}
++
++func RandomOwner() string {
++	return RandomString(6)
++}
+diff --git a/internal/util/secure.go b/internal/util/secure.go
+new file mode 100644
+index 0000000..deea4c5
+--- /dev/null
++++ b/internal/util/secure.go
+@@ -0,0 +1,16 @@
++package util
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++)
++
++// SecureToken returns a cryptographically secure random token encoded as a
++// hex string. n is the number of random bytes; the returned string is 2*n chars.
++func SecureToken(n int) (string, error) {
++	b := make([]byte, n)
++	if _, err := rand.Read(b); err != nil {
++		return "", err
++	}
++	return hex.EncodeToString(b), nil
++}
+diff --git a/internal/util/secure_test.go b/internal/util/secure_test.go
+new file mode 100644
+index 0000000..bbdcc8c
+--- /dev/null
++++ b/internal/util/secure_test.go
+@@ -0,0 +1,23 @@
++package util
++
++import "testing"
++
++func TestSecureToken(t *testing.T) {
++	a, err := SecureToken(32)
++	if err != nil {
++		t.Fatal(err)
++	}
++	b, err := SecureToken(32)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if a == "" || b == "" {
++		t.Fatal("token should not be empty")
++	}
++	if a == b {
++		t.Fatal("two secure tokens should differ")
++	}
++	if len(a) < 32 {
++		t.Fatalf("token too short: %d", len(a))
++	}
++}
+diff --git a/internal/worker/client.go b/internal/worker/client.go
+new file mode 100644
+index 0000000..833b871
+--- /dev/null
++++ b/internal/worker/client.go
+@@ -0,0 +1,42 @@
++package worker
++
++import (
++	"context"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/riverqueue/river"
++	"github.com/riverqueue/river/riverdriver/riverpgxv5"
++	"github.com/riverqueue/river/rivermigrate"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	"github.com/vancanhuit/simplebank/internal/mail"
++)
++
++func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
++	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
++	if err != nil {
++		return err
++	}
++	_, err = migrator.Migrate(ctx, rivermigrate.DirectionUp, nil)
++	return err
++}
++
++func NewClient(
++	ctx context.Context,
++	pool *pgxpool.Pool,
++	maxWorkers int,
++	st store.Store,
++	mailer mail.Mailer,
++	baseURL string,
++) (*river.Client[pgx.Tx], error) {
++	workers := river.NewWorkers()
++	river.AddWorker(workers, NewSendVerifyEmailWorker(st, mailer, baseURL))
++
++	return river.NewClient(riverpgxv5.New(pool), &river.Config{
++		Queues: map[string]river.QueueConfig{
++			river.QueueDefault: {MaxWorkers: maxWorkers},
++		},
++		Workers: workers,
++	})
++}
+diff --git a/internal/worker/verify_email.go b/internal/worker/verify_email.go
+new file mode 100644
+index 0000000..68fc529
+--- /dev/null
++++ b/internal/worker/verify_email.go
+@@ -0,0 +1,60 @@
++package worker
++
++import (
++	"context"
++	"fmt"
++	"html"
++
++	"github.com/riverqueue/river"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++	"github.com/vancanhuit/simplebank/internal/mail"
++	"github.com/vancanhuit/simplebank/internal/util"
++)
++
++type SendVerifyEmailArgs struct {
++	Username string `json:"username"`
++}
++
++func (SendVerifyEmailArgs) Kind() string { return "send_verify_email" }
++
++type SendVerifyEmailWorker struct {
++	river.WorkerDefaults[SendVerifyEmailArgs]
++	store   store.Store
++	mailer  mail.Mailer
++	baseURL string
++}
++
++func NewSendVerifyEmailWorker(st store.Store, mailer mail.Mailer, baseURL string) *SendVerifyEmailWorker {
++	return &SendVerifyEmailWorker{store: st, mailer: mailer, baseURL: baseURL}
++}
++
++func (w *SendVerifyEmailWorker) Work(ctx context.Context, job *river.Job[SendVerifyEmailArgs]) error {
++	user, err := w.store.GetUser(ctx, job.Args.Username)
++	if err != nil {
++		return err
++	}
++
++	code, err := util.SecureToken(32)
++	if err != nil {
++		return err
++	}
++
++	ve, err := w.store.CreateVerifyEmail(ctx, sqlcdb.CreateVerifyEmailParams{
++		Username:   user.Username,
++		Email:      user.Email,
++		SecretCode: code,
++	})
++	if err != nil {
++		return err
++	}
++
++	link := fmt.Sprintf("%s/api/v1/users/verify_email?id=%s&code=%s",
++		w.baseURL, ve.ID.String(), ve.SecretCode)
++	body := fmt.Sprintf(
++		`Hello %s,<br/>Please <a href="%s">click here</a> to verify your email address.`,
++		html.EscapeString(user.FullName), link)
++
++	return w.mailer.Send(ctx, user.Email, "Welcome to SimpleBank", body)
++}
+diff --git a/mise.toml b/mise.toml
+index c336ed7..c65c338 100644
+--- a/mise.toml
++++ b/mise.toml
+@@ -49,17 +49,24 @@ run = 'docker compose --profile test up -d --wait'
+ [tasks."compose:test:down"]
+ description = "Stop docker compose for testing"
+ run = 'docker compose --profile test down -v'
+ 
+ [tasks."test:integration"]
+ description = "Run integration tests"
+ depends = ["compose:test:up"]
+ depends_post = ["compose:test:down"]
+-run = 'go test -race -cover -v ./cmd/... -tags=integration'
++run = 'go test -race -cover -v ./... -tags=integration'
+ 
+ [tasks."docker:build"]
+ description = "Build docker image"
+ run = 'docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --load .'
+ 
+ [tasks."hooks:install"]
+ description = "Install git hooks"
+ run = 'cog install-hook --all'
++
++[tasks."sqlc:generate"]
++description = "Generate Go code from SQL with sqlc"
++run = [
++  'go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest',
++  'sqlc generate',
++]
+diff --git a/sqlc.yaml b/sqlc.yaml
+new file mode 100644
+index 0000000..5828922
+--- /dev/null
++++ b/sqlc.yaml
+@@ -0,0 +1,18 @@
++version: "2"
++sql:
++  - engine: "postgresql"
++    schema: "internal/db/migrations"
++    queries: "internal/db/query"
++    gen:
++      go:
++        package: "db"
++        out: "internal/db/sqlc"
++        sql_package: "pgx/v5"
++        emit_json_tags: true
++        emit_interface: true
++        emit_empty_slices: true
++        overrides:
++          - db_type: "uuid"
++            go_type: "github.com/google/uuid.UUID"
++          - db_type: "timestamptz"
++            go_type: "time.Time"
