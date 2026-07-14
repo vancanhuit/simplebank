@@ -1,0 +1,134 @@
+== commits ==
+304878e feat: add password hashing, random, and currency helpers
+
+== stat ==
+ internal/util/currency.go      | 15 +++++++++++++++
+ internal/util/currency_test.go | 12 ++++++++++++
+ internal/util/password.go      | 15 +++++++++++++++
+ internal/util/password_test.go | 30 ++++++++++++++++++++++++++++++
+ internal/util/random.go        | 20 ++++++++++++++++++++
+ 5 files changed, 92 insertions(+)
+
+== diff ==
+diff --git a/internal/util/currency.go b/internal/util/currency.go
+new file mode 100644
+index 0000000..d97ac1b
+--- /dev/null
++++ b/internal/util/currency.go
+@@ -0,0 +1,15 @@
++package util
++
++const (
++	USD = "USD"
++	EUR = "EUR"
++	VND = "VND"
++)
++
++func IsSupportedCurrency(currency string) bool {
++	switch currency {
++	case USD, EUR, VND:
++		return true
++	}
++	return false
++}
+diff --git a/internal/util/currency_test.go b/internal/util/currency_test.go
+new file mode 100644
+index 0000000..8cdd2c9
+--- /dev/null
++++ b/internal/util/currency_test.go
+@@ -0,0 +1,12 @@
++package util
++
++import "testing"
++
++func TestIsSupportedCurrency(t *testing.T) {
++	if !IsSupportedCurrency(USD) {
++		t.Error("USD should be supported")
++	}
++	if IsSupportedCurrency("XYZ") {
++		t.Error("XYZ should not be supported")
++	}
++}
+diff --git a/internal/util/password.go b/internal/util/password.go
+new file mode 100644
+index 0000000..19250c2
+--- /dev/null
++++ b/internal/util/password.go
+@@ -0,0 +1,15 @@
++package util
++
++import "golang.org/x/crypto/bcrypt"
++
++func HashPassword(password string) (string, error) {
++	hashed, err := bcrypt.GenerateFromPassword([]byte(password), 12)
++	if err != nil {
++		return "", err
++	}
++	return string(hashed), nil
++}
++
++func CheckPassword(password, hashedPassword string) error {
++	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
++}
+diff --git a/internal/util/password_test.go b/internal/util/password_test.go
+new file mode 100644
+index 0000000..f3be9a5
+--- /dev/null
++++ b/internal/util/password_test.go
+@@ -0,0 +1,30 @@
++package util
++
++import (
++	"testing"
++
++	"golang.org/x/crypto/bcrypt"
++)
++
++func TestPassword(t *testing.T) {
++	password := RandomString(8)
++
++	hashed, err := HashPassword(password)
++	if err != nil {
++		t.Fatalf("hash: %v", err)
++	}
++	if err := CheckPassword(password, hashed); err != nil {
++		t.Fatalf("check should pass: %v", err)
++	}
++	if err := CheckPassword("wrong", hashed); err != bcrypt.ErrMismatchedHashAndPassword {
++		t.Fatalf("check should fail with mismatch, got %v", err)
++	}
++
++	hashed2, err := HashPassword(password)
++	if err != nil {
++		t.Fatalf("hash2: %v", err)
++	}
++	if hashed == hashed2 {
++		t.Fatal("hashes should differ due to salt")
++	}
++}
+diff --git a/internal/util/random.go b/internal/util/random.go
+new file mode 100644
+index 0000000..bb28011
+--- /dev/null
++++ b/internal/util/random.go
+@@ -0,0 +1,20 @@
++package util
++
++import (
++	"math/rand"
++	"strings"
++)
++
++const alphabet = "abcdefghijklmnopqrstuvwxyz"
++
++func RandomString(n int) string {
++	var sb strings.Builder
++	for range n {
++		sb.WriteByte(alphabet[rand.Intn(len(alphabet))])
++	}
++	return sb.String()
++}
++
++func RandomOwner() string {
++	return RandomString(6)
++}

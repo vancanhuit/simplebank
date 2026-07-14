@@ -16,6 +16,7 @@ import (
 // serialize migration application safely.
 func MigrateSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
 
 	locker, err := lock.NewPostgresSessionLocker()
 	if err != nil {

@@ -138,7 +138,7 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	if err := riverClient.Start(ctx); err != nil {
+	if err := riverClient.Start(context.Background()); err != nil {
 		return err
 	}
 	slog.Info("worker started")

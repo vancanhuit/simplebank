@@ -1,0 +1,519 @@
+== commits ==
+6f244ae feat: add user, account, transfer handlers with JWT auth routes
+
+== stat ==
+ internal/api/account.go    |  97 ++++++++++++++++++++++
+ internal/api/middleware.go |  33 ++++++++
+ internal/api/routes.go     |  19 +++++
+ internal/api/server.go     |   4 -
+ internal/api/transfer.go   |  70 ++++++++++++++++
+ internal/api/user.go       | 203 +++++++++++++++++++++++++++++++++++++++++++++
+ internal/api/validator.go  |   4 +-
+ 7 files changed, 425 insertions(+), 5 deletions(-)
+
+== diff ==
+diff --git a/internal/api/account.go b/internal/api/account.go
+new file mode 100644
+index 0000000..fff8725
+--- /dev/null
++++ b/internal/api/account.go
+@@ -0,0 +1,97 @@
++package api
++
++import (
++	"net/http"
++
++	"github.com/google/uuid"
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++	"github.com/vancanhuit/simplebank/internal/util"
++)
++
++type createAccountRequest struct {
++	Currency string `json:"currency" validate:"required"`
++}
++
++func (s *Server) createAccount(c *echo.Context) error {
++	var req createAccountRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++	if !util.IsSupportedCurrency(req.Currency) {
++		return echo.NewHTTPError(http.StatusBadRequest, "unsupported currency")
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++
++	account, err := s.store.CreateAccount(c.Request().Context(), sqlcdb.CreateAccountParams{
++		Owner:    payload.Username,
++		Balance:  0,
++		Currency: req.Currency,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++	return c.JSON(http.StatusCreated, account)
++}
++
++func (s *Server) getAccount(c *echo.Context) error {
++	id, err := uuid.Parse(c.Param("id"))
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid account id")
++	}
++
++	account, err := s.store.GetAccount(c.Request().Context(), id)
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++	if account.Owner != payload.Username {
++		return echo.NewHTTPError(http.StatusForbidden, "account does not belong to you")
++	}
++	return c.JSON(http.StatusOK, account)
++}
++
++func (s *Server) listAccounts(c *echo.Context) error {
++	page, err := echo.QueryParamOr[int32](c, "page", 1)
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid page")
++	}
++	size, err := echo.QueryParamOr[int32](c, "size", 5)
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
++	}
++	if page < 1 {
++		page = 1
++	}
++	if size < 1 || size > 100 {
++		size = 5
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++
++	accounts, err := s.store.ListAccounts(c.Request().Context(), sqlcdb.ListAccountsParams{
++		Owner:  payload.Username,
++		Limit:  size,
++		Offset: (page - 1) * size,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++	return c.JSON(http.StatusOK, accounts)
++}
+diff --git a/internal/api/middleware.go b/internal/api/middleware.go
+new file mode 100644
+index 0000000..ebfbf41
+--- /dev/null
++++ b/internal/api/middleware.go
+@@ -0,0 +1,33 @@
++package api
++
++import (
++	jwt "github.com/golang-jwt/jwt/v5"
++	echojwt "github.com/labstack/echo-jwt/v5"
++	"github.com/labstack/echo/v5"
++
++	"github.com/vancanhuit/simplebank/internal/token"
++)
++
++const authContextKey = "user"
++
++func (s *Server) authMiddleware() echo.MiddlewareFunc {
++	return echojwt.WithConfig(echojwt.Config{
++		SigningKey: []byte(s.config.JWTSecret),
++		ContextKey: authContextKey,
++		NewClaimsFunc: func(c *echo.Context) jwt.Claims {
++			return new(token.Payload)
++		},
++	})
++}
++
++func authPayload(c *echo.Context) (*token.Payload, error) {
++	jwtToken, err := echo.ContextGet[*jwt.Token](c, authContextKey)
++	if err != nil {
++		return nil, echo.ErrUnauthorized
++	}
++	payload, ok := jwtToken.Claims.(*token.Payload)
++	if !ok {
++		return nil, echo.ErrUnauthorized
++	}
++	return payload, nil
++}
+diff --git a/internal/api/routes.go b/internal/api/routes.go
+new file mode 100644
+index 0000000..b5b80bf
+--- /dev/null
++++ b/internal/api/routes.go
+@@ -0,0 +1,19 @@
++package api
++
++func (s *Server) registerRoutes() {
++	s.router.GET("/livez", s.livez)
++
++	v1 := s.router.Group("/api/v1")
++
++	v1.POST("/users", s.createUser)
++	v1.POST("/users/login", s.loginUser)
++	v1.POST("/tokens/renew", s.renewToken)
++	v1.GET("/users/verify_email", s.verifyEmail)
++
++	auth := v1.Group("")
++	auth.Use(s.authMiddleware())
++	auth.POST("/accounts", s.createAccount)
++	auth.GET("/accounts/:id", s.getAccount)
++	auth.GET("/accounts", s.listAccounts)
++	auth.POST("/transfers", s.createTransfer)
++}
+diff --git a/internal/api/server.go b/internal/api/server.go
+index 59cd146..23eedd6 100644
+--- a/internal/api/server.go
++++ b/internal/api/server.go
+@@ -44,19 +44,15 @@ func NewServer(
+ 		config:      cfg,
+ 		store:       st,
+ 		tokenMaker:  maker,
+ 		riverClient: riverClient,
+ 		router:      e,
+ 	}
+ 	s.registerRoutes()
+ 	return s, nil
+ }
+ 
+ func (s *Server) Handler() *echo.Echo { return s.router }
+ 
+-func (s *Server) registerRoutes() {
+-	s.router.GET("/livez", s.livez)
+-}
+-
+ func (s *Server) livez(c *echo.Context) error {
+ 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+ }
+diff --git a/internal/api/transfer.go b/internal/api/transfer.go
+new file mode 100644
+index 0000000..b8054bb
+--- /dev/null
++++ b/internal/api/transfer.go
+@@ -0,0 +1,70 @@
++package api
++
++import (
++	"context"
++	"net/http"
++
++	"github.com/google/uuid"
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++)
++
++type transferRequest struct {
++	FromAccountID string `json:"from_account_id" validate:"required,uuid"`
++	ToAccountID   string `json:"to_account_id" validate:"required,uuid"`
++	Amount        int64  `json:"amount" validate:"required,gt=0"`
++	Currency      string `json:"currency" validate:"required"`
++}
++
++func (s *Server) createTransfer(c *echo.Context) error {
++	var req transferRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	fromID, _ := uuid.Parse(req.FromAccountID)
++	toID, _ := uuid.Parse(req.ToAccountID)
++	ctx := c.Request().Context()
++
++	fromAccount, err := s.validAccount(ctx, fromID, req.Currency)
++	if err != nil {
++		return err
++	}
++	if _, err := s.validAccount(ctx, toID, req.Currency); err != nil {
++		return err
++	}
++
++	payload, err := authPayload(c)
++	if err != nil {
++		return err
++	}
++	if fromAccount.Owner != payload.Username {
++		return echo.NewHTTPError(http.StatusForbidden, "from account does not belong to you")
++	}
++
++	result, err := s.store.TransferTx(ctx, store.TransferTxParams{
++		FromAccountID: fromID,
++		ToAccountID:   toID,
++		Amount:        req.Amount,
++	})
++	if err != nil {
++		return err
++	}
++	return c.JSON(http.StatusOK, result)
++}
++
++func (s *Server) validAccount(ctx context.Context, id uuid.UUID, currency string) (sqlcdb.Account, error) {
++	account, err := s.store.GetAccount(ctx, id)
++	if err != nil {
++		return account, store.ClassifyError(err)
++	}
++	if account.Currency != currency {
++		return account, echo.NewHTTPError(http.StatusBadRequest, "currency mismatch")
++	}
++	return account, nil
++}
+diff --git a/internal/api/user.go b/internal/api/user.go
+new file mode 100644
+index 0000000..0d7a3aa
+--- /dev/null
++++ b/internal/api/user.go
+@@ -0,0 +1,203 @@
++package api
++
++import (
++	"net/http"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/labstack/echo/v5"
++
++	store "github.com/vancanhuit/simplebank/internal/db"
++	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
++	"github.com/vancanhuit/simplebank/internal/util"
++	"github.com/vancanhuit/simplebank/internal/worker"
++)
++
++type createUserRequest struct {
++	Username string `json:"username" validate:"required,alphanum"`
++	Password string `json:"password" validate:"required,min=6"`
++	FullName string `json:"full_name" validate:"required"`
++	Email    string `json:"email" validate:"required,email"`
++}
++
++type userResponse struct {
++	Username        string    `json:"username"`
++	FullName        string    `json:"full_name"`
++	Email           string    `json:"email"`
++	IsEmailVerified bool      `json:"is_email_verified"`
++	CreatedAt       time.Time `json:"created_at"`
++}
++
++func newUserResponse(u sqlcdb.User) userResponse {
++	return userResponse{
++		Username:        u.Username,
++		FullName:        u.FullName,
++		Email:           u.Email,
++		IsEmailVerified: u.IsEmailVerified,
++		CreatedAt:       u.CreatedAt,
++	}
++}
++
++func (s *Server) createUser(c *echo.Context) error {
++	var req createUserRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	hashed, err := util.HashPassword(req.Password)
++	if err != nil {
++		return err
++	}
++
++	ctx := c.Request().Context()
++	user, err := s.store.CreateUser(ctx, sqlcdb.CreateUserParams{
++		Username:       req.Username,
++		HashedPassword: hashed,
++		FullName:       req.FullName,
++		Email:          req.Email,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++
++	if _, err := s.riverClient.Insert(ctx, worker.SendVerifyEmailArgs{Username: user.Username}, nil); err != nil {
++		return err
++	}
++
++	return c.JSON(http.StatusCreated, newUserResponse(user))
++}
++
++type loginUserRequest struct {
++	Username string `json:"username" validate:"required,alphanum"`
++	Password string `json:"password" validate:"required"`
++}
++
++type loginUserResponse struct {
++	AccessToken           string       `json:"access_token"`
++	AccessTokenExpiresAt  time.Time    `json:"access_token_expires_at"`
++	RefreshToken          string       `json:"refresh_token"`
++	RefreshTokenExpiresAt time.Time    `json:"refresh_token_expires_at"`
++	SessionID             string       `json:"session_id"`
++	User                  userResponse `json:"user"`
++}
++
++func (s *Server) loginUser(c *echo.Context) error {
++	var req loginUserRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	ctx := c.Request().Context()
++	user, err := s.store.GetUser(ctx, req.Username)
++	if err != nil {
++		if e := store.ClassifyError(err); e == store.ErrRecordNotFound {
++			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
++		}
++		return err
++	}
++	if err := util.CheckPassword(req.Password, user.HashedPassword); err != nil {
++		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
++	}
++
++	accessToken, accessPayload, err := s.tokenMaker.CreateToken(user.Username, "depositor", s.config.AccessTTL)
++	if err != nil {
++		return err
++	}
++	refreshToken, refreshPayload, err := s.tokenMaker.CreateToken(user.Username, "depositor", s.config.RefreshTTL)
++	if err != nil {
++		return err
++	}
++
++	session, err := s.store.CreateSession(ctx, sqlcdb.CreateSessionParams{
++		ID:           refreshPayload.ID,
++		Username:     user.Username,
++		RefreshToken: refreshToken,
++		UserAgent:    c.Request().UserAgent(),
++		ClientIp:     c.RealIP(),
++		IsBlocked:    false,
++		ExpiresAt:    refreshPayload.ExpiresAt.Time,
++	})
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++
++	return c.JSON(http.StatusOK, loginUserResponse{
++		AccessToken:           accessToken,
++		AccessTokenExpiresAt:  accessPayload.ExpiresAt.Time,
++		RefreshToken:          refreshToken,
++		RefreshTokenExpiresAt: refreshPayload.ExpiresAt.Time,
++		SessionID:             session.ID.String(),
++		User:                  newUserResponse(user),
++	})
++}
++
++type renewTokenRequest struct {
++	RefreshToken string `json:"refresh_token" validate:"required"`
++}
++
++func (s *Server) renewToken(c *echo.Context) error {
++	var req renewTokenRequest
++	if err := c.Bind(&req); err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
++	}
++	if err := c.Validate(&req); err != nil {
++		return err
++	}
++
++	refreshPayload, err := s.tokenMaker.VerifyToken(req.RefreshToken)
++	if err != nil {
++		return err
++	}
++
++	ctx := c.Request().Context()
++	session, err := s.store.GetSession(ctx, refreshPayload.ID)
++	if err != nil {
++		return store.ClassifyError(err)
++	}
++	if session.IsBlocked ||
++		session.Username != refreshPayload.Username ||
++		session.RefreshToken != req.RefreshToken ||
++		time.Now().After(session.ExpiresAt) {
++		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
++	}
++
++	accessToken, accessPayload, err := s.tokenMaker.CreateToken(refreshPayload.Username, refreshPayload.Role, s.config.AccessTTL)
++	if err != nil {
++		return err
++	}
++	return c.JSON(http.StatusOK, map[string]any{
++		"access_token":            accessToken,
++		"access_token_expires_at": accessPayload.ExpiresAt.Time,
++	})
++}
++
++func (s *Server) verifyEmail(c *echo.Context) error {
++	idStr := c.QueryParam("id")
++	code := c.QueryParam("code")
++	id, err := uuid.Parse(idStr)
++	if err != nil {
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
++	}
++
++	ctx := c.Request().Context()
++	ve, err := s.store.UpdateVerifyEmail(ctx, sqlcdb.UpdateVerifyEmailParams{
++		ID:         id,
++		SecretCode: code,
++	})
++	if err != nil {
++		if e := store.ClassifyError(err); e == store.ErrRecordNotFound {
++			return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
++		}
++		return err
++	}
++	if _, err := s.store.VerifyUserEmail(ctx, ve.Username); err != nil {
++		return store.ClassifyError(err)
++	}
++	return c.JSON(http.StatusOK, map[string]bool{"is_verified": true})
++}
+diff --git a/internal/api/validator.go b/internal/api/validator.go
+index a2bf6c7..602a314 100644
+--- a/internal/api/validator.go
++++ b/internal/api/validator.go
+@@ -1,21 +1,23 @@
+ package api
+ 
+ import (
++	"net/http"
++
+ 	"github.com/go-playground/validator/v10"
+ 	"github.com/labstack/echo/v5"
+ )
+ 
+ type customValidator struct {
+ 	validate *validator.Validate
+ }
+ 
+ func (cv *customValidator) Validate(i any) error {
+ 	if err := cv.validate.Struct(i); err != nil {
+-		return echo.NewHTTPError(400, err.Error())
++		return echo.NewHTTPError(http.StatusBadRequest, "invalid request payload")
+ 	}
+ 	return nil
+ }
+ 
+ func newValidator() *customValidator {
+ 	return &customValidator{validate: validator.New()}
+ }

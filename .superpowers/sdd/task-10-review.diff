@@ -1,0 +1,75 @@
+== commits ==
+ab5832e feat: add generic SMTP mailer using go-mail
+
+== stat ==
+ internal/mail/mailer.go |  7 +++++++
+ internal/mail/smtp.go   | 47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+
+== diff ==
+diff --git a/internal/mail/mailer.go b/internal/mail/mailer.go
+new file mode 100644
+index 0000000..906eb81
+--- /dev/null
++++ b/internal/mail/mailer.go
+@@ -0,0 +1,7 @@
++package mail
++
++import "context"
++
++type Mailer interface {
++	Send(ctx context.Context, to, subject, htmlBody string) error
++}
+diff --git a/internal/mail/smtp.go b/internal/mail/smtp.go
+new file mode 100644
+index 0000000..9f6e3cc
+--- /dev/null
++++ b/internal/mail/smtp.go
+@@ -0,0 +1,47 @@
++package mail
++
++import (
++	"context"
++
++	"github.com/wneessen/go-mail"
++
++	"github.com/vancanhuit/simplebank/internal/config"
++)
++
++type SMTPMailer struct {
++	client *mail.Client
++	from   string
++}
++
++func NewSMTPMailer(cfg config.Config) (*SMTPMailer, error) {
++	opts := []mail.Option{
++		mail.WithPort(cfg.SMTPPort),
++		mail.WithTLSPolicy(mail.NoTLS),
++	}
++	if cfg.SMTPUsername != "" {
++		opts = append(opts,
++			mail.WithSMTPAuth(mail.SMTPAuthPlain),
++			mail.WithUsername(cfg.SMTPUsername),
++			mail.WithPassword(cfg.SMTPPassword),
++			mail.WithTLSPolicy(mail.TLSMandatory),
++		)
++	}
++	client, err := mail.NewClient(cfg.SMTPHost, opts...)
++	if err != nil {
++		return nil, err
++	}
++	return &SMTPMailer{client: client, from: cfg.SMTPFrom}, nil
++}
++
++func (m *SMTPMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
++	msg := mail.NewMsg()
++	if err := msg.From(m.from); err != nil {
++		return err
++	}
++	if err := msg.To(to); err != nil {
++		return err
++	}
++	msg.Subject(subject)
++	msg.SetBodyString(mail.TypeTextHTML, htmlBody)
++	return m.client.DialAndSendWithContext(ctx, msg)
++}
