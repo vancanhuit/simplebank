@@ -35,7 +35,7 @@ run = 'golangci-lint run -v ./cmd/... ./internal/...'
 description = "Run govulncheck"
 run = [
   'go install golang.org/x/vuln/cmd/govulncheck@latest',
-  'govulncheck -show verbose ./cmd/...',
+  'govulncheck -show verbose ./cmd/... ./internal/...',
 ]
 
 [tasks."test:unit"]
