@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"html"
 
 	"github.com/riverqueue/river"
 
@@ -53,7 +54,7 @@ func (w *SendVerifyEmailWorker) Work(ctx context.Context, job *river.Job[SendVer
 		w.baseURL, ve.ID.String(), ve.SecretCode)
 	body := fmt.Sprintf(
 		`Hello %s,<br/>Please <a href="%s">click here</a> to verify your email address.`,
-		user.FullName, link)
+		html.EscapeString(user.FullName), link)
 
 	return w.mailer.Send(ctx, user.Email, "Welcome to SimpleBank", body)
 }
