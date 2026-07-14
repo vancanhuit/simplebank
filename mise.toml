@@ -54,7 +54,7 @@ run = 'docker compose --profile test down -v'
 description = "Run integration tests"
 depends = ["compose:test:up"]
 depends_post = ["compose:test:down"]
-run = 'go test -race -cover -v ./cmd/... -tags=integration'
+run = 'go test -race -cover -v ./... -tags=integration'
 
 [tasks."docker:build"]
 description = "Build docker image"
@@ -63,3 +63,10 @@ run = 'docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:late
 [tasks."hooks:install"]
 description = "Install git hooks"
 run = 'cog install-hook --all'
+
+[tasks."sqlc:generate"]
+description = "Generate Go code from SQL with sqlc"
+run = [
+  'go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest',
+  'sqlc generate',
+]
