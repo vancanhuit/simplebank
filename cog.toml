@@ -1,0 +1,2 @@
+[git_hooks.commit-msg]
+script = "cog verify --file $1"
