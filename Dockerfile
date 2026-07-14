@@ -30,6 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     go mod download
 
 COPY cmd cmd
+COPY internal internal
 
 ARG TARGETOS
 ARG TARGETARCH

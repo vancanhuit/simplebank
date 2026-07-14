@@ -72,10 +72,21 @@ services:
 
   app-dev:
     build: .
+    command: ["serve"]
+    environment:
+      HTTP_ADDR: ":8080"
+      DB_SOURCE: "postgres://simplebank_dev:simplebank_dev@postgres-dev:5432/simplebank_dev?sslmode=disable"
+      JWT_SECRET: "0123456789012345678901234567890123456789"
+      SMTP_HOST: "mailpit-dev"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "no-reply@simplebank.local"
     ports:
       - "8080:8080"
     networks:
       - dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
     profiles:
       - dev
 
