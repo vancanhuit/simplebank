@@ -46,11 +46,17 @@ Money: **`bigint` minor units (cents)** — never floats.
 
 ## Architecture
 
-Single binary, three subcommands (urfave/cli v3):
+Single binary, two subcommands (urfave/cli v3):
 
-- `serve` — Echo HTTP API.
-- `migrate` — run goose (domain) + River migrations, then exit.
-- `worker` — River worker process (email jobs).
+- `serve` — run migrations on startup, then serve the Echo HTTP API.
+- `worker` — run migrations on startup, then run the River worker (email jobs).
+
+Migrations run automatically at process startup for both subcommands. goose uses
+its Provider API with a **PostgreSQL session-level advisory locker**
+(`lock.NewPostgresSessionLocker()`), so concurrent replicas starting together
+serialize safely — only one applies pending migrations while the others wait,
+then all proceed. River migrations run the same way. There is no separate
+`migrate` subcommand.
 
 ### Package layout
 
@@ -251,8 +257,9 @@ Root command with global flags, each backed by an env value-source:
 --river-max-workers (RIVER_MAX_WORKERS, 10)
 ```
 
-Subcommands: `serve`, `migrate`, `worker`. Config validated at startup; fail fast on
-missing/invalid values.
+Subcommands: `serve`, `worker`. Both run domain + River migrations on startup
+under a goose Postgres session locker before proceeding. Config validated at
+startup; fail fast on missing/invalid values.
 
 ## Error Handling
 

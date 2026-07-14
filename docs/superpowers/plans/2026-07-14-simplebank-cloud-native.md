@@ -2255,16 +2255,63 @@ git commit -m "feat: add user, account, transfer handlers with JWT auth routes"
 
 ---
 
-### Task 14: Wire subcommands in main.go (serve, migrate, worker)
+### Task 14: Migration runner + wire subcommands in main.go (serve, worker)
 
 **Files:**
+- Create: `internal/db/migrate.go`
 - Modify: `cmd/app/main.go`
 
 **Interfaces:**
-- Consumes: everything above.
-- Produces: a working CLI: `simplebank serve`, `simplebank migrate`, `simplebank worker`.
+- Consumes: everything above; goose Provider API + Postgres session locker.
+- Produces:
+  - `func MigrateSchema(ctx context.Context, pool *pgxpool.Pool) error` (package `store`) — runs domain goose migrations under a PostgreSQL session-level advisory lock.
+  - A working CLI with two subcommands: `simplebank serve`, `simplebank worker`. Both run domain + River migrations on startup before proceeding. There is NO `migrate` subcommand.
 
-- [ ] **Step 1: Rewrite `cmd/app/main.go`**
+- [ ] **Step 1: Create `internal/db/migrate.go` (goose Provider + session locker)**
+
+```go
+package store
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
+
+	"github.com/vancanhuit/simplebank/internal/db/migrations"
+)
+
+// MigrateSchema applies pending domain migrations. It uses a PostgreSQL
+// session-level advisory lock so that when multiple replicas start together,
+// only one applies migrations while the others wait, then all proceed.
+func MigrateSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	sqlDB := stdlib.OpenDBFromPool(pool)
+
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return err
+	}
+
+	provider, err := goose.NewProvider(
+		goose.DialectPostgres,
+		sqlDB,
+		migrations.FS,
+		goose.WithSessionLocker(locker),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = provider.Up(ctx)
+	return err
+}
+```
+
+Note: verify the goose v3 Provider API against the installed version — `goose.NewProvider(dialect, *sql.DB, fs.FS, ...ProviderOption)`, `goose.DialectPostgres`, `goose.WithSessionLocker(locker)`, `lock.NewPostgresSessionLocker()` (package `github.com/pressly/goose/v3/lock`), and `provider.Up(ctx)`. Adjust names if the installed goose minor version differs. River migrations continue to use `worker.Migrate` (River applies its own advisory locking internally).
+
+- [ ] **Step 2: Rewrite `cmd/app/main.go`**
 
 ```go
 package main
@@ -2280,15 +2327,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/labstack/echo/v5"
-	"github.com/pressly/goose/v3"
 	"github.com/urfave/cli/v3"
 
 	"github.com/vancanhuit/simplebank/internal/api"
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
-	"github.com/vancanhuit/simplebank/internal/db/migrations"
 	"github.com/vancanhuit/simplebank/internal/mail"
 	"github.com/vancanhuit/simplebank/internal/token"
 	"github.com/vancanhuit/simplebank/internal/worker"
@@ -2304,7 +2348,6 @@ func main() {
 		Flags: config.Flags(),
 		Commands: []*cli.Command{
 			{Name: "serve", Usage: "Run the HTTP API server", Action: runServe},
-			{Name: "migrate", Usage: "Run database migrations", Action: runMigrate},
 			{Name: "worker", Usage: "Run the background worker", Action: runWorker},
 		},
 	}
@@ -2323,27 +2366,12 @@ func mustConfig(cmd *cli.Command) (config.Config, error) {
 	return cfg, cfg.Validate()
 }
 
-func runMigrate(ctx context.Context, cmd *cli.Command) error {
-	cfg, err := mustConfig(cmd)
-	if err != nil {
-		return err
-	}
-	pool, err := pgxpool.New(ctx, cfg.DBSource)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	sqlDB := stdlib.OpenDBFromPool(pool)
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-	if err := goose.Up(sqlDB, "."); err != nil {
+// runMigrations applies domain (goose, session-locked) and River migrations.
+func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+	if err := store.MigrateSchema(ctx, pool); err != nil {
 		return err
 	}
 	slog.Info("domain migrations applied")
-
 	if err := worker.Migrate(ctx, pool); err != nil {
 		return err
 	}
@@ -2361,6 +2389,10 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	defer pool.Close()
+
+	if err := runMigrations(ctx, pool); err != nil {
+		return err
+	}
 
 	st := store.NewStore(pool)
 	maker, err := token.NewJWTMaker(cfg.JWTSecret)
@@ -2410,6 +2442,10 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer pool.Close()
 
+	if err := runMigrations(ctx, pool); err != nil {
+		return err
+	}
+
 	st := store.NewStore(pool)
 	mailer, err := mail.NewSMTPMailer(cfg)
 	if err != nil {
@@ -2447,8 +2483,8 @@ Expected: unit tests PASS; lint clean (fix issues if any).
 - [ ] **Step 4: Commit**
 
 ```bash
-git add cmd/app/main.go internal/api/server.go internal/api/routes.go
-git commit -m "feat: wire serve, migrate, and worker subcommands"
+git add cmd/app/main.go internal/db/migrate.go internal/api/server.go internal/api/routes.go
+git commit -m "feat: wire serve and worker subcommands with startup migrations"
 ```
 
 ---
@@ -2542,7 +2578,7 @@ git commit -m "feat: add auth rate limiting and user handler validation test"
 
 **Interfaces:**
 - Consumes: the built binary and its subcommands.
-- Produces: `app-dev` env wired to Postgres/Mailpit; a `migrate` step; Docker build copying `internal/`.
+- Produces: `app-dev` env wired to Postgres/Mailpit; migrations run automatically on `serve` startup; Docker build copying `internal/`.
 
 - [ ] **Step 1: Add env + command to `app-dev` in `compose.yaml`**
 
@@ -2578,22 +2614,22 @@ In `Dockerfile`, add `COPY internal internal` immediately after `COPY cmd cmd`.
 Run: `docker compose --profile dev build app-dev`
 Expected: image builds (Go build succeeds inside the container).
 
-- [ ] **Step 4: Verify migrate subcommand against dev DB**
+- [ ] **Step 4: Verify migrations run on `serve` startup against dev DB**
 
 Run:
 ```bash
 docker compose --profile dev up -d --wait postgres-dev
 DB_SOURCE="postgres://simplebank_dev:simplebank_dev@localhost:5432/simplebank_dev?sslmode=disable" \
-  JWT_SECRET="0123456789012345678901234567890123456789" SMTP_FROM="a@b.c" \
-  go run ./cmd/app migrate
+  JWT_SECRET="0123456789012345678901234567890123456789" SMTP_FROM="a@b.c" SMTP_HOST="localhost" \
+  go run ./cmd/app serve
 ```
-Expected: logs "domain migrations applied" and "river migrations applied"; no error. Tear down with `docker compose --profile dev down -v`.
+Expected: logs "domain migrations applied" and "river migrations applied", then the server starts listening. Stop with Ctrl-C; tear down with `docker compose --profile dev down -v`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add compose.yaml mise.toml Dockerfile
-git commit -m "chore: wire app service env, migrate step, and docker build for internal"
+git commit -m "chore: wire app service env and docker build for internal"
 ```
 
 ---
