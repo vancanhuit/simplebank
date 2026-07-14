@@ -25,11 +25,11 @@ run = 'docker compose --profile dev down -v'
 
 [tasks."golangci-lint:fmt"]
 description = "Format code with golangci-lint"
-run = 'golangci-lint fmt -v ./cmd/...'
+run = 'golangci-lint fmt -v ./cmd/... ./internal/...'
 
 [tasks.golangci-lint]
 description = "Run golangci-lint"
-run = 'golangci-lint run -v ./cmd/...'
+run = 'golangci-lint run -v ./cmd/... ./internal/...'
 
 [tasks.govulncheck]
 description = "Run govulncheck"
@@ -66,7 +66,4 @@ run = 'cog install-hook --all'
 
 [tasks."sqlc:generate"]
 description = "Generate Go code from SQL with sqlc"
-run = [
-  'go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest',
-  'sqlc generate',
-]
+run = ['go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest', 'sqlc generate']
