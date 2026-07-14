@@ -8,7 +8,10 @@ import (
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
-const authContextKey = "user"
+const (
+	authContextKey = "user"
+	roleDepositor  = "depositor"
+)
 
 func (s *Server) authMiddleware() echo.MiddlewareFunc {
 	return echojwt.WithConfig(echojwt.Config{

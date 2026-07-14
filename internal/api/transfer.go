@@ -29,6 +29,9 @@ func (s *Server) createTransfer(c *echo.Context) error {
 
 	fromID, _ := uuid.Parse(req.FromAccountID)
 	toID, _ := uuid.Parse(req.ToAccountID)
+	if fromID == toID {
+		return echo.NewHTTPError(http.StatusBadRequest, "cannot transfer to the same account")
+	}
 	ctx := c.Request().Context()
 
 	fromAccount, err := s.validAccount(ctx, fromID, req.Currency)

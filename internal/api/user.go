@@ -105,11 +105,11 @@ func (s *Server) loginUser(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 	}
 
-	accessToken, accessPayload, err := s.tokenMaker.CreateToken(user.Username, "depositor", s.config.AccessTTL)
+	accessToken, accessPayload, err := s.tokenMaker.CreateToken(user.Username, roleDepositor, s.config.AccessTTL)
 	if err != nil {
 		return err
 	}
-	refreshToken, refreshPayload, err := s.tokenMaker.CreateToken(user.Username, "depositor", s.config.RefreshTTL)
+	refreshToken, refreshPayload, err := s.tokenMaker.CreateToken(user.Username, roleDepositor, s.config.RefreshTTL)
 	if err != nil {
 		return err
 	}
