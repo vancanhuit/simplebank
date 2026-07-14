@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
 )
@@ -11,7 +13,7 @@ type customValidator struct {
 
 func (cv *customValidator) Validate(i any) error {
 	if err := cv.validate.Struct(i); err != nil {
-		return echo.NewHTTPError(400, err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request payload")
 	}
 	return nil
 }

@@ -53,10 +53,6 @@ func NewServer(
 
 func (s *Server) Handler() *echo.Echo { return s.router }
 
-func (s *Server) registerRoutes() {
-	s.router.GET("/livez", s.livez)
-}
-
 func (s *Server) livez(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
