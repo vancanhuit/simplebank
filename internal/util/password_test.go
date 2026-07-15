@@ -29,3 +29,15 @@ func TestPassword(t *testing.T) {
 		t.Fatal("hashes should differ due to salt")
 	}
 }
+
+// bcrypt rejects inputs longer than 72 bytes; HashPassword must surface that
+// error rather than silently truncating.
+func TestHashPasswordTooLong(t *testing.T) {
+	long := make([]byte, 73)
+	for i := range long {
+		long[i] = 'a'
+	}
+	if _, err := HashPassword(string(long)); !errors.Is(err, bcrypt.ErrPasswordTooLong) {
+		t.Fatalf("want ErrPasswordTooLong for >72-byte input, got %v", err)
+	}
+}

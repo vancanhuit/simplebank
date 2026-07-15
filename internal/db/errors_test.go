@@ -24,4 +24,7 @@ func TestClassifyError(t *testing.T) {
 	if ClassifyError(other) != other {
 		t.Error("unknown error should pass through unchanged")
 	}
+	if ClassifyError(nil) != nil {
+		t.Error("nil should classify as nil")
+	}
 }

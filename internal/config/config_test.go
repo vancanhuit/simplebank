@@ -13,9 +13,10 @@ func TestValidate(t *testing.T) {
 	}
 
 	tests := map[string]Config{
-		"missing db":   {JWTSecret: "01234567890123456789012345678901", SMTPFrom: "a@b.c"},
-		"short secret": {DBSource: "x", JWTSecret: "short", SMTPFrom: "a@b.c"},
-		"missing from": {DBSource: "x", JWTSecret: "01234567890123456789012345678901"},
+		"missing db":     {JWTSecret: "01234567890123456789012345678901", SMTPFrom: "a@b.c"},
+		"short secret":   {DBSource: "x", JWTSecret: "short", SMTPFrom: "a@b.c"},
+		"31-char secret": {DBSource: "x", JWTSecret: "0123456789012345678901234567890", SMTPFrom: "a@b.c"},
+		"missing from":   {DBSource: "x", JWTSecret: "01234567890123456789012345678901"},
 	}
 	for name, cfg := range tests {
 		if err := cfg.Validate(); err == nil {
