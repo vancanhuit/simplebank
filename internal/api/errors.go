@@ -10,38 +10,38 @@ import (
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
+// errorCatalog maps each domain sentinel error to its HTTP status and
+// client-safe message. Keeping the mapping in one place means adding a new
+// error edits a single row instead of two parallel switches.
+var errorCatalog = []struct {
+	is      error
+	status  int
+	message string
+}{
+	{store.ErrRecordNotFound, http.StatusNotFound, "resource not found"},
+	{store.ErrUniqueViolation, http.StatusConflict, "resource already exists"},
+	{store.ErrForeignKeyViolation, http.StatusConflict, "related resource not found"},
+	{store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient balance"},
+	{token.ErrExpiredToken, http.StatusUnauthorized, "token has expired"},
+	{token.ErrInvalidToken, http.StatusUnauthorized, "token is invalid"},
+}
+
 func toHTTPStatus(err error) int {
-	switch {
-	case errors.Is(err, store.ErrRecordNotFound):
-		return http.StatusNotFound
-	case errors.Is(err, store.ErrUniqueViolation), errors.Is(err, store.ErrForeignKeyViolation):
-		return http.StatusConflict
-	case errors.Is(err, store.ErrInsufficientBalance):
-		return http.StatusUnprocessableEntity
-	case errors.Is(err, token.ErrExpiredToken), errors.Is(err, token.ErrInvalidToken):
-		return http.StatusUnauthorized
-	default:
-		return http.StatusInternalServerError
+	for _, e := range errorCatalog {
+		if errors.Is(err, e.is) {
+			return e.status
+		}
 	}
+	return http.StatusInternalServerError
 }
 
 func clientMessage(err error) string {
-	switch {
-	case errors.Is(err, store.ErrRecordNotFound):
-		return "resource not found"
-	case errors.Is(err, store.ErrUniqueViolation):
-		return "resource already exists"
-	case errors.Is(err, store.ErrForeignKeyViolation):
-		return "related resource not found"
-	case errors.Is(err, store.ErrInsufficientBalance):
-		return "insufficient balance"
-	case errors.Is(err, token.ErrExpiredToken):
-		return "token has expired"
-	case errors.Is(err, token.ErrInvalidToken):
-		return "token is invalid"
-	default:
-		return "request failed"
+	for _, e := range errorCatalog {
+		if errors.Is(err, e.is) {
+			return e.message
+		}
 	}
+	return "request failed"
 }
 
 func errorHandler(c *echo.Context, err error) {
