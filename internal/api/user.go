@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -14,9 +16,28 @@ import (
 	"github.com/vancanhuit/simplebank/internal/worker"
 )
 
+// dummyPasswordHash is compared against on the unknown-user login path so the
+// response time does not reveal whether a username exists (mitigates user
+// enumeration). Computed once at startup from a random value.
+var dummyPasswordHash = func() string {
+	h, err := util.HashPassword(util.RandomString(16))
+	if err != nil {
+		panic(err)
+	}
+	return h
+}()
+
+// hashRefreshToken returns the value stored in sessions.refresh_token. Storing a
+// hash instead of the raw token means a database leak does not yield usable
+// refresh tokens.
+func hashRefreshToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 type createUserRequest struct {
 	Username string `json:"username" validate:"required,alphanum"`
-	Password string `json:"password" validate:"required,min=6"`
+	Password string `json:"password" validate:"required,min=6,max=72"`
 	FullName string `json:"full_name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 }
@@ -100,6 +121,9 @@ func (s *Server) loginUser(c *echo.Context) error {
 	user, err := s.store.GetUser(ctx, req.Username)
 	if err != nil {
 		if e := store.ClassifyError(err); e == store.ErrRecordNotFound {
+			// Run a comparison against a dummy hash so an unknown username takes
+			// the same time as a wrong password (no enumeration via timing).
+			_ = util.CheckPassword(req.Password, dummyPasswordHash)
 			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 		}
 		return err
@@ -120,7 +144,7 @@ func (s *Server) loginUser(c *echo.Context) error {
 	session, err := s.store.CreateSession(ctx, sqlcdb.CreateSessionParams{
 		ID:           refreshPayload.ID,
 		Username:     user.Username,
-		RefreshToken: refreshToken,
+		RefreshToken: hashRefreshToken(refreshToken),
 		UserAgent:    c.Request().UserAgent(),
 		ClientIp:     c.RealIP(),
 		IsBlocked:    false,
@@ -165,7 +189,7 @@ func (s *Server) renewToken(c *echo.Context) error {
 	}
 	if session.IsBlocked ||
 		session.Username != refreshPayload.Username ||
-		session.RefreshToken != req.RefreshToken ||
+		session.RefreshToken != hashRefreshToken(req.RefreshToken) ||
 		time.Now().After(session.ExpiresAt) {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
 	}

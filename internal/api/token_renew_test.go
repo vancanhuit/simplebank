@@ -28,7 +28,7 @@ func refreshToken(t *testing.T, username string, mutate func(*sqlcdb.Session)) (
 	session := sqlcdb.Session{
 		ID:           payload.ID,
 		Username:     username,
-		RefreshToken: tok,
+		RefreshToken: hashRefreshToken(tok),
 		IsBlocked:    false,
 		ExpiresAt:    time.Now().Add(time.Hour),
 	}
