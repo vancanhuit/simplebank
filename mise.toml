@@ -40,7 +40,7 @@ run = [
 
 [tasks."test:unit"]
 description = "Run unit tests"
-run = 'go test -race -cover -v ./cmd/...'
+run = 'go test -race -cover -v ./cmd/... ./internal/...'
 
 [tasks."compose:test:up"]
 description = "Run docker compose for testing"
@@ -54,7 +54,7 @@ run = 'docker compose --profile test down -v'
 description = "Run integration tests"
 depends = ["compose:test:up"]
 depends_post = ["compose:test:down"]
-run = 'go test -race -cover -v ./... -tags=integration'
+run = 'go test -race -cover -v ./cmd/... ./internal/... -tags=integration'
 
 [tasks."docker:build"]
 description = "Build docker image"
