@@ -58,8 +58,8 @@ func (s *Server) getAccount(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if account.Owner != payload.Username {
-		return echo.NewHTTPError(http.StatusForbidden, "account does not belong to you")
+	if err := authorizeOwner(payload, account.Owner); err != nil {
+		return err
 	}
 	return c.JSON(http.StatusOK, account)
 }

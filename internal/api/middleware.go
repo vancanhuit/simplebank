@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	jwt "github.com/golang-jwt/jwt/v5"
 	echojwt "github.com/labstack/echo-jwt/v5"
 	"github.com/labstack/echo/v5"
@@ -33,4 +35,14 @@ func authPayload(c *echo.Context) (*token.Payload, error) {
 		return nil, echo.ErrUnauthorized
 	}
 	return payload, nil
+}
+
+// authorizeOwner enforces that the authenticated caller owns the resource. It is
+// the single seam for resource-ownership decisions, so the policy lives in one
+// place instead of being re-derived in every handler.
+func authorizeOwner(payload *token.Payload, owner string) error {
+	if payload.Username != owner {
+		return echo.NewHTTPError(http.StatusForbidden, "you do not have access to this resource")
+	}
+	return nil
 }

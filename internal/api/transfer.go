@@ -46,8 +46,8 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if fromAccount.Owner != payload.Username {
-		return echo.NewHTTPError(http.StatusForbidden, "from account does not belong to you")
+	if err := authorizeOwner(payload, fromAccount.Owner); err != nil {
+		return err
 	}
 
 	result, err := s.store.TransferTx(ctx, store.TransferTxParams{

@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/riverqueue/river"
 	"github.com/urfave/cli/v3"
 
 	"github.com/vancanhuit/simplebank/internal/api"
@@ -62,83 +64,78 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-func runServe(ctx context.Context, cmd *cli.Command) error {
+// appDeps holds the shared dependencies both entrypoints need. The caller owns
+// closing the pool.
+type appDeps struct {
+	cfg         config.Config
+	pool        *pgxpool.Pool
+	store       store.Store
+	mailer      mail.Mailer
+	riverClient *river.Client[pgx.Tx]
+}
+
+// buildApp assembles dependencies in the required order: open the pool, run
+// migrations, then construct the store, mailer, and river client. On any error
+// the pool is closed before returning so the caller does not leak it.
+func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 	cfg, err := mustConfig(cmd)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pool, err := pgxpool.New(ctx, cfg.DBSource)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer pool.Close()
-
 	if err := runMigrations(ctx, pool); err != nil {
-		return err
+		pool.Close()
+		return nil, err
 	}
-
 	st := store.NewStore(pool)
-	maker, err := token.NewJWTMaker(cfg.JWTSecret)
-	if err != nil {
-		return err
-	}
 	mailer, err := mail.NewSMTPMailer(cfg)
 	if err != nil {
-		return err
+		pool.Close()
+		return nil, err
 	}
 	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, "http://localhost"+cfg.HTTPAddr)
 	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return &appDeps{cfg: cfg, pool: pool, store: st, mailer: mailer, riverClient: riverClient}, nil
+}
+
+func runServe(ctx context.Context, cmd *cli.Command) error {
+	app, err := buildApp(ctx, cmd)
+	if err != nil {
 		return err
 	}
+	defer app.pool.Close()
 
-	server, err := api.NewServer(cfg, st, maker, riverClient)
+	maker, err := token.NewJWTMaker(app.cfg.JWTSecret)
 	if err != nil {
 		return err
 	}
 
-	e := server.Handler()
-	e.GET("/readyz", func(c *echo.Context) error {
-		pingCtx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
-		defer cancel()
-		if err := pool.Ping(pingCtx); err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
-		}
-		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
-	})
+	server, err := api.NewServer(app.cfg, app.store, maker, app.riverClient, app.pool.Ping)
+	if err != nil {
+		return err
+	}
 
-	sc := echo.StartConfig{Address: cfg.HTTPAddr, GracefulTimeout: 10 * time.Second}
-	if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	sc := echo.StartConfig{Address: app.cfg.HTTPAddr, GracefulTimeout: 10 * time.Second}
+	if err := sc.Start(ctx, server.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
 }
 
 func runWorker(ctx context.Context, cmd *cli.Command) error {
-	cfg, err := mustConfig(cmd)
+	app, err := buildApp(ctx, cmd)
 	if err != nil {
 		return err
 	}
-	pool, err := pgxpool.New(ctx, cfg.DBSource)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
+	defer app.pool.Close()
 
-	if err := runMigrations(ctx, pool); err != nil {
-		return err
-	}
-
-	st := store.NewStore(pool)
-	mailer, err := mail.NewSMTPMailer(cfg)
-	if err != nil {
-		return err
-	}
-	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, "http://localhost"+cfg.HTTPAddr)
-	if err != nil {
-		return err
-	}
-
-	if err := riverClient.Start(context.Background()); err != nil {
+	if err := app.riverClient.Start(context.Background()); err != nil {
 		return err
 	}
 	slog.Info("worker started")
@@ -146,5 +143,5 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return riverClient.Stop(shutdownCtx)
+	return app.riverClient.Stop(shutdownCtx)
 }

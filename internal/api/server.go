@@ -21,6 +21,7 @@ type Server struct {
 	store       store.Store
 	tokenMaker  token.Maker
 	riverClient *river.Client[pgx.Tx]
+	readiness   func(context.Context) error
 	router      *echo.Echo
 }
 
@@ -29,7 +30,11 @@ func NewServer(
 	st store.Store,
 	maker token.Maker,
 	riverClient *river.Client[pgx.Tx],
+	readiness func(context.Context) error,
 ) (*Server, error) {
+	if readiness == nil {
+		readiness = func(context.Context) error { return nil }
+	}
 	e := echo.NewWithConfig(echo.Config{
 		HTTPErrorHandler: errorHandler,
 		Validator:        newValidator(),
@@ -47,16 +52,29 @@ func NewServer(
 		store:       st,
 		tokenMaker:  maker,
 		riverClient: riverClient,
+		readiness:   readiness,
 		router:      e,
 	}
 	s.registerRoutes()
 	return s, nil
 }
 
-func (s *Server) Handler() *echo.Echo { return s.router }
+func (s *Server) Handler() http.Handler { return s.router }
 
 func (s *Server) livez(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// readyz reports whether the service can serve traffic. The readiness probe is
+// injected at construction so the Server owns the route while callers decide
+// what "ready" means (typically a database ping).
+func (s *Server) readyz(c *echo.Context) error {
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+	defer cancel()
+	if err := s.readiness(ctx); err != nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 }
 
 // requestLogger returns a request logger middleware that logs the request path

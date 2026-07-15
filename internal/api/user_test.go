@@ -87,7 +87,7 @@ func newTestServerWithStore(t *testing.T, st store.Store) *Server {
 		AccessTTL:  time.Minute,
 		RefreshTTL: time.Hour,
 	}
-	s, err := NewServer(cfg, st, maker, nil)
+	s, err := NewServer(cfg, st, maker, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

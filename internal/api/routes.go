@@ -6,6 +6,7 @@ import (
 
 func (s *Server) registerRoutes() {
 	s.router.GET("/livez", s.livez)
+	s.router.GET("/readyz", s.readyz)
 
 	v1 := s.router.Group("/api/v1")
 
