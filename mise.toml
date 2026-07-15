@@ -6,7 +6,7 @@ cocogitto = "7.0.0"
 go = "1.26.5"
 golangci-lint = "2.12.2"
 
-[tasks."app:serve"]
+[tasks."app"]
 description = "Run the application"
 run = 'go run cmd/app/main.go'
 

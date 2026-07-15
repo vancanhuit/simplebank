@@ -1,0 +1,123 @@
+# SimpleBank
+
+A cloud-native banking service in Go: user accounts, JWT authentication, and
+atomic money transfers between accounts, with asynchronous email verification.
+Built on echo (HTTP), pgx + sqlc (PostgreSQL), and River (background jobs).
+
+## Quick Start
+
+Prerequisites: [mise](https://mise.jdx.dev/) (manages the Go, golangci-lint, and
+cocogitto toolchain) and Docker (for PostgreSQL and Mailpit).
+
+```sh
+mise install              # install pinned tools (Go 1.26.5, etc.)
+mise run compose:dev:up   # start PostgreSQL + Mailpit + the app (profile: dev)
+```
+
+The API is served at http://localhost:8080. Mailpit's web UI (sent emails) is at
+http://localhost:8025.
+
+To run the server directly against your own database instead of the dev stack:
+
+```sh
+export DB_SOURCE="postgres://user:pass@localhost:5432/simplebank?sslmode=disable"
+export JWT_SECRET="a-secret-at-least-32-characters-long"
+export SMTP_FROM="no-reply@simplebank.local"
+mise run app -- serve     # HTTP API
+mise run app -- worker    # background worker
+```
+
+Migrations (schema + River) run automatically on startup.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `mise run app` | Run the CLI (`serve` or `worker` subcommand) |
+| `mise run app:build` | Build a static binary to `dist/simplebank` |
+| `mise run compose:dev:up` / `:down` | Start / stop the dev stack (DB, Mailpit, app) |
+| `mise run compose:test:up` / `:down` | Start / stop the test stack |
+| `mise run test:unit` | Unit tests (`-race -cover`) |
+| `mise run test:integration` | Integration tests against a real PostgreSQL (`-tags=integration`) |
+| `mise run golangci-lint` | Lint |
+| `mise run golangci-lint:fmt` | Format |
+| `mise run govulncheck` | Scan for known vulnerabilities |
+| `mise run sqlc:generate` | Regenerate Go query code from `internal/db/query/*.sql` |
+| `mise run docker:build` | Build a multi-arch Docker image |
+
+## Configuration
+
+All settings are supplied as CLI flags or environment variables (env var in
+parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
+
+| Env var | Flag | Default | Notes |
+|---------|------|---------|-------|
+| `HTTP_ADDR` | `--http-addr` | `:8080` | HTTP listen address |
+| `DB_SOURCE` | `--db-source` | — | PostgreSQL DSN (required) |
+| `JWT_SECRET` | `--jwt-secret` | — | HS256 signing key, ≥32 chars (required) |
+| `ACCESS_TTL` | `--access-ttl` | `15m` | Access-token lifetime |
+| `REFRESH_TTL` | `--refresh-ttl` | `24h` | Refresh-token lifetime |
+| `SMTP_HOST` | `--smtp-host` | — | Mail server host |
+| `SMTP_PORT` | `--smtp-port` | `1025` | Mail server port |
+| `SMTP_USERNAME` | `--smtp-username` | — | Mail auth (optional) |
+| `SMTP_PASSWORD` | `--smtp-password` | — | Mail auth (optional) |
+| `SMTP_FROM` | `--smtp-from` | — | Sender address (required) |
+| `RIVER_MAX_WORKERS` | `--river-max-workers` | `10` | Background worker concurrency |
+
+## API
+
+Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/livez` | — | Liveness (process up) |
+| `GET` | `/readyz` | — | Readiness (database reachable) |
+| `POST` | `/api/v1/users` | — | Register a user (queues a verification email) |
+| `POST` | `/api/v1/users/login` | — | Log in, receive access + refresh tokens |
+| `POST` | `/api/v1/tokens/renew` | — | Exchange a refresh token for a new access token |
+| `GET` | `/api/v1/users/verify_email` | — | Verify an email via the link's `id` + `code` |
+| `POST` | `/api/v1/accounts` | Bearer | Create an account |
+| `GET` | `/api/v1/accounts/:id` | Bearer | Get an owned account |
+| `GET` | `/api/v1/accounts` | Bearer | List owned accounts (paginated) |
+| `POST` | `/api/v1/transfers` | Bearer | Transfer between accounts you own |
+
+Authenticated routes expect an `Authorization: Bearer <access-token>` header.
+
+## Architecture
+
+```
+cmd/app/          CLI entrypoint; buildApp assembles shared dependencies
+internal/
+  api/            echo HTTP server, handlers, middleware, error mapping
+  config/         flag/env configuration and validation
+  db/             store seam: sqlc-generated queries + hand-written *Tx methods
+    query/        SQL sources for sqlc
+    sqlc/         generated Go (do not edit by hand)
+    migrations/   goose schema migrations
+  mail/           Mailer interface + SMTP adapter
+  token/          JWT Maker interface + HS256 implementation
+  util/           password hashing, secure tokens, currency helpers
+  worker/         River job definitions (async verification email)
+```
+
+Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/README.md):
+
+- [ADR-0001](docs/decisions/0001-wide-sqlc-backed-store-interface.md) — the wide sqlc-backed `Store` interface.
+- [ADR-0002](docs/decisions/0002-hash-refresh-tokens-at-rest.md) — hashing refresh tokens at rest.
+- [ADR-0003](docs/decisions/0003-server-owns-routing-with-injected-readiness.md) — the Server owns routing with an injected readiness probe.
+
+Money transfers run in a single database transaction with a deterministic
+account lock order to avoid deadlocks; see `TransferTx` in
+`internal/db/transfer_tx.go`.
+
+## Testing
+
+Unit tests run without external services. Integration tests are gated behind the
+`integration` build tag and run against a real PostgreSQL brought up by the test
+compose stack — `mise run test:integration` handles the lifecycle automatically.
+
+## Contributing
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/),
+enforced by cocogitto. Install the git hooks with `mise run hooks:install`.
+Run `mise run golangci-lint` and `mise run test:unit` before opening a PR.
