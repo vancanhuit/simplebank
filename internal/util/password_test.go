@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -16,7 +17,7 @@ func TestPassword(t *testing.T) {
 	if err := CheckPassword(password, hashed); err != nil {
 		t.Fatalf("check should pass: %v", err)
 	}
-	if err := CheckPassword("wrong", hashed); err != bcrypt.ErrMismatchedHashAndPassword {
+	if err := CheckPassword("wrong", hashed); !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 		t.Fatalf("check should fail with mismatch, got %v", err)
 	}
 

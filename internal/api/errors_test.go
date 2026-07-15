@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 
@@ -10,12 +11,13 @@ import (
 
 func TestToHTTPStatus(t *testing.T) {
 	cases := map[error]int{
-		store.ErrRecordNotFound:      http.StatusNotFound,
-		store.ErrUniqueViolation:     http.StatusConflict,
-		store.ErrForeignKeyViolation: http.StatusConflict,
-		store.ErrInsufficientBalance: http.StatusUnprocessableEntity,
-		token.ErrExpiredToken:        http.StatusUnauthorized,
-		token.ErrInvalidToken:        http.StatusUnauthorized,
+		store.ErrRecordNotFound:          http.StatusNotFound,
+		store.ErrUniqueViolation:         http.StatusConflict,
+		store.ErrForeignKeyViolation:     http.StatusConflict,
+		store.ErrInsufficientBalance:     http.StatusUnprocessableEntity,
+		token.ErrExpiredToken:            http.StatusUnauthorized,
+		token.ErrInvalidToken:            http.StatusUnauthorized,
+		errors.New("some unknown error"): http.StatusInternalServerError,
 	}
 	for err, want := range cases {
 		if got := toHTTPStatus(err); got != want {

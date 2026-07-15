@@ -17,7 +17,8 @@ func TestSecureToken(t *testing.T) {
 	if a == b {
 		t.Fatal("two secure tokens should differ")
 	}
-	if len(a) < 32 {
-		t.Fatalf("token too short: %d", len(a))
+	// hex encoding of n bytes yields 2*n chars.
+	if len(a) != 64 {
+		t.Fatalf("token length = %d, want 64", len(a))
 	}
 }
