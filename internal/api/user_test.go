@@ -155,6 +155,29 @@ func TestCreateUserDuplicate(t *testing.T) {
 	}
 }
 
+func TestCreateUserPasswordTooLong(t *testing.T) {
+	fake := fakeStore{
+		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
+			t.Fatal("user must not be created for an over-long password")
+			return sqlcdb.User{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	// 73 bytes exceeds bcrypt's 72-byte cap and must be rejected at validation
+	// (400), not surfaced as a 500 from the hashing layer.
+	longPassword := strings.Repeat("a", 73)
+	body := `{"username":"alice","password":"` + longPassword + `","full_name":"Alice","email":"alice@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for over-long password, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestLoginUserOK(t *testing.T) {
 	hashed, err := util.HashPassword("secret123")
 	if err != nil {

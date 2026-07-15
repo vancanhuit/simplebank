@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
@@ -19,5 +20,20 @@ func (cv *customValidator) Validate(i any) error {
 }
 
 func newValidator() *customValidator {
-	return &customValidator{validate: validator.New()}
+	v := validator.New()
+	if err := v.RegisterValidation("maxbytes", validateMaxBytes); err != nil {
+		panic(err)
+	}
+	return &customValidator{validate: v}
+}
+
+// validateMaxBytes enforces a maximum length in bytes (not runes). The builtin
+// max rule counts runes, which lets a multibyte string exceed a byte-oriented
+// limit such as bcrypt's 72-byte cap.
+func validateMaxBytes(fl validator.FieldLevel) bool {
+	max, err := strconv.Atoi(fl.Param())
+	if err != nil {
+		return false
+	}
+	return len(fl.Field().String()) <= max
 }

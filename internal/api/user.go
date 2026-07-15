@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
 	"time"
@@ -37,7 +38,7 @@ func hashRefreshToken(token string) string {
 
 type createUserRequest struct {
 	Username string `json:"username" validate:"required,alphanum"`
-	Password string `json:"password" validate:"required,min=6,max=72"`
+	Password string `json:"password" validate:"required,min=6,maxbytes=72"`
 	FullName string `json:"full_name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 }
@@ -187,9 +188,11 @@ func (s *Server) renewToken(c *echo.Context) error {
 	if err != nil {
 		return store.ClassifyError(err)
 	}
+	tokenMatch := subtle.ConstantTimeCompare(
+		[]byte(session.RefreshToken), []byte(hashRefreshToken(req.RefreshToken))) == 1
 	if session.IsBlocked ||
 		session.Username != refreshPayload.Username ||
-		session.RefreshToken != hashRefreshToken(req.RefreshToken) ||
+		!tokenMatch ||
 		time.Now().After(session.ExpiresAt) {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
 	}
