@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
@@ -23,10 +25,20 @@ const testSecret = "01234567890123456789012345678901"
 type fakeStore struct {
 	store.Store
 	createUserTx func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
+	getAccount   func(context.Context, uuid.UUID) (sqlcdb.Account, error)
+	transferTx   func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
 }
 
 func (f fakeStore) CreateUserTx(ctx context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
 	return f.createUserTx(ctx, arg)
+}
+
+func (f fakeStore) GetAccount(ctx context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+	return f.getAccount(ctx, id)
+}
+
+func (f fakeStore) TransferTx(ctx context.Context, arg store.TransferTxParams) (store.TransferTxResult, error) {
+	return f.transferTx(ctx, arg)
 }
 
 func newTestServer(t *testing.T) *Server {
