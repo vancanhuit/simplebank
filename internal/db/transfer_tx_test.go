@@ -203,3 +203,106 @@ func TestTransferTxInsufficientBalance(t *testing.T) {
 		t.Errorf("acc2 balance changed after failed transfer: %d, want 1000", updated2.Balance)
 	}
 }
+
+// TestTransferTxForeignKeyViolation transfers to a non-existent account. The
+// CreateTransfer insert must fail the FK constraint and roll the tx back,
+// leaving the source balance untouched.
+func TestTransferTxForeignKeyViolation(t *testing.T) {
+	u1 := createTestUser(t)
+	acc1 := createTestAccount(t, u1.Username)
+
+	_, err := testStore.TransferTx(context.Background(), TransferTxParams{
+		FromAccountID: acc1.ID,
+		ToAccountID:   uuid.New(), // no such account
+		Amount:        10,
+	})
+	if !errors.Is(err, ErrForeignKeyViolation) {
+		t.Fatalf("want ErrForeignKeyViolation, got %v", err)
+	}
+
+	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated1.Balance != 1000 {
+		t.Errorf("acc1 balance changed after failed transfer: %d, want 1000", updated1.Balance)
+	}
+}
+
+// TestTransferTxExactBalance drains the full balance. The guard must allow the
+// balance to reach exactly zero (>= 0), not reject it (> 0).
+func TestTransferTxExactBalance(t *testing.T) {
+	u1 := createTestUser(t)
+	u2 := createTestUser(t)
+	acc1 := createTestAccount(t, u1.Username)
+	acc2 := createTestAccount(t, u2.Username)
+
+	res, err := testStore.TransferTx(context.Background(), TransferTxParams{
+		FromAccountID: acc1.ID,
+		ToAccountID:   acc2.ID,
+		Amount:        1000, // entire balance
+	})
+	if err != nil {
+		t.Fatalf("draining the full balance should succeed, got %v", err)
+	}
+	if res.FromAccount.Balance != 0 {
+		t.Errorf("from account balance = %d, want 0", res.FromAccount.Balance)
+	}
+	if res.ToAccount.Balance != 2000 {
+		t.Errorf("to account balance = %d, want 2000", res.ToAccount.Balance)
+	}
+
+	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated1.Balance != 0 {
+		t.Errorf("persisted acc1 balance = %d, want 0", updated1.Balance)
+	}
+}
+
+// TestTransferTxPersistsRows confirms the transfer and both entry rows are
+// actually committed, not just returned from the RETURNING clause. There is no
+// sqlc read query for these tables, so it asserts against the pool directly.
+func TestTransferTxPersistsRows(t *testing.T) {
+	u1 := createTestUser(t)
+	u2 := createTestUser(t)
+	acc1 := createTestAccount(t, u1.Username)
+	acc2 := createTestAccount(t, u2.Username)
+
+	amount := int64(25)
+	res, err := testStore.TransferTx(context.Background(), TransferTxParams{
+		FromAccountID: acc1.ID,
+		ToAccountID:   acc2.ID,
+		Amount:        amount,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	var (
+		gotAmount int64
+		from, to  uuid.UUID
+	)
+	err = testPool.QueryRow(ctx,
+		`SELECT amount, from_account_id, to_account_id FROM transfers WHERE id = $1`,
+		res.Transfer.ID).Scan(&gotAmount, &from, &to)
+	if err != nil {
+		t.Fatalf("transfer row not persisted: %v", err)
+	}
+	if gotAmount != amount || from != acc1.ID || to != acc2.ID {
+		t.Errorf("persisted transfer = {%d, %s, %s}, want {%d, %s, %s}",
+			gotAmount, from, to, amount, acc1.ID, acc2.ID)
+	}
+
+	var entryCount int
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) FROM entries WHERE id IN ($1, $2)`,
+		res.FromEntry.ID, res.ToEntry.ID).Scan(&entryCount); err != nil {
+		t.Fatal(err)
+	}
+	if entryCount != 2 {
+		t.Errorf("persisted entries = %d, want 2", entryCount)
+	}
+}

@@ -16,6 +16,10 @@ import (
 
 var testStore Store
 
+// testPool is the raw connection pool behind testStore, exposed so tests can
+// assert persisted DB state directly for tables that have no sqlc read query.
+var testPool *pgxpool.Pool
+
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 	dsn := os.Getenv("DB_SOURCE")
@@ -37,6 +41,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	testPool = pool
 	testStore = NewStore(pool)
 	os.Exit(m.Run())
 }
