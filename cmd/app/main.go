@@ -141,6 +141,7 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	slog.Info("worker started")
 
 	<-ctx.Done()
+	slog.Info("worker shutting down", "cause", context.Cause(ctx))
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return app.riverClient.Stop(shutdownCtx)

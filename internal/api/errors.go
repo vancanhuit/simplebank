@@ -49,8 +49,7 @@ func errorHandler(c *echo.Context, err error) {
 		return
 	}
 
-	var he *echo.HTTPError
-	if errors.As(err, &he) {
+	if he, ok := errors.AsType[*echo.HTTPError](err); ok {
 		_ = c.JSON(he.StatusCode(), map[string]string{"error": he.Message})
 		return
 	}
