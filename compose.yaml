@@ -80,6 +80,7 @@ services:
       SMTP_HOST: "mailpit-dev"
       SMTP_PORT: "1025"
       SMTP_FROM: "no-reply@simplebank.local"
+      SMTP_INSECURE: "true"
     ports:
       - "8080:8080"
     networks:

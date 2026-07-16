@@ -121,7 +121,16 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	sc := echo.StartConfig{Address: app.cfg.HTTPAddr, GracefulTimeout: 10 * time.Second}
+	sc := echo.StartConfig{
+		Address:         app.cfg.HTTPAddr,
+		GracefulTimeout: 10 * time.Second,
+		BeforeServeFunc: func(s *http.Server) error {
+			s.ReadHeaderTimeout = 5 * time.Second // slow-loris protection
+			s.WriteTimeout = 30 * time.Second     // response write
+			s.IdleTimeout = 120 * time.Second     // keep-alive connections
+			return nil
+		},
+	}
 	if err := sc.Start(ctx, server.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

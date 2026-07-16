@@ -18,6 +18,7 @@ type Config struct {
 	SMTPUsername    string
 	SMTPPassword    string
 	SMTPFrom        string
+	SMTPInsecure    bool
 	RiverMaxWorkers int
 }
 
@@ -46,6 +47,7 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "smtp-username", Sources: cli.EnvVars("SMTP_USERNAME")},
 		&cli.StringFlag{Name: "smtp-password", Sources: cli.EnvVars("SMTP_PASSWORD")},
 		&cli.StringFlag{Name: "smtp-from", Sources: cli.EnvVars("SMTP_FROM")},
+		&cli.BoolFlag{Name: "smtp-insecure", Sources: cli.EnvVars("SMTP_INSECURE")},
 		&cli.IntFlag{Name: "river-max-workers", Value: 10, Sources: cli.EnvVars("RIVER_MAX_WORKERS")},
 	}
 }
@@ -62,6 +64,7 @@ func FromCommand(cmd *cli.Command) Config {
 		SMTPUsername:    cmd.String("smtp-username"),
 		SMTPPassword:    cmd.String("smtp-password"),
 		SMTPFrom:        cmd.String("smtp-from"),
+		SMTPInsecure:    cmd.Bool("smtp-insecure"),
 		RiverMaxWorkers: cmd.Int("river-max-workers"),
 	}
 }

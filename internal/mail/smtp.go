@@ -14,16 +14,20 @@ type SMTPMailer struct {
 }
 
 func NewSMTPMailer(cfg config.Config) (*SMTPMailer, error) {
+	tlsPolicy := mail.TLSMandatory
+	if cfg.SMTPInsecure {
+		tlsPolicy = mail.NoTLS
+	}
 	opts := []mail.Option{
 		mail.WithPort(cfg.SMTPPort),
-		mail.WithTLSPolicy(mail.NoTLS),
+		mail.WithTLSPolicy(tlsPolicy),
 	}
 	if cfg.SMTPUsername != "" {
 		opts = append(opts,
 			mail.WithSMTPAuth(mail.SMTPAuthPlain),
 			mail.WithUsername(cfg.SMTPUsername),
 			mail.WithPassword(cfg.SMTPPassword),
-			mail.WithTLSPolicy(mail.TLSMandatory),
+			mail.WithTLSPolicy(mail.TLSMandatory), // never send credentials in cleartext
 		)
 	}
 	client, err := mail.NewClient(cfg.SMTPHost, opts...)
