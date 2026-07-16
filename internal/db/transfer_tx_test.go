@@ -8,21 +8,23 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vancanhuit/simplebank/internal/currency"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
-	"github.com/vancanhuit/simplebank/internal/util"
+	"github.com/vancanhuit/simplebank/internal/password"
+	"github.com/vancanhuit/simplebank/internal/random"
 )
 
 func createTestUser(t *testing.T) sqlcdb.User {
 	t.Helper()
-	hashed, err := util.HashPassword(util.RandomString(8))
+	hashed, err := password.Hash(random.String(8))
 	if err != nil {
 		t.Fatal(err)
 	}
 	user, err := testStore.CreateUser(t.Context(), sqlcdb.CreateUserParams{
-		Username:       util.RandomOwner(),
+		Username:       random.Owner(),
 		HashedPassword: hashed,
-		FullName:       util.RandomOwner(),
-		Email:          util.RandomString(6) + "@example.com",
+		FullName:       random.Owner(),
+		Email:          random.String(6) + "@example.com",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +37,7 @@ func createTestAccount(t *testing.T, owner string) sqlcdb.Account {
 	acc, err := testStore.CreateAccount(t.Context(), sqlcdb.CreateAccountParams{
 		Owner:    owner,
 		Balance:  1000,
-		Currency: util.USD,
+		Currency: currency.USD,
 	})
 	if err != nil {
 		t.Fatal(err)

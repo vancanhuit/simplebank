@@ -9,23 +9,24 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
-	"github.com/vancanhuit/simplebank/internal/util"
+	"github.com/vancanhuit/simplebank/internal/password"
+	"github.com/vancanhuit/simplebank/internal/random"
 )
 
 func TestCreateUserTxRollbackOnAfterCreateError(t *testing.T) {
-	hashed, err := util.HashPassword(util.RandomString(8))
+	hashed, err := password.Hash(random.String(8))
 	if err != nil {
 		t.Fatal(err)
 	}
-	username := util.RandomOwner()
+	username := random.Owner()
 	boom := errors.New("enqueue failed")
 
 	_, err = testStore.CreateUserTx(t.Context(), CreateUserTxParams{
 		CreateUserParams: sqlcdb.CreateUserParams{
 			Username:       username,
 			HashedPassword: hashed,
-			FullName:       util.RandomOwner(),
-			Email:          util.RandomString(6) + "@example.com",
+			FullName:       random.Owner(),
+			Email:          random.String(6) + "@example.com",
 		},
 		AfterCreate: func(tx pgx.Tx, user sqlcdb.User) error { return boom },
 	})
@@ -40,19 +41,19 @@ func TestCreateUserTxRollbackOnAfterCreateError(t *testing.T) {
 }
 
 func TestCreateUserTxCommit(t *testing.T) {
-	hashed, err := util.HashPassword(util.RandomString(8))
+	hashed, err := password.Hash(random.String(8))
 	if err != nil {
 		t.Fatal(err)
 	}
-	username := util.RandomOwner()
+	username := random.Owner()
 
 	var afterCalled bool
 	user, err := testStore.CreateUserTx(t.Context(), CreateUserTxParams{
 		CreateUserParams: sqlcdb.CreateUserParams{
 			Username:       username,
 			HashedPassword: hashed,
-			FullName:       util.RandomOwner(),
-			Email:          util.RandomString(6) + "@example.com",
+			FullName:       random.Owner(),
+			Email:          random.String(6) + "@example.com",
 		},
 		AfterCreate: func(tx pgx.Tx, u sqlcdb.User) error {
 			afterCalled = true

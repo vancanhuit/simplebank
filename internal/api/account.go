@@ -6,9 +6,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/vancanhuit/simplebank/internal/currency"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
-	"github.com/vancanhuit/simplebank/internal/util"
 )
 
 type createAccountRequest struct {
@@ -23,7 +23,7 @@ func (s *Server) createAccount(c *echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
-	if !util.IsSupportedCurrency(req.Currency) {
+	if !currency.IsSupported(req.Currency) {
 		return echo.NewHTTPError(http.StatusBadRequest, "unsupported currency")
 	}
 
@@ -73,15 +73,11 @@ func (s *Server) listAccounts(c *echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
 	}
-	if page < 1 {
-		page = 1
-	}
+	page = max(page, 1)
 	if size < 1 {
 		size = 5
 	}
-	if size > 100 {
-		size = 100
-	}
+	size = min(size, 100)
 
 	payload, err := authPayload(c)
 	if err != nil {

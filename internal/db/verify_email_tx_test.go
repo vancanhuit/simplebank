@@ -7,12 +7,12 @@ import (
 	"testing"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
-	"github.com/vancanhuit/simplebank/internal/util"
+	"github.com/vancanhuit/simplebank/internal/random"
 )
 
 func TestVerifyEmailTx(t *testing.T) {
 	u := createTestUser(t)
-	code := util.RandomString(32)
+	code := random.String(32)
 
 	ve, err := testStore.CreateVerifyEmail(t.Context(), sqlcdb.CreateVerifyEmailParams{
 		Username:   u.Username,

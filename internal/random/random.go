@@ -1,4 +1,4 @@
-package util
+package random
 
 import (
 	"math/rand/v2"
@@ -7,7 +7,7 @@ import (
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz"
 
-func RandomString(n int) string {
+func String(n int) string {
 	var sb strings.Builder
 	for range n {
 		sb.WriteByte(alphabet[rand.IntN(len(alphabet))])
@@ -15,6 +15,6 @@ func RandomString(n int) string {
 	return sb.String()
 }
 
-func RandomOwner() string {
-	return RandomString(6)
+func Owner() string {
+	return String(6)
 }

@@ -14,7 +14,8 @@ import (
 
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
-	"github.com/vancanhuit/simplebank/internal/util"
+	"github.com/vancanhuit/simplebank/internal/password"
+	"github.com/vancanhuit/simplebank/internal/random"
 	"github.com/vancanhuit/simplebank/internal/worker"
 )
 
@@ -22,7 +23,7 @@ import (
 // response time does not reveal whether a username exists (mitigates user
 // enumeration). Computed once at startup from a random value.
 var dummyPasswordHash = func() string {
-	h, err := util.HashPassword(util.RandomString(16))
+	h, err := password.Hash(random.String(16))
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +72,7 @@ func (s *Server) createUser(c *echo.Context) error {
 		return err
 	}
 
-	hashed, err := util.HashPassword(req.Password)
+	hashed, err := password.Hash(req.Password)
 	if err != nil {
 		return err
 	}
@@ -125,12 +126,12 @@ func (s *Server) loginUser(c *echo.Context) error {
 		if errors.Is(store.ClassifyError(err), store.ErrRecordNotFound) {
 			// Run a comparison against a dummy hash so an unknown username takes
 			// the same time as a wrong password (no enumeration via timing).
-			_ = util.CheckPassword(req.Password, dummyPasswordHash)
+			_ = password.Check(req.Password, dummyPasswordHash)
 			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 		}
 		return err
 	}
-	if err := util.CheckPassword(req.Password, user.HashedPassword); err != nil {
+	if err := password.Check(req.Password, user.HashedPassword); err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 	}
 

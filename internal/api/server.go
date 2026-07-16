@@ -116,7 +116,7 @@ func requestLogger() echo.MiddlewareFunc {
 			if v.Error != nil {
 				attrs = append(attrs, slog.String("error", v.Error.Error()))
 			}
-			logger.LogAttrs(context.Background(), level, msg, attrs...)
+			logger.LogAttrs(c.Request().Context(), level, msg, attrs...)
 			return nil
 		},
 	})

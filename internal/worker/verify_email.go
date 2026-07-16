@@ -10,7 +10,7 @@ import (
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 	"github.com/vancanhuit/simplebank/internal/mail"
-	"github.com/vancanhuit/simplebank/internal/util"
+	"github.com/vancanhuit/simplebank/internal/secret"
 )
 
 type SendVerifyEmailArgs struct {
@@ -33,12 +33,12 @@ func NewSendVerifyEmailWorker(st store.Store, mailer mail.Mailer, baseURL string
 func (w *SendVerifyEmailWorker) Work(ctx context.Context, job *river.Job[SendVerifyEmailArgs]) error {
 	user, err := w.store.GetUser(ctx, job.Args.Username)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting user %q: %w", job.Args.Username, err)
 	}
 
-	code, err := util.SecureToken(32)
+	code, err := secret.Token(32)
 	if err != nil {
-		return err
+		return fmt.Errorf("generating secret code: %w", err)
 	}
 
 	ve, err := w.store.CreateVerifyEmail(ctx, sqlcdb.CreateVerifyEmailParams{
@@ -47,7 +47,7 @@ func (w *SendVerifyEmailWorker) Work(ctx context.Context, job *river.Job[SendVer
 		SecretCode: code,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("creating verify-email record: %w", err)
 	}
 
 	link := fmt.Sprintf("%s/api/v1/users/verify_email?id=%s&code=%s",
@@ -56,5 +56,8 @@ func (w *SendVerifyEmailWorker) Work(ctx context.Context, job *river.Job[SendVer
 		`Hello %s,<br/>Please <a href="%s">click here</a> to verify your email address.`,
 		html.EscapeString(user.FullName), link)
 
-	return w.mailer.Send(ctx, user.Email, "Welcome to SimpleBank", body)
+	if err := w.mailer.Send(ctx, user.Email, "Welcome to SimpleBank", body); err != nil {
+		return fmt.Errorf("sending verification email: %w", err)
+	}
+	return nil
 }

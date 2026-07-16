@@ -14,8 +14,8 @@ import (
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
+	"github.com/vancanhuit/simplebank/internal/password"
 	"github.com/vancanhuit/simplebank/internal/token"
-	"github.com/vancanhuit/simplebank/internal/util"
 )
 
 const testSecret = "01234567890123456789012345678901"
@@ -179,7 +179,7 @@ func TestCreateUserPasswordTooLong(t *testing.T) {
 }
 
 func TestLoginUserOK(t *testing.T) {
-	hashed, err := util.HashPassword("secret123")
+	hashed, err := password.Hash("secret123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestLoginUserOK(t *testing.T) {
 }
 
 func TestLoginUserWrongPassword(t *testing.T) {
-	hashed, err := util.HashPassword("secret123")
+	hashed, err := password.Hash("secret123")
 	if err != nil {
 		t.Fatal(err)
 	}

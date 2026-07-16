@@ -1,4 +1,4 @@
-package util
+package currency
 
 const (
 	USD = "USD"
@@ -6,7 +6,7 @@ const (
 	VND = "VND"
 )
 
-func IsSupportedCurrency(currency string) bool {
+func IsSupported(currency string) bool {
 	switch currency {
 	case USD, EUR, VND:
 		return true

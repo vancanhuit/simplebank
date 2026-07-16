@@ -1,14 +1,14 @@
-package util
+package currency
 
 import "testing"
 
-func TestIsSupportedCurrency(t *testing.T) {
+func TestIsSupported(t *testing.T) {
 	for _, c := range []string{USD, EUR, VND} {
-		if !IsSupportedCurrency(c) {
+		if !IsSupported(c) {
 			t.Errorf("%s should be supported", c)
 		}
 	}
-	if IsSupportedCurrency("XYZ") {
+	if IsSupported("XYZ") {
 		t.Error("XYZ should not be supported")
 	}
 }
