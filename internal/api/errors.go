@@ -58,8 +58,8 @@ func errorHandler(c *echo.Context, err error) {
 	message := "internal server error"
 	if status != http.StatusInternalServerError {
 		message = clientMessage(err)
-	} else {
-		c.Logger().Error("request failed", "error", err)
 	}
+	// The request logger middleware logs the error once with full request
+	// context (status, path, request_id); logging here too would duplicate it.
 	_ = c.JSON(status, map[string]string{"error": message})
 }
