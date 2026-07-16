@@ -54,6 +54,8 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 |---------|------|---------|-------|
 | `HTTP_ADDR` | `--http-addr` | `:8080` | HTTP listen address |
 | `DB_SOURCE` | `--db-source` | — | PostgreSQL DSN (required) |
+| `DB_MAX_CONNS` | `--db-max-conns` | — | Max pool connections (0 = pgxpool/DSN default) |
+| `DB_MIN_CONNS` | `--db-min-conns` | — | Min idle pool connections (0 = pgxpool/DSN default) |
 | `JWT_SECRET` | `--jwt-secret` | — | HS256 signing key, ≥32 chars (required) |
 | `ACCESS_TTL` | `--access-ttl` | `15m` | Access-token lifetime |
 | `REFRESH_TTL` | `--refresh-ttl` | `24h` | Refresh-token lifetime |
@@ -90,13 +92,16 @@ cmd/app/          CLI entrypoint; buildApp assembles shared dependencies
 internal/
   api/            echo HTTP server, handlers, middleware, error mapping
   config/         flag/env configuration and validation
+  currency/       supported-currency constants and validation
   db/             store seam: sqlc-generated queries + hand-written *Tx methods
     query/        SQL sources for sqlc
     sqlc/         generated Go (do not edit by hand)
     migrations/   goose schema migrations
   mail/           Mailer interface + SMTP adapter
+  password/       bcrypt password hashing and verification
+  random/         non-crypto random strings (test fixtures, display names)
+  secret/         crypto-secure token generation
   token/          JWT Maker interface + HS256 implementation
-  util/           password hashing, secure tokens, currency helpers
   worker/         River job definitions (async verification email)
 ```
 
@@ -105,6 +110,7 @@ Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/RE
 - [ADR-0001](docs/decisions/0001-wide-sqlc-backed-store-interface.md) — the wide sqlc-backed `Store` interface.
 - [ADR-0002](docs/decisions/0002-hash-refresh-tokens-at-rest.md) — hashing refresh tokens at rest.
 - [ADR-0003](docs/decisions/0003-server-owns-routing-with-injected-readiness.md) — the Server owns routing with an injected readiness probe.
+- [ADR-0004](docs/decisions/0004-split-util-into-domain-packages.md) — splitting `util` into domain packages, separating crypto from non-crypto randomness.
 
 Money transfers run in a single database transaction with a deterministic
 account lock order to avoid deadlocks; see `TransferTx` in
