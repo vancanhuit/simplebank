@@ -13,3 +13,4 @@ the old. See [ADR-0000](0000-record-architecture-decisions.md) for the process.
 | [0001](0001-wide-sqlc-backed-store-interface.md) | Wide sqlc-backed `Store` interface | Accepted |
 | [0002](0002-hash-refresh-tokens-at-rest.md) | Hash refresh tokens at rest | Accepted |
 | [0003](0003-server-owns-routing-with-injected-readiness.md) | Server owns HTTP routing with an injected readiness probe | Accepted |
+| [0004](0004-split-util-into-domain-packages.md) | Split `util` into domain packages, separating crypto from non-crypto randomness | Accepted |
