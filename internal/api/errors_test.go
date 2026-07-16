@@ -25,3 +25,20 @@ func TestToHTTPStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestClientMessage(t *testing.T) {
+	cases := map[error]string{
+		store.ErrRecordNotFound:          "resource not found",
+		store.ErrUniqueViolation:         "resource already exists",
+		store.ErrForeignKeyViolation:     "related resource not found",
+		store.ErrInsufficientBalance:     "insufficient balance",
+		token.ErrExpiredToken:            "token has expired",
+		token.ErrInvalidToken:            "token is invalid",
+		errors.New("some unknown error"): "request failed",
+	}
+	for err, want := range cases {
+		if got := clientMessage(err); got != want {
+			t.Errorf("%v: got %q want %q", err, got, want)
+		}
+	}
+}

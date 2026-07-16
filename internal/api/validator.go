@@ -20,7 +20,7 @@ func (cv *customValidator) Validate(i any) error {
 }
 
 func newValidator() *customValidator {
-	v := validator.New()
+	v := validator.New(validator.WithRequiredStructEnabled())
 	if err := v.RegisterValidation("maxbytes", validateMaxBytes); err != nil {
 		panic(err)
 	}
@@ -31,9 +31,9 @@ func newValidator() *customValidator {
 // max rule counts runes, which lets a multibyte string exceed a byte-oriented
 // limit such as bcrypt's 72-byte cap.
 func validateMaxBytes(fl validator.FieldLevel) bool {
-	max, err := strconv.Atoi(fl.Param())
+	limit, err := strconv.Atoi(fl.Param())
 	if err != nil {
 		return false
 	}
-	return len(fl.Field().String()) <= max
+	return len(fl.Field().String()) <= limit
 }

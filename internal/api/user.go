@@ -214,6 +214,9 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
+	if code == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
+	}
 
 	ctx := c.Request().Context()
 	_, err = s.store.VerifyEmailTx(ctx, store.VerifyEmailTxParams{
