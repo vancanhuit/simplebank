@@ -9,6 +9,7 @@ const alphabet = "abcdefghijklmnopqrstuvwxyz"
 
 func String(n int) string {
 	var sb strings.Builder
+	sb.Grow(n)
 	for range n {
 		sb.WriteByte(alphabet[rand.IntN(len(alphabet))])
 	}
