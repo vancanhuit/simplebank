@@ -3,7 +3,6 @@
 package store
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -21,7 +20,7 @@ func TestCreateUserTxRollbackOnAfterCreateError(t *testing.T) {
 	username := util.RandomOwner()
 	boom := errors.New("enqueue failed")
 
-	_, err = testStore.CreateUserTx(context.Background(), CreateUserTxParams{
+	_, err = testStore.CreateUserTx(t.Context(), CreateUserTxParams{
 		CreateUserParams: sqlcdb.CreateUserParams{
 			Username:       username,
 			HashedPassword: hashed,
@@ -35,7 +34,7 @@ func TestCreateUserTxRollbackOnAfterCreateError(t *testing.T) {
 	}
 
 	// The user must NOT exist because the tx rolled back.
-	if _, err := testStore.GetUser(context.Background(), username); !errors.Is(ClassifyError(err), ErrRecordNotFound) {
+	if _, err := testStore.GetUser(t.Context(), username); !errors.Is(ClassifyError(err), ErrRecordNotFound) {
 		t.Fatalf("expected user to be absent after rollback, got err=%v", err)
 	}
 }
@@ -48,7 +47,7 @@ func TestCreateUserTxCommit(t *testing.T) {
 	username := util.RandomOwner()
 
 	var afterCalled bool
-	user, err := testStore.CreateUserTx(context.Background(), CreateUserTxParams{
+	user, err := testStore.CreateUserTx(t.Context(), CreateUserTxParams{
 		CreateUserParams: sqlcdb.CreateUserParams{
 			Username:       username,
 			HashedPassword: hashed,
@@ -74,7 +73,7 @@ func TestCreateUserTxCommit(t *testing.T) {
 	}
 
 	// The user must exist because the tx committed.
-	got, err := testStore.GetUser(context.Background(), username)
+	got, err := testStore.GetUser(t.Context(), username)
 	if err != nil {
 		t.Fatalf("user should exist after commit: %v", err)
 	}

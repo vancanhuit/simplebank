@@ -3,7 +3,6 @@
 package store
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -15,7 +14,7 @@ func TestVerifyEmailTx(t *testing.T) {
 	u := createTestUser(t)
 	code := util.RandomString(32)
 
-	ve, err := testStore.CreateVerifyEmail(context.Background(), sqlcdb.CreateVerifyEmailParams{
+	ve, err := testStore.CreateVerifyEmail(t.Context(), sqlcdb.CreateVerifyEmailParams{
 		Username:   u.Username,
 		Email:      u.Email,
 		SecretCode: code,
@@ -25,7 +24,7 @@ func TestVerifyEmailTx(t *testing.T) {
 	}
 
 	// Wrong code must not verify anyone.
-	if _, err := testStore.VerifyEmailTx(context.Background(), VerifyEmailTxParams{
+	if _, err := testStore.VerifyEmailTx(t.Context(), VerifyEmailTxParams{
 		ID:         ve.ID,
 		SecretCode: "wrong-code",
 	}); !errors.Is(err, ErrRecordNotFound) {
@@ -33,7 +32,7 @@ func TestVerifyEmailTx(t *testing.T) {
 	}
 
 	// Correct code flips the user's verified flag.
-	res, err := testStore.VerifyEmailTx(context.Background(), VerifyEmailTxParams{
+	res, err := testStore.VerifyEmailTx(t.Context(), VerifyEmailTxParams{
 		ID:         ve.ID,
 		SecretCode: code,
 	})
@@ -48,7 +47,7 @@ func TestVerifyEmailTx(t *testing.T) {
 	}
 
 	// Confirmed persisted.
-	got, err := testStore.GetUser(context.Background(), u.Username)
+	got, err := testStore.GetUser(t.Context(), u.Username)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ require (
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.40.0
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/wneessen/go-mail v0.8.1
+	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.54.0
 )
 
@@ -37,7 +38,6 @@ require (
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect

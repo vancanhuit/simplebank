@@ -3,7 +3,6 @@
 package store
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -19,7 +18,7 @@ func createTestUser(t *testing.T) sqlcdb.User {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := testStore.CreateUser(context.Background(), sqlcdb.CreateUserParams{
+	user, err := testStore.CreateUser(t.Context(), sqlcdb.CreateUserParams{
 		Username:       util.RandomOwner(),
 		HashedPassword: hashed,
 		FullName:       util.RandomOwner(),
@@ -33,7 +32,7 @@ func createTestUser(t *testing.T) sqlcdb.User {
 
 func createTestAccount(t *testing.T, owner string) sqlcdb.Account {
 	t.Helper()
-	acc, err := testStore.CreateAccount(context.Background(), sqlcdb.CreateAccountParams{
+	acc, err := testStore.CreateAccount(t.Context(), sqlcdb.CreateAccountParams{
 		Owner:    owner,
 		Balance:  1000,
 		Currency: util.USD,
@@ -61,7 +60,7 @@ func TestTransferTxConcurrent(t *testing.T) {
 
 	for range n {
 		go func() {
-			res, err := testStore.TransferTx(context.Background(), TransferTxParams{
+			res, err := testStore.TransferTx(t.Context(), TransferTxParams{
 				FromAccountID: acc1.ID,
 				ToAccountID:   acc2.ID,
 				Amount:        amount,
@@ -107,11 +106,11 @@ func TestTransferTxConcurrent(t *testing.T) {
 		}
 	}
 
-	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated2, err := testStore.GetAccount(context.Background(), acc2.ID)
+	updated2, err := testStore.GetAccount(t.Context(), acc2.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +141,7 @@ func TestTransferTxDeadlockPrevention(t *testing.T) {
 			from, to = acc2.ID, acc1.ID
 		}
 		go func() {
-			_, err := testStore.TransferTx(context.Background(), TransferTxParams{
+			_, err := testStore.TransferTx(t.Context(), TransferTxParams{
 				FromAccountID: from,
 				ToAccountID:   to,
 				Amount:        amount,
@@ -156,11 +155,11 @@ func TestTransferTxDeadlockPrevention(t *testing.T) {
 		}
 	}
 
-	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated2, err := testStore.GetAccount(context.Background(), acc2.ID)
+	updated2, err := testStore.GetAccount(t.Context(), acc2.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +177,7 @@ func TestTransferTxInsufficientBalance(t *testing.T) {
 	acc1 := createTestAccount(t, u1.Username)
 	acc2 := createTestAccount(t, u2.Username)
 
-	_, err := testStore.TransferTx(context.Background(), TransferTxParams{
+	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
 		FromAccountID: acc1.ID,
 		ToAccountID:   acc2.ID,
 		Amount:        100000,
@@ -188,11 +187,11 @@ func TestTransferTxInsufficientBalance(t *testing.T) {
 	}
 
 	// The whole tx must roll back: both balances stay untouched.
-	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated2, err := testStore.GetAccount(context.Background(), acc2.ID)
+	updated2, err := testStore.GetAccount(t.Context(), acc2.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +210,7 @@ func TestTransferTxForeignKeyViolation(t *testing.T) {
 	u1 := createTestUser(t)
 	acc1 := createTestAccount(t, u1.Username)
 
-	_, err := testStore.TransferTx(context.Background(), TransferTxParams{
+	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
 		FromAccountID: acc1.ID,
 		ToAccountID:   uuid.New(), // no such account
 		Amount:        10,
@@ -220,7 +219,7 @@ func TestTransferTxForeignKeyViolation(t *testing.T) {
 		t.Fatalf("want ErrForeignKeyViolation, got %v", err)
 	}
 
-	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +236,7 @@ func TestTransferTxExactBalance(t *testing.T) {
 	acc1 := createTestAccount(t, u1.Username)
 	acc2 := createTestAccount(t, u2.Username)
 
-	res, err := testStore.TransferTx(context.Background(), TransferTxParams{
+	res, err := testStore.TransferTx(t.Context(), TransferTxParams{
 		FromAccountID: acc1.ID,
 		ToAccountID:   acc2.ID,
 		Amount:        1000, // entire balance
@@ -252,7 +251,7 @@ func TestTransferTxExactBalance(t *testing.T) {
 		t.Errorf("to account balance = %d, want 2000", res.ToAccount.Balance)
 	}
 
-	updated1, err := testStore.GetAccount(context.Background(), acc1.ID)
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +270,7 @@ func TestTransferTxPersistsRows(t *testing.T) {
 	acc2 := createTestAccount(t, u2.Username)
 
 	amount := int64(25)
-	res, err := testStore.TransferTx(context.Background(), TransferTxParams{
+	res, err := testStore.TransferTx(t.Context(), TransferTxParams{
 		FromAccountID: acc1.ID,
 		ToAccountID:   acc2.ID,
 		Amount:        amount,
@@ -280,7 +279,7 @@ func TestTransferTxPersistsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	var (
 		gotAmount int64
 		from, to  uuid.UUID

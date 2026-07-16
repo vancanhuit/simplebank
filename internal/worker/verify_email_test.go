@@ -12,17 +12,17 @@ import (
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
-type mockStore struct {
+type fakeStore struct {
 	store.Store
 	getUser           func(context.Context, string) (sqlcdb.User, error)
 	createVerifyEmail func(context.Context, sqlcdb.CreateVerifyEmailParams) (sqlcdb.VerifyEmail, error)
 }
 
-func (m mockStore) GetUser(ctx context.Context, username string) (sqlcdb.User, error) {
+func (m fakeStore) GetUser(ctx context.Context, username string) (sqlcdb.User, error) {
 	return m.getUser(ctx, username)
 }
 
-func (m mockStore) CreateVerifyEmail(ctx context.Context, arg sqlcdb.CreateVerifyEmailParams) (sqlcdb.VerifyEmail, error) {
+func (m fakeStore) CreateVerifyEmail(ctx context.Context, arg sqlcdb.CreateVerifyEmailParams) (sqlcdb.VerifyEmail, error) {
 	return m.createVerifyEmail(ctx, arg)
 }
 
@@ -38,7 +38,7 @@ func (m *mockMailer) Send(_ context.Context, to, subject, htmlBody string) error
 }
 
 func TestSendVerifyEmailWorker(t *testing.T) {
-	st := mockStore{
+	st := fakeStore{
 		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
 			return sqlcdb.User{Username: username, Email: "alice@example.com", FullName: "<b>Bob</b>"}, nil
 		},
@@ -50,7 +50,7 @@ func TestSendVerifyEmailWorker(t *testing.T) {
 	w := NewSendVerifyEmailWorker(st, mailer, "https://bank.example.com")
 
 	job := &river.Job[SendVerifyEmailArgs]{Args: SendVerifyEmailArgs{Username: "alice"}}
-	if err := w.Work(context.Background(), job); err != nil {
+	if err := w.Work(t.Context(), job); err != nil {
 		t.Fatalf("Work: %v", err)
 	}
 
