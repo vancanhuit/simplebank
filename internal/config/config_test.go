@@ -19,8 +19,10 @@ func TestValidate(t *testing.T) {
 		"missing from":   {DBSource: "x", JWTSecret: "01234567890123456789012345678901"},
 	}
 	for name, cfg := range tests {
-		if err := cfg.Validate(); err == nil {
-			t.Errorf("%s: expected error, got nil", name)
-		}
+		t.Run(name, func(t *testing.T) {
+			if err := cfg.Validate(); err == nil {
+				t.Error("expected error, got nil")
+			}
+		})
 	}
 }

@@ -20,9 +20,11 @@ func TestToHTTPStatus(t *testing.T) {
 		errors.New("some unknown error"): http.StatusInternalServerError,
 	}
 	for err, want := range cases {
-		if got := toHTTPStatus(err); got != want {
-			t.Errorf("%v: got %d want %d", err, got, want)
-		}
+		t.Run(err.Error(), func(t *testing.T) {
+			if got := toHTTPStatus(err); got != want {
+				t.Errorf("got %d want %d", got, want)
+			}
+		})
 	}
 }
 
@@ -37,8 +39,10 @@ func TestClientMessage(t *testing.T) {
 		errors.New("some unknown error"): "request failed",
 	}
 	for err, want := range cases {
-		if got := clientMessage(err); got != want {
-			t.Errorf("%v: got %q want %q", err, got, want)
-		}
+		t.Run(err.Error(), func(t *testing.T) {
+			if got := clientMessage(err); got != want {
+				t.Errorf("got %q want %q", got, want)
+			}
+		})
 	}
 }
