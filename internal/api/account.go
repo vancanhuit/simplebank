@@ -1,6 +1,7 @@
 package api
 
 import (
+	"math"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -79,6 +80,13 @@ func (s *Server) listAccounts(c *echo.Context) error {
 	}
 	size = min(size, 100)
 
+	// Compute the offset in int64 so a large page cannot silently overflow the
+	// int32 offset column. A page past the addressable range holds no rows.
+	offset := int64(page-1) * int64(size)
+	if offset > math.MaxInt32 {
+		return c.JSON(http.StatusOK, []sqlcdb.Account{})
+	}
+
 	payload, err := authPayload(c)
 	if err != nil {
 		return err
@@ -87,7 +95,7 @@ func (s *Server) listAccounts(c *echo.Context) error {
 	accounts, err := s.store.ListAccounts(c.Request().Context(), sqlcdb.ListAccountsParams{
 		Owner:  payload.Username,
 		Limit:  size,
-		Offset: (page - 1) * size,
+		Offset: int32(offset),
 	})
 	if err != nil {
 		return store.ClassifyError(err)
