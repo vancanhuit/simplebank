@@ -1,7 +1,7 @@
 package util
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 )
 
@@ -10,7 +10,7 @@ const alphabet = "abcdefghijklmnopqrstuvwxyz"
 func RandomString(n int) string {
 	var sb strings.Builder
 	for range n {
-		sb.WriteByte(alphabet[rand.Intn(len(alphabet))])
+		sb.WriteByte(alphabet[rand.IntN(len(alphabet))])
 	}
 	return sb.String()
 }

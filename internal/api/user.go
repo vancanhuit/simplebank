@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"time"
 
@@ -121,7 +122,7 @@ func (s *Server) loginUser(c *echo.Context) error {
 	ctx := c.Request().Context()
 	user, err := s.store.GetUser(ctx, req.Username)
 	if err != nil {
-		if store.ClassifyError(err) == store.ErrRecordNotFound {
+		if errors.Is(store.ClassifyError(err), store.ErrRecordNotFound) {
 			// Run a comparison against a dummy hash so an unknown username takes
 			// the same time as a wrong password (no enumeration via timing).
 			_ = util.CheckPassword(req.Password, dummyPasswordHash)
@@ -224,7 +225,7 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 		SecretCode: code,
 	})
 	if err != nil {
-		if store.ClassifyError(err) == store.ErrRecordNotFound {
+		if errors.Is(err, store.ErrRecordNotFound) {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
 		}
 		return err

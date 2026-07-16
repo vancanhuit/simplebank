@@ -40,12 +40,12 @@ func NewServer(
 		Validator:        newValidator(),
 	})
 
+	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(requestLogger())
 	e.Use(middleware.Secure())
 	e.Use(middleware.BodyLimit(1 << 20))
 	e.Use(middleware.ContextTimeout(30 * time.Second))
-	e.Use(middleware.Recover())
 
 	s := &Server{
 		config:      cfg,
