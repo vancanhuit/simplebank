@@ -20,7 +20,7 @@ type SQLStore struct {
 	connPool *pgxpool.Pool
 }
 
-func NewStore(pool *pgxpool.Pool) Store {
+func New(pool *pgxpool.Pool) Store {
 	return &SQLStore{
 		Queries:  sqlcdb.New(pool),
 		connPool: pool,

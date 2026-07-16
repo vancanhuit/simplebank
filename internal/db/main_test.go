@@ -42,6 +42,6 @@ func TestMain(m *testing.M) {
 	}
 
 	testPool = pool
-	testStore = NewStore(pool)
+	testStore = New(pool)
 	os.Exit(m.Run())
 }

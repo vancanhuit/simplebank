@@ -90,7 +90,7 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 		pool.Close()
 		return nil, err
 	}
-	st := store.NewStore(pool)
+	st := store.New(pool)
 	mailer, err := mail.NewSMTPMailer(cfg)
 	if err != nil {
 		pool.Close()

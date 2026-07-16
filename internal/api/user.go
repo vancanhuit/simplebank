@@ -192,10 +192,9 @@ func (s *Server) renewToken(c *echo.Context) error {
 	}
 	tokenMatch := subtle.ConstantTimeCompare(
 		[]byte(session.RefreshToken), []byte(hashRefreshToken(req.RefreshToken))) == 1
-	if session.IsBlocked ||
-		session.Username != refreshPayload.Username ||
-		!tokenMatch ||
-		time.Now().After(session.ExpiresAt) {
+	usernameMatch := session.Username == refreshPayload.Username
+	expired := time.Now().After(session.ExpiresAt)
+	if session.IsBlocked || !usernameMatch || !tokenMatch || expired {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
 	}
 
