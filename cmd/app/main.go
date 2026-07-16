@@ -52,6 +52,25 @@ func mustConfig(cmd *cli.Command) (config.Config, error) {
 	return cfg, cfg.Validate()
 }
 
+// newPool builds the pgx connection pool. Sizing (max/min conns) is left to the
+// operator via config or the DSN, since it depends on the database's connection
+// limit and replica count. A lifetime jitter spreads connection expiry so a
+// batch opened at startup does not all recycle at the same instant.
+func newPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
+	poolCfg, err := pgxpool.ParseConfig(cfg.DBSource)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.DBMaxConns > 0 {
+		poolCfg.MaxConns = int32(cfg.DBMaxConns)
+	}
+	if cfg.DBMinConns > 0 {
+		poolCfg.MinConns = int32(cfg.DBMinConns)
+	}
+	poolCfg.MaxConnLifetimeJitter = poolCfg.MaxConnLifetime / 10
+	return pgxpool.NewWithConfig(ctx, poolCfg)
+}
+
 func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := store.MigrateSchema(ctx, pool); err != nil {
 		return err
@@ -82,7 +101,7 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 	if err != nil {
 		return nil, err
 	}
-	pool, err := pgxpool.New(ctx, cfg.DBSource)
+	pool, err := newPool(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,8 @@ import (
 type Config struct {
 	HTTPAddr        string
 	DBSource        string
+	DBMaxConns      int
+	DBMinConns      int
 	JWTSecret       string
 	AccessTTL       time.Duration
 	RefreshTTL      time.Duration
@@ -39,6 +41,8 @@ func Flags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "http-addr", Value: ":8080", Sources: cli.EnvVars("HTTP_ADDR")},
 		&cli.StringFlag{Name: "db-source", Sources: cli.EnvVars("DB_SOURCE")},
+		&cli.IntFlag{Name: "db-max-conns", Sources: cli.EnvVars("DB_MAX_CONNS")},
+		&cli.IntFlag{Name: "db-min-conns", Sources: cli.EnvVars("DB_MIN_CONNS")},
 		&cli.StringFlag{Name: "jwt-secret", Sources: cli.EnvVars("JWT_SECRET")},
 		&cli.DurationFlag{Name: "access-ttl", Value: 15 * time.Minute, Sources: cli.EnvVars("ACCESS_TTL")},
 		&cli.DurationFlag{Name: "refresh-ttl", Value: 24 * time.Hour, Sources: cli.EnvVars("REFRESH_TTL")},
@@ -56,6 +60,8 @@ func FromCommand(cmd *cli.Command) Config {
 	return Config{
 		HTTPAddr:        cmd.String("http-addr"),
 		DBSource:        cmd.String("db-source"),
+		DBMaxConns:      cmd.Int("db-max-conns"),
+		DBMinConns:      cmd.Int("db-min-conns"),
 		JWTSecret:       cmd.String("jwt-secret"),
 		AccessTTL:       cmd.Duration("access-ttl"),
 		RefreshTTL:      cmd.Duration("refresh-ttl"),
