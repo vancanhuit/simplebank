@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -122,22 +123,31 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Close the pool on any failure after this point; cleared on success so the
+	// caller owns the open pool.
+	defer func() {
+		if pool != nil {
+			pool.Close()
+		}
+	}()
+
 	if err := runMigrations(ctx, pool); err != nil {
-		pool.Close()
 		return nil, err
 	}
 	st := store.New(pool)
 	mailer, err := mail.NewSMTPMailer(cfg)
 	if err != nil {
-		pool.Close()
 		return nil, err
 	}
-	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, "http://localhost"+cfg.HTTPAddr)
+	baseURL := cmp.Or(cfg.PublicBaseURL, "http://localhost"+cfg.HTTPAddr)
+	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, baseURL)
 	if err != nil {
-		pool.Close()
 		return nil, err
 	}
-	return &appDeps{cfg: cfg, pool: pool, store: st, mailer: mailer, riverClient: riverClient}, nil
+
+	deps := &appDeps{cfg: cfg, pool: pool, store: st, mailer: mailer, riverClient: riverClient}
+	pool = nil // success: hand the open pool to the caller
+	return deps, nil
 }
 
 func runServe(ctx context.Context, cmd *cli.Command) error {

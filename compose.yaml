@@ -92,6 +92,7 @@ services:
       SMTP_PORT: "1025"
       SMTP_FROM: "no-reply@simplebank.local"
       SMTP_INSECURE: "true"
+      PUBLIC_BASE_URL: "http://localhost:8080"
     ports:
       - "8080:8080"
     networks:
@@ -141,6 +142,7 @@ services:
       SMTP_PORT: "1025"
       SMTP_FROM: "no-reply@simplebank.local"
       SMTP_INSECURE: "true"
+      PUBLIC_BASE_URL: "https://localhost:8443"
       TLS_CERT_FILE: "/tls/cert.pem"
       TLS_KEY_FILE: "/tls/key.pem"
     volumes:
@@ -194,6 +196,9 @@ services:
       SMTP_PORT: "1025"
       SMTP_FROM: "no-reply@simplebank.local"
       SMTP_INSECURE: "true"
+      # Client-facing URL is the Caddy proxy, not the app's own :8080 listener,
+      # so verification-email links resolve for users behind the proxy.
+      PUBLIC_BASE_URL: "https://localhost:8444"
       # Trust only the pinned proxy subnet so a spoofed X-Forwarded-For from a
       # directly-connected client is ignored.
       TRUSTED_PROXIES: "172.31.0.0/24"

@@ -25,6 +25,7 @@ type Config struct {
 	TLSCertFile     string
 	TLSKeyFile      string
 	TrustedProxies  []string
+	PublicBaseURL   string
 }
 
 func (c Config) Validate() error {
@@ -62,6 +63,7 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "tls-cert-file", Sources: cli.EnvVars("TLS_CERT_FILE")},
 		&cli.StringFlag{Name: "tls-key-file", Sources: cli.EnvVars("TLS_KEY_FILE")},
 		&cli.StringSliceFlag{Name: "trusted-proxies", Sources: cli.EnvVars("TRUSTED_PROXIES")},
+		&cli.StringFlag{Name: "public-base-url", Sources: cli.EnvVars("PUBLIC_BASE_URL")},
 	}
 }
 
@@ -84,5 +86,6 @@ func FromCommand(cmd *cli.Command) Config {
 		TLSCertFile:     cmd.String("tls-cert-file"),
 		TLSKeyFile:      cmd.String("tls-key-file"),
 		TrustedProxies:  cmd.StringSlice("trusted-proxies"),
+		PublicBaseURL:   cmd.String("public-base-url"),
 	}
 }

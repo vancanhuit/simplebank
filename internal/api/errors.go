@@ -26,22 +26,15 @@ var errorCatalog = []struct {
 	{token.ErrInvalidToken, http.StatusUnauthorized, "token is invalid"},
 }
 
-func toHTTPStatus(err error) int {
+// lookupError resolves a domain error to its HTTP status and client-safe
+// message in a single pass over the catalog. Unknown errors map to 500.
+func lookupError(err error) (status int, message string) {
 	for _, e := range errorCatalog {
 		if errors.Is(err, e.is) {
-			return e.status
+			return e.status, e.message
 		}
 	}
-	return http.StatusInternalServerError
-}
-
-func clientMessage(err error) string {
-	for _, e := range errorCatalog {
-		if errors.Is(err, e.is) {
-			return e.message
-		}
-	}
-	return "request failed"
+	return http.StatusInternalServerError, "request failed"
 }
 
 func errorHandler(c *echo.Context, err error) {
@@ -54,10 +47,9 @@ func errorHandler(c *echo.Context, err error) {
 		return
 	}
 
-	status := toHTTPStatus(err)
-	message := "internal server error"
-	if status != http.StatusInternalServerError {
-		message = clientMessage(err)
+	status, message := lookupError(err)
+	if status == http.StatusInternalServerError {
+		message = "internal server error"
 	}
 	// The request logger middleware logs the error once with full request
 	// context (status, path, request_id); logging here too would duplicate it.
