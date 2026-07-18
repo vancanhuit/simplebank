@@ -25,17 +25,33 @@ import (
 	"github.com/vancanhuit/simplebank/internal/worker"
 )
 
+// Injected at build time via -ldflags -X (see the app:build mise task).
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
+)
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
 	cmd := &cli.Command{
-		Name:  "simplebank",
-		Usage: "SimpleBank cloud-native service",
-		Flags: config.Flags(),
+		Name:    "simplebank",
+		Usage:   "SimpleBank cloud-native service",
+		Version: version,
+		Flags:   config.Flags(),
 		Commands: []*cli.Command{
 			{Name: "serve", Usage: "Run the HTTP API server", Action: runServe},
 			{Name: "worker", Usage: "Run the background worker", Action: runWorker},
+			{
+				Name:  "version",
+				Usage: "Print version information",
+				Action: func(_ context.Context, _ *cli.Command) error {
+					fmt.Printf("version:    %s\ncommit:     %s\nbuild date: %s\n", version, commit, buildDate)
+					return nil
+				},
+			},
 		},
 	}
 

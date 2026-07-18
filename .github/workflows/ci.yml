@@ -35,6 +35,8 @@ jobs:
           ls -alhs dist/
           file dist/simplebank
 
+          dist/simplebank version
+
   test:
     runs-on: ubuntu-latest
     steps:

@@ -34,6 +34,7 @@
 # Tooling
 !mise.toml
 !mise.lock
+!env.bash
 !cog.toml
 !.golangci.yml
 !.editorconfig

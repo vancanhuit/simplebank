@@ -7,15 +7,21 @@ x-postgres: &x-postgres-base
 x-mailpit: &x-mailpit-base
   image: axllent/mailpit:latest
   restart: unless-stopped
-  ports:
-    - "8025:8025"
-    - "1025:1025"
   healthcheck:
     test: ["CMD", "/mailpit", "readyz"]
     interval: 5s
     timeout: 30s
     retries: 5
     start_period: 5s
+
+x-app: &x-app-base
+  build:
+    context: .
+    args:
+      VERSION: ${VERSION:-dev}
+      COMMIT: ${COMMIT:-unknown}
+      BUILD_DATE: ${BUILD_DATE:-unknown}
+  command: ["serve"]
 
 services:
   postgres-test:
@@ -41,6 +47,9 @@ services:
     <<: *x-mailpit-base
     profiles:
       - test
+    ports:
+      - "8026:8025"
+      - "1026:1025"
     networks:
       - test
 
@@ -67,12 +76,14 @@ services:
     <<: *x-mailpit-base
     profiles:
       - dev
+    ports:
+      - "8025:8025"
+      - "1025:1025"
     networks:
       - dev
 
   app-dev:
-    build: .
-    command: ["serve"]
+    <<: *x-app-base
     environment:
       HTTP_ADDR: ":8080"
       DB_SOURCE: "postgres://simplebank_dev:simplebank_dev@postgres-dev:5432/simplebank_dev?sslmode=disable"
@@ -95,6 +106,9 @@ services:
     <<: *x-mailpit-base
     profiles:
       - dev-https
+    ports:
+      - "8027:8025"
+      - "1027:1025"
     networks:
       - dev-https
 
@@ -118,8 +132,7 @@ services:
       start_period: 5s
 
   app-dev-https:
-    build: .
-    command: ["serve"]
+    <<: *x-app-base
     environment:
       HTTP_ADDR: ":8443"
       DB_SOURCE: "postgres://simplebank_dev_https:simplebank_dev_https@postgres-dev-https:5432/simplebank_dev_https?sslmode=disable"

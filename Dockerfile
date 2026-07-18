@@ -34,9 +34,14 @@ COPY internal internal
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION
+ARG COMMIT
+ARG BUILD_DATE
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/root/go/pkg/mod \
-    GOOS=$TARGETOS GOARCH=$TARGETARCH mise run app:build
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    VERSION=$VERSION COMMIT=$COMMIT BUILD_DATE=$BUILD_DATE \
+    mise run app:build
 
 FROM gcr.io/distroless/base-debian13
 COPY --from=builder /app/dist/simplebank /simplebank

@@ -2,6 +2,9 @@
 lockfile = true
 auto_install = false
 
+[env]
+'_'.source = { path = 'env.bash', tools =  true }
+
 [tools]
 cocogitto = "7.0.0"
 go = "1.26.5"
@@ -15,7 +18,15 @@ run = 'go run cmd/app/main.go'
 [tasks."app:build"]
 description = "Build the application"
 env = { CGO_ENABLED = "0" }
-run = 'go build -ldflags="-s -w" -o dist/simplebank cmd/app/main.go'
+run = '''
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+go build \
+  -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
+  -o dist/simplebank cmd/app/main.go
+'''
 
 [tasks."compose:dev:up"]
 description = "Run docker compose for development"
@@ -60,7 +71,17 @@ run = 'go test -race -cover -v ./cmd/... ./internal/... -tags=integration'
 
 [tasks."docker:build"]
 description = "Build docker image"
-run = 'docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --load .'
+run = '''
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --load \
+  --build-arg VERSION="$VERSION" \
+  --build-arg COMMIT="$COMMIT" \
+  --build-arg BUILD_DATE="$BUILD_DATE" \
+  .
+'''
 
 [tasks."hooks:install"]
 description = "Install git hooks"
