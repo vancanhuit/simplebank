@@ -24,6 +24,8 @@ run = '''
 set -euo pipefail
 
 go build \
+  -trimpath \
+  -buildvcs=false \
   -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
   -o dist/simplebank cmd/app/main.go
 '''
