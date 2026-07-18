@@ -32,6 +32,27 @@ x-app: &x-app-base
     retries: 5
     start_period: 5s
 
+x-pgadmin: &x-pgadmin-base
+  image: dpage/pgadmin4:latest
+  restart: unless-stopped
+  # Desktop mode: skip pgAdmin's own login screen and master-password prompt so
+  # the web UI opens straight to the pre-loaded server list. These are dev-only
+  # conveniences — never disable pgAdmin auth on a real deployment.
+  environment:
+    # pgAdmin rejects reserved TLDs like .local for the admin email, so use a
+    # generic example.com address. Both values are throwaway dev credentials.
+    PGADMIN_DEFAULT_EMAIL: "admin@example.com"
+    PGADMIN_DEFAULT_PASSWORD: "simplebank"
+    PGADMIN_CONFIG_SERVER_MODE: "False"
+    PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+  healthcheck:
+    test:
+      ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:80/misc/ping')"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 15s
+
 # NOTE: the JWT_SECRET and Postgres credentials below are throwaway values for
 # local dev/CI profiles only. Never reuse them anywhere real — production
 # secrets belong in a secrets manager.
@@ -141,6 +162,22 @@ services:
     profiles:
       - dev
 
+  pgadmin-dev:
+    <<: *x-pgadmin-base
+    profiles:
+      - dev
+    ports:
+      - "5050:80"
+    volumes:
+      # Pre-registers the postgres-dev server; you still enter the dev password
+      # (simplebank_dev) once on first connect and can let pgAdmin save it.
+      - ./pgadmin/servers-dev.json:/pgadmin4/servers.json:ro
+    networks:
+      - dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+
   mailpit-dev-https:
     <<: *x-mailpit-base
     profiles:
@@ -220,6 +257,22 @@ services:
     profiles:
       - dev-https
 
+  pgadmin-dev-https:
+    <<: *x-pgadmin-base
+    profiles:
+      - dev-https
+    ports:
+      - "5051:80"
+    volumes:
+      # Pre-registers the postgres-dev-https server; enter the dev password
+      # (simplebank_dev_https) once on first connect.
+      - ./pgadmin/servers-dev-https.json:/pgadmin4/servers.json:ro
+    networks:
+      - dev-https
+    depends_on:
+      postgres-dev-https:
+        condition: service_healthy
+
   mailpit-dev-proxy:
     <<: *x-mailpit-base
     profiles:
@@ -297,6 +350,22 @@ services:
         condition: service_healthy
     profiles:
       - dev-proxy
+
+  pgadmin-dev-proxy:
+    <<: *x-pgadmin-base
+    profiles:
+      - dev-proxy
+    ports:
+      - "5052:80"
+    volumes:
+      # Pre-registers the postgres-dev-proxy server; enter the dev password
+      # (simplebank_dev_proxy) once on first connect.
+      - ./pgadmin/servers-dev-proxy.json:/pgadmin4/servers.json:ro
+    networks:
+      - dev-proxy
+    depends_on:
+      postgres-dev-proxy:
+        condition: service_healthy
 
   caddy-dev-proxy:
     image: caddy:2-alpine

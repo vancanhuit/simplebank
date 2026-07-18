@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "simplebank-dev-proxy",
+      "Group": "Servers",
+      "Host": "postgres-dev-proxy",
+      "Port": 5432,
+      "MaintenanceDB": "simplebank_dev_proxy",
+      "Username": "simplebank_dev_proxy",
+      "SSLMode": "disable"
+    }
+  }
+}
