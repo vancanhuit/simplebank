@@ -36,4 +36,11 @@ describe("AccountCard", () => {
 
     expect(screen.getByRole("button", { name: /send money/i })).toBeInTheDocument();
   });
+
+  it("links to the account activity page", () => {
+    render(AccountCard, { props: { account } });
+
+    const link = screen.getByRole("link", { name: /activity/i });
+    expect(link).toHaveAttribute("href", `/accounts/${account.id}`);
+  });
 });

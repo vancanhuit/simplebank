@@ -101,3 +101,90 @@ func TestCreateTransferToAccountNotFound(t *testing.T) {
 		t.Fatalf("want 404 for missing destination account, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
+
+func getTransfers(t *testing.T, s *Server, account uuid.UUID, query, username string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+account.String()+"/transfers"+query, nil)
+	req.Header.Set("Authorization", bearer(t, username))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestListTransfersOK(t *testing.T) {
+	t.Parallel()
+	accountID := uuid.New()
+	var gotLimit, gotOffset int32
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			return sqlcdb.Account{ID: id, Owner: "alice", Currency: "USD"}, nil
+		},
+		listTransfers: func(_ context.Context, arg sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error) {
+			gotLimit = arg.PageLimit
+			gotOffset = arg.PageOffset
+			return []sqlcdb.Transfer{{ID: uuid.New(), FromAccountID: arg.AccountID, ToAccountID: uuid.New(), Amount: 100}}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := getTransfers(t, s, accountID, "", "alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if gotLimit != 10 {
+		t.Errorf("default size not applied: PageLimit = %d, want 10", gotLimit)
+	}
+	if gotOffset != 0 {
+		t.Errorf("unexpected offset: PageOffset = %d, want 0", gotOffset)
+	}
+}
+
+func TestListTransfersForbiddenForNonOwner(t *testing.T) {
+	t.Parallel()
+	accountID := uuid.New()
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			return sqlcdb.Account{ID: id, Owner: "bob", Currency: "USD"}, nil
+		},
+		listTransfers: func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error) {
+			t.Fatal("history must not be read for an account the caller does not own")
+			return nil, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := getTransfers(t, s, accountID, "", "alice")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for non-owner, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestListTransfersClampsOversizePage checks the page-size cap: size 500 must be
+// clamped to 100 and page 0 normalized to 1 (offset 0).
+func TestListTransfersClampsOversizePage(t *testing.T) {
+	t.Parallel()
+	accountID := uuid.New()
+	var gotLimit, gotOffset int32
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			return sqlcdb.Account{ID: id, Owner: "alice", Currency: "USD"}, nil
+		},
+		listTransfers: func(_ context.Context, arg sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error) {
+			gotLimit = arg.PageLimit
+			gotOffset = arg.PageOffset
+			return []sqlcdb.Transfer{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := getTransfers(t, s, accountID, "?page=0&size=500", "alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if gotLimit != 100 {
+		t.Errorf("size not capped: PageLimit = %d, want 100", gotLimit)
+	}
+	if gotOffset != 0 {
+		t.Errorf("page not normalized: PageOffset = %d, want 0", gotOffset)
+	}
+}

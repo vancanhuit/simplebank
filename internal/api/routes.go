@@ -22,5 +22,6 @@ func (s *Server) registerRoutes() {
 	auth.POST("/accounts", s.createAccount)
 	auth.GET("/accounts/:id", s.getAccount)
 	auth.GET("/accounts", s.listAccounts)
+	auth.GET("/accounts/:id/transfers", s.listTransfers)
 	auth.POST("/transfers", s.createTransfer)
 }

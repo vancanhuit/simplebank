@@ -34,6 +34,7 @@ type fakeStore struct {
 	verifyEmailTx func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
 	listAccounts  func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
 	createAccount func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
+	listTransfers func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
 }
 
 func (f fakeStore) CreateUserTx(ctx context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
@@ -70,6 +71,10 @@ func (f fakeStore) ListAccounts(ctx context.Context, arg sqlcdb.ListAccountsPara
 
 func (f fakeStore) CreateAccount(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
 	return f.createAccount(ctx, arg)
+}
+
+func (f fakeStore) ListTransfersByAccount(ctx context.Context, arg sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error) {
+	return f.listTransfers(ctx, arg)
 }
 
 func newTestServer(t *testing.T) *Server {

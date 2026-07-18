@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"math"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -59,6 +60,62 @@ func (s *Server) createTransfer(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, result)
+}
+
+// listTransfers returns the transfer history for an account the caller owns,
+// covering both sent and received transfers, newest first.
+func (s *Server) listTransfers(c *echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid account id")
+	}
+
+	page, err := echo.QueryParamOr[int32](c, "page", 1)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid page")
+	}
+	size, err := echo.QueryParamOr[int32](c, "size", 10)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
+	}
+	page = max(page, 1)
+	if size < 1 {
+		size = 10
+	}
+	size = min(size, 100)
+
+	ctx := c.Request().Context()
+
+	// Authorize against the account's owner before returning its history, the
+	// same ownership check getAccount performs.
+	account, err := s.store.GetAccount(ctx, id)
+	if err != nil {
+		return store.ClassifyError(err)
+	}
+	payload, err := authPayload(c)
+	if err != nil {
+		return err
+	}
+	if err := authorizeOwner(payload, account.Owner); err != nil {
+		return err
+	}
+
+	// Compute the offset in int64 so a large page cannot silently overflow the
+	// int32 offset column. A page past the addressable range holds no rows.
+	offset := int64(page-1) * int64(size)
+	if offset > math.MaxInt32 {
+		return c.JSON(http.StatusOK, []sqlcdb.Transfer{})
+	}
+
+	transfers, err := s.store.ListTransfersByAccount(ctx, sqlcdb.ListTransfersByAccountParams{
+		AccountID:  id,
+		PageLimit:  size,
+		PageOffset: int32(offset),
+	})
+	if err != nil {
+		return store.ClassifyError(err)
+	}
+	return c.JSON(http.StatusOK, transfers)
 }
 
 func (s *Server) validAccount(ctx context.Context, id uuid.UUID, currency string) (sqlcdb.Account, error) {

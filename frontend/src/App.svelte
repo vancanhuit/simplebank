@@ -10,6 +10,7 @@
   import NewAccountPage from "./lib/pages/NewAccountPage.svelte";
   import NotFoundPage from "./lib/pages/NotFoundPage.svelte";
   import VerifyEmailPage from "./lib/pages/VerifyEmailPage.svelte";
+  import AccountHistoryPage from "./lib/pages/AccountHistoryPage.svelte";
 
   onMount(() => auth.init());
 
@@ -36,6 +37,11 @@
       case "/accounts/new":
         return { component: NewAccountPage, chrome: true };
       default:
+        // /accounts/:id (any id other than the reserved "new") shows account
+        // activity; everything else is a 404.
+        if (/^\/accounts\/[^/]+$/.test(path)) {
+          return { component: AccountHistoryPage, chrome: true };
+        }
         return { component: NotFoundPage, chrome: true };
     }
   });

@@ -22,6 +22,7 @@ type Querier interface {
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	GetUser(ctx context.Context, username string) (User, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
+	ListTransfersByAccount(ctx context.Context, arg ListTransfersByAccountParams) ([]Transfer, error)
 	UpdateVerifyEmail(ctx context.Context, arg UpdateVerifyEmailParams) (VerifyEmail, error)
 	VerifyUserEmail(ctx context.Context, username string) (User, error)
 }

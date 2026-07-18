@@ -3,7 +3,7 @@
   import { formatMoney } from "../money";
   import { accounts } from "../stores/accounts.svelte";
   import { navigate } from "../router.svelte";
-
+  import Link from "./Link.svelte";
   interface Props {
     account: Account;
   }
@@ -68,11 +68,19 @@
     </div>
   </div>
 
-  <button
-    type="button"
-    class="self-start text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
-    onclick={sendFromHere}
-  >
-    Send money →
-  </button>
+  <div class="flex items-center justify-between gap-3">
+    <button
+      type="button"
+      class="text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
+      onclick={sendFromHere}
+    >
+      Send money →
+    </button>
+    <Link
+      href={`/accounts/${account.id}`}
+      class="text-sm font-medium text-muted transition-colors hover:text-ink"
+    >
+      Activity
+    </Link>
+  </div>
 </article>
