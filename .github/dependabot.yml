@@ -20,6 +20,18 @@ updates:
         patterns:
           - "*"
 
+  # Frontend SPA (Bun + Svelte + Vite). The npm ecosystem reads package.json
+  # and bun.lock.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+
   - package-ecosystem: docker
     directory: /
     schedule:

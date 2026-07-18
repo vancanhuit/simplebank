@@ -6,6 +6,7 @@ auto_install = false
 '_'.source = { path = 'env.bash', tools =  true }
 
 [tools]
+bun = "1.3.14"
 cocogitto = "7.0.0"
 go = "1.26.5"
 golangci-lint = "2.12.2"
@@ -122,3 +123,48 @@ run = 'docker compose --profile dev-proxy up -d --wait --build'
 [tasks."compose:dev-proxy:down"]
 description = "Stop docker compose proxy-aware topology"
 run = 'docker compose --profile dev-proxy down -v'
+
+[tasks."frontend:install"]
+description = "Install frontend dependencies"
+dir = "frontend"
+run = 'bun install'
+
+[tasks."frontend:dev"]
+description = "Run the frontend dev server"
+dir = "frontend"
+run = 'bun run dev'
+
+[tasks."frontend:build"]
+description = "Build the frontend for production"
+dir = "frontend"
+run = 'bun run build'
+
+[tasks."frontend:preview"]
+description = "Preview the production frontend build"
+dir = "frontend"
+run = 'bun run preview'
+
+[tasks."frontend:check"]
+description = "Type-check the frontend (svelte-check + tsc)"
+dir = "frontend"
+run = 'bun run check'
+
+[tasks."frontend:lint"]
+description = "Lint the frontend with ESLint"
+dir = "frontend"
+run = 'bun run lint'
+
+[tasks."frontend:lint:fix"]
+description = "Lint and auto-fix the frontend with ESLint"
+dir = "frontend"
+run = 'bun run lint:fix'
+
+[tasks."frontend:format"]
+description = "Format the frontend with Prettier"
+dir = "frontend"
+run = 'bun run format'
+
+[tasks."frontend:format:check"]
+description = "Check frontend formatting with Prettier"
+dir = "frontend"
+run = 'bun run format:check'

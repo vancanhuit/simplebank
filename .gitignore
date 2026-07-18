@@ -48,3 +48,11 @@
 
 # Agent skills
 !.agents/**
+
+# Frontend (Bun + Svelte + Vite SPA)
+# Build output and dependencies are excluded by frontend/.gitignore.
+!frontend/*
+!frontend/src/**
+!frontend/public/**
+
+.vscode/
