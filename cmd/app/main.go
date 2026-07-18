@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -150,6 +151,23 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 			return nil
 		},
 	}
+
+	if app.cfg.TLSCertFile != "" {
+		cert, err := os.ReadFile(app.cfg.TLSCertFile)
+		if err != nil {
+			return fmt.Errorf("reading tls cert file %s: %w", app.cfg.TLSCertFile, err)
+		}
+		key, err := os.ReadFile(app.cfg.TLSKeyFile)
+		if err != nil {
+			return fmt.Errorf("reading tls key file %s: %w", app.cfg.TLSKeyFile, err)
+		}
+		slog.Info("starting server with TLS", "addr", app.cfg.HTTPAddr)
+		if err := sc.StartTLS(ctx, server.Handler(), cert, key); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
+
 	if err := sc.Start(ctx, server.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

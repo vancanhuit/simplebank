@@ -57,6 +57,10 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
+    env:
+      # Pin the mkcert CA location so `dev:tls:certs` and the curl check below
+      # agree on where rootCA.pem lives. No `mkcert -install`, so no root/sudo.
+      CAROOT: ${{ github.workspace }}/.mkcert
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
@@ -74,7 +78,20 @@ jobs:
           version: latest
       - run: |
           mise run compose:dev:up
+          mise run compose:dev-https:up
+      - name: HTTP smoke test
+        run: |
+          curl -sSf -v --retry 5 --retry-connrefused \
+            http://localhost:8080/livez
+      - name: HTTPS smoke test (trust mkcert CA via --cacert)
+        run: |
+          curl -sSf -v --retry 5 --retry-connrefused \
+            --cacert "$CAROOT/rootCA.pem" \
+            https://localhost:8443/livez
+      - if: always()
+        run: |
           mise run compose:dev:down
+          mise run compose:dev-https:down
 
   docker:
     runs-on: ubuntu-latest

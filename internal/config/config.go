@@ -22,6 +22,8 @@ type Config struct {
 	SMTPFrom        string
 	SMTPInsecure    bool
 	RiverMaxWorkers int
+	TLSCertFile     string
+	TLSKeyFile      string
 }
 
 func (c Config) Validate() error {
@@ -33,6 +35,9 @@ func (c Config) Validate() error {
 	}
 	if c.SMTPFrom == "" {
 		return errors.New("smtp-from is required")
+	}
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return errors.New("tls-cert-file and tls-key-file must be set together")
 	}
 	return nil
 }
@@ -53,6 +58,8 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "smtp-from", Sources: cli.EnvVars("SMTP_FROM")},
 		&cli.BoolFlag{Name: "smtp-insecure", Sources: cli.EnvVars("SMTP_INSECURE")},
 		&cli.IntFlag{Name: "river-max-workers", Value: 10, Sources: cli.EnvVars("RIVER_MAX_WORKERS")},
+		&cli.StringFlag{Name: "tls-cert-file", Sources: cli.EnvVars("TLS_CERT_FILE")},
+		&cli.StringFlag{Name: "tls-key-file", Sources: cli.EnvVars("TLS_KEY_FILE")},
 	}
 }
 
@@ -72,5 +79,7 @@ func FromCommand(cmd *cli.Command) Config {
 		SMTPFrom:        cmd.String("smtp-from"),
 		SMTPInsecure:    cmd.Bool("smtp-insecure"),
 		RiverMaxWorkers: cmd.Int("river-max-workers"),
+		TLSCertFile:     cmd.String("tls-cert-file"),
+		TLSKeyFile:      cmd.String("tls-key-file"),
 	}
 }

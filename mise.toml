@@ -1,10 +1,12 @@
 [settings]
+lockfile = true
 auto_install = false
 
 [tools]
 cocogitto = "7.0.0"
 go = "1.26.5"
 golangci-lint = "2.12.2"
+mkcert = "1.4.4"
 
 [tasks."app"]
 description = "Run the application"
@@ -67,3 +69,20 @@ run = 'cog install-hook --all'
 [tasks."sqlc:generate"]
 description = "Generate Go code from SQL with sqlc"
 run = ['go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest', 'sqlc generate']
+
+[tasks."dev:tls:certs"]
+description = "Generate TLS certificates for development"
+outputs = ["tls/cert.pem", "tls/key.pem"]
+run = [
+  'mkdir -pv tls',
+  'mkcert -cert-file tls/cert.pem -key-file tls/key.pem localhost 127.0.0.1 ::1',
+]
+
+[tasks."compose:dev-https:up"]
+description = "Run docker compose for development with HTTPS"
+depends = ["dev:tls:certs"]
+run = 'docker compose --profile dev-https up -d --wait --build'
+
+[tasks."compose:dev-https:down"]
+description = "Stop docker compose for development with HTTPS"
+run = 'docker compose --profile dev-https down -v'
