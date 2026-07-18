@@ -3,7 +3,7 @@ lockfile = true
 auto_install = false
 
 [env]
-'_'.source = { path = 'env.bash', tools =  true }
+'_'.source = { path = 'env.bash', tools = true }
 
 [tools]
 bun = "1.3.14"
