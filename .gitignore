@@ -1,8 +1,47 @@
-dist/
-/app
-.superpowers/
-.env
-.env.local
-.env.*.local
-*.key
-*.pem
+# Allowlisting gitignore template for GO projects prevents us
+# from adding various unwanted local files, such as generated
+# files, developer configurations or IDE-specific files etc.
+#
+# Recommended: Go.AllowList.gitignore
+
+# Ignore everything
+
+*
+
+# But not these files...
+!/.gitignore
+# Descend into subdirectories (without this, nested allowlist rules never match)
+!*/
+
+# Go sources (any package)
+!*.go
+!go.mod
+!go.sum
+
+# SQL: sqlc migrations and queries
+!internal/db/migrations/*.sql
+!internal/db/query/*.sql
+
+# Docs
+!/README.md
+!docs/**/*.md
+
+# Container
+!Dockerfile
+!compose.yaml
+!.dockerignore
+
+# Tooling
+!mise.toml
+!mise.lock
+!cog.toml
+!.golangci.yml
+!.editorconfig
+!sqlc.yaml
+
+# CI
+!.github/workflows/*.yml
+!.github/*.yml
+
+# Agent skills
+!.agents/**
