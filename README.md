@@ -34,7 +34,10 @@ Migrations (schema + River) run automatically on startup.
 | Command | Description |
 |---------|-------------|
 | `mise run app` | Run the CLI (`serve` or `worker` subcommand) |
-| `mise run app:build` | Build a static binary to `dist/simplebank` |
+| `mise run app:build` | Build the single binary to `dist/simplebank`, with the SPA embedded |
+| `mise run frontend:dev` | Run the Vite dev server (proxies `/api` to `:8080`) |
+| `mise run frontend:build` | Build the SPA into `frontend/dist` |
+| `mise run frontend:test` | Frontend unit tests (Vitest) |
 | `mise run compose:dev:up` / `:down` | Start / stop the dev stack (DB, Mailpit, app) |
 | `mise run compose:test:up` / `:down` | Start / stop the test stack |
 | `mise run test:unit` | Unit tests (`-race -cover`) |

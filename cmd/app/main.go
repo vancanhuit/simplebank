@@ -19,6 +19,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/urfave/cli/v3"
 
+	"github.com/vancanhuit/simplebank/frontend"
 	"github.com/vancanhuit/simplebank/internal/api"
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
@@ -168,6 +169,12 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+
+	dist, err := frontend.Dist()
+	if err != nil {
+		return err
+	}
+	server.RegisterSPA(dist)
 
 	sc := echo.StartConfig{
 		Address:         app.cfg.HTTPAddr,

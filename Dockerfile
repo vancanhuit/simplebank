@@ -20,7 +20,7 @@ WORKDIR /app
 COPY mise.toml .
 COPY mise.lock .
 RUN --mount=type=cache,target=/mise/cache \
-    mise trust && mise install go
+    mise trust && mise install go bun
 
 COPY go.mod .
 COPY go.sum .
@@ -33,6 +33,8 @@ COPY sqlc.yaml sqlc.yaml
 COPY cmd cmd
 COPY internal internal
 
+COPY frontend/ frontend/
+
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION
@@ -40,6 +42,7 @@ ARG COMMIT
 ARG BUILD_DATE
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/root/go/pkg/mod \
+    --mount=type=cache,target=/root/.bun/install/cache \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     VERSION=$VERSION COMMIT=$COMMIT BUILD_DATE=$BUILD_DATE \
     mise run app:build

@@ -1,10 +1,9 @@
 <script lang="ts">
-  interface Props {
-    /** Full name of the signed-in user, shown in the account button. */
-    userName: string;
-  }
+  import { auth } from "../stores/auth.svelte";
+  import { accounts } from "../stores/accounts.svelte";
+  import Link from "./Link.svelte";
 
-  let { userName }: Props = $props();
+  const userName = $derived(auth.user?.full_name ?? "");
 
   const initials = $derived(
     userName
@@ -16,15 +15,19 @@
   );
 
   const nav = [
-    { label: "Overview", href: "#overview", current: true },
-    { label: "Accounts", href: "#accounts", current: false },
-    { label: "Activity", href: "#activity", current: false },
+    { label: "Overview", href: "/" },
+    { label: "Transfer", href: "/transfer" },
   ];
+
+  function logout() {
+    accounts.reset();
+    auth.logout();
+  }
 </script>
 
 <header class="border-b border-border bg-surface">
   <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
-    <a href="#overview" class="flex items-center gap-2 font-semibold text-ink">
+    <Link href="/" class="flex items-center gap-2 font-semibold text-ink">
       <span
         class="grid h-8 w-8 place-items-center rounded-lg bg-brand text-surface"
         aria-hidden="true"
@@ -36,35 +39,43 @@
         </svg>
       </span>
       SimpleBank
-    </a>
+    </Link>
 
     <nav aria-label="Primary" class="hidden sm:block">
       <ul class="flex items-center gap-1">
         {#each nav as item (item.href)}
           <li>
-            <a
+            <Link
               href={item.href}
-              aria-current={item.current ? "page" : undefined}
-              class="rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-strong"
+              class="block rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-strong"
             >
               {item.label}
-            </a>
+            </Link>
           </li>
         {/each}
       </ul>
     </nav>
 
-    <button
-      type="button"
-      class="ml-auto flex items-center gap-2 rounded-full border border-border py-1 pr-3 pl-1 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
-    >
+    <div class="ml-auto flex items-center gap-3">
       <span
-        class="grid h-7 w-7 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand-strong"
-        aria-hidden="true"
+        class="hidden items-center gap-2 text-sm font-medium text-ink sm:flex"
+        title={auth.user?.email}
       >
-        {initials}
+        <span
+          class="grid h-7 w-7 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand-strong"
+          aria-hidden="true"
+        >
+          {initials}
+        </span>
+        {userName}
       </span>
-      <span class="hidden sm:inline">{userName}</span>
-    </button>
+      <button
+        type="button"
+        class="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
+        onclick={logout}
+      >
+        Sign out
+      </button>
+    </div>
   </div>
 </header>

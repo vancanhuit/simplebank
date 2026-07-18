@@ -14,10 +14,12 @@ mkcert = "1.4.4"
 
 [tasks."app"]
 description = "Run the application"
+depends = ["frontend:build"]
 run = 'go run cmd/app/main.go'
 
 [tasks."app:build"]
-description = "Build the application"
+description = "Build the single binary with the embedded SPA"
+depends = ["frontend:build"]
 env = { CGO_ENABLED = "0" }
 run = '''
 #!/usr/bin/env bash
@@ -45,10 +47,12 @@ run = 'golangci-lint fmt -v ./cmd/... ./internal/...'
 
 [tasks.golangci-lint]
 description = "Run golangci-lint"
+depends = ["frontend:build"]
 run = 'golangci-lint run -v ./cmd/... ./internal/...'
 
 [tasks.govulncheck]
 description = "Run govulncheck"
+depends = ["frontend:build"]
 run = [
   'go install golang.org/x/vuln/cmd/govulncheck@latest',
   'govulncheck -show verbose ./cmd/... ./internal/...',
@@ -56,6 +60,7 @@ run = [
 
 [tasks."test:unit"]
 description = "Run unit tests"
+depends = ["frontend:build"]
 run = 'go test -race -cover -v ./cmd/... ./internal/...'
 
 [tasks."compose:test:up"]
@@ -68,7 +73,7 @@ run = 'docker compose --profile test down -v'
 
 [tasks."test:integration"]
 description = "Run integration tests"
-depends = ["compose:test:up"]
+depends = ["frontend:build", "compose:test:up"]
 depends_post = ["compose:test:down"]
 run = 'go test -race -cover -v ./cmd/... ./internal/... -tags=integration'
 
@@ -127,7 +132,7 @@ run = 'docker compose --profile dev-proxy down -v'
 [tasks."frontend:install"]
 description = "Install frontend dependencies"
 dir = "frontend"
-run = 'bun install'
+run = 'bun install --frozen-lockfile'
 
 [tasks."frontend:dev"]
 description = "Run the frontend dev server"
@@ -137,6 +142,7 @@ run = 'bun run dev'
 [tasks."frontend:build"]
 description = "Build the frontend for production"
 dir = "frontend"
+depends = ["frontend:install"]
 run = 'bun run build'
 
 [tasks."frontend:preview"]
@@ -148,6 +154,11 @@ run = 'bun run preview'
 description = "Type-check the frontend (svelte-check + tsc)"
 dir = "frontend"
 run = 'bun run check'
+
+[tasks."frontend:test"]
+description = "Run the frontend unit tests (Vitest)"
+dir = "frontend"
+run = 'bun run test'
 
 [tasks."frontend:lint"]
 description = "Lint the frontend with ESLint"

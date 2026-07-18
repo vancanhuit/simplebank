@@ -87,6 +87,7 @@ jobs:
             ${{ runner.os }}-bun-
       - run: mise run frontend:install
       - run: mise run frontend:check
+      - run: mise run frontend:test
       - run: mise run frontend:lint
       - run: mise run frontend:format:check
       - run: mise run frontend:build
