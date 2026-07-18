@@ -26,6 +26,7 @@ func postTransfer(t *testing.T, s *Server, from, to uuid.UUID, currency, usernam
 }
 
 func TestCreateTransferOK(t *testing.T) {
+	t.Parallel()
 	fromID := uuid.New()
 	toID := uuid.New()
 	var transferred bool
@@ -56,6 +57,7 @@ func TestCreateTransferOK(t *testing.T) {
 }
 
 func TestCreateTransferCurrencyMismatch(t *testing.T) {
+	t.Parallel()
 	fromID := uuid.New()
 	toID := uuid.New()
 	fake := fakeStore{
@@ -77,6 +79,7 @@ func TestCreateTransferCurrencyMismatch(t *testing.T) {
 }
 
 func TestCreateTransferToAccountNotFound(t *testing.T) {
+	t.Parallel()
 	fromID := uuid.New()
 	toID := uuid.New()
 	fake := fakeStore{

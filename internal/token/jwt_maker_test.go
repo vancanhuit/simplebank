@@ -11,6 +11,7 @@ import (
 const testSecret = "01234567890123456789012345678901"
 
 func TestJWTMaker(t *testing.T) {
+	t.Parallel()
 	maker, err := NewJWTMaker(testSecret)
 	if err != nil {
 		t.Fatal(err)
@@ -32,34 +33,61 @@ func TestJWTMaker(t *testing.T) {
 }
 
 func TestJWTMakerExpired(t *testing.T) {
-	maker, _ := NewJWTMaker(testSecret)
-	token, _, _ := maker.CreateToken("alice", "depositor", -time.Minute)
-	_, err := maker.VerifyToken(token)
-	if !errors.Is(err, ErrExpiredToken) {
+	t.Parallel()
+	maker, err := NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := maker.CreateToken("alice", "depositor", -time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maker.VerifyToken(token); !errors.Is(err, ErrExpiredToken) {
 		t.Fatalf("want ErrExpiredToken, got %v", err)
 	}
 }
 
 func TestJWTMakerInvalidAlg(t *testing.T) {
-	payload, _ := NewPayload("alice", "depositor", time.Minute)
+	t.Parallel()
+	payload, err := NewPayload("alice", "depositor", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodNone, payload)
-	signed, _ := jwtToken.SignedString(jwt.UnsafeAllowNoneSignatureType)
-	maker, _ := NewJWTMaker(testSecret)
+	signed, err := jwtToken.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maker, err := NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := maker.VerifyToken(signed); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("want ErrInvalidToken, got %v", err)
 	}
 }
 
 func TestJWTMakerWrongSecret(t *testing.T) {
-	maker, _ := NewJWTMaker(testSecret)
-	token, _, _ := maker.CreateToken("alice", "depositor", time.Minute)
-	other, _ := NewJWTMaker("abcdefghijabcdefghijabcdefghij12")
+	t.Parallel()
+	maker, err := NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := maker.CreateToken("alice", "depositor", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := NewJWTMaker("abcdefghijabcdefghijabcdefghij12")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := other.VerifyToken(token); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("want ErrInvalidToken, got %v", err)
 	}
 }
 
 func TestNewJWTMakerShortKey(t *testing.T) {
+	t.Parallel()
 	if _, err := NewJWTMaker("short"); err == nil {
 		t.Fatal("want error for key shorter than 32 chars")
 	}

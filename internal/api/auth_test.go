@@ -31,6 +31,7 @@ func bearer(t *testing.T, username string) string {
 }
 
 func TestProtectedRouteRequiresAuth(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+uuid.NewString(), nil)
 	rec := httptest.NewRecorder()
@@ -41,6 +42,7 @@ func TestProtectedRouteRequiresAuth(t *testing.T) {
 }
 
 func TestProtectedRouteRejectsBadToken(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+uuid.NewString(), nil)
 	req.Header.Set("Authorization", "Bearer not-a-real-token")
@@ -52,6 +54,7 @@ func TestProtectedRouteRejectsBadToken(t *testing.T) {
 }
 
 func TestGetAccountForbiddenWhenNotOwner(t *testing.T) {
+	t.Parallel()
 	id := uuid.New()
 	fake := fakeStore{
 		getAccount: func(_ context.Context, _ uuid.UUID) (sqlcdb.Account, error) {
@@ -71,6 +74,7 @@ func TestGetAccountForbiddenWhenNotOwner(t *testing.T) {
 }
 
 func TestGetAccountOKForOwner(t *testing.T) {
+	t.Parallel()
 	id := uuid.New()
 	fake := fakeStore{
 		getAccount: func(_ context.Context, _ uuid.UUID) (sqlcdb.Account, error) {
@@ -90,6 +94,7 @@ func TestGetAccountOKForOwner(t *testing.T) {
 }
 
 func TestCreateTransferForbiddenWhenNotFromOwner(t *testing.T) {
+	t.Parallel()
 	fromID := uuid.New()
 	toID := uuid.New()
 	fake := fakeStore{
@@ -116,6 +121,7 @@ func TestCreateTransferForbiddenWhenNotFromOwner(t *testing.T) {
 }
 
 func TestCreateTransferSameAccount(t *testing.T) {
+	t.Parallel()
 	id := uuid.New()
 	fake := fakeStore{
 		getAccount: func(_ context.Context, _ uuid.UUID) (sqlcdb.Account, error) {

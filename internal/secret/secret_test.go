@@ -3,6 +3,7 @@ package secret
 import "testing"
 
 func TestToken(t *testing.T) {
+	t.Parallel()
 	a, err := Token(32)
 	if err != nil {
 		t.Fatal(err)
@@ -26,6 +27,7 @@ func TestToken(t *testing.T) {
 // Token(0) currently returns an empty string and no error. Pin that behavior so
 // a future change to reject n<=0 is a deliberate decision.
 func TestTokenZero(t *testing.T) {
+	t.Parallel()
 	tok, err := Token(0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

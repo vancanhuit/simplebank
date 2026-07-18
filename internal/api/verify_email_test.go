@@ -23,6 +23,7 @@ func getVerifyEmail(t *testing.T, s *Server, id, code string) *httptest.Response
 }
 
 func TestVerifyEmailOK(t *testing.T) {
+	t.Parallel()
 	var called bool
 	fake := fakeStore{
 		verifyEmailTx: func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
@@ -42,6 +43,7 @@ func TestVerifyEmailOK(t *testing.T) {
 }
 
 func TestVerifyEmailBadID(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		verifyEmailTx: func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
 			t.Fatal("store must not be reached for a malformed id")
@@ -56,6 +58,7 @@ func TestVerifyEmailBadID(t *testing.T) {
 }
 
 func TestVerifyEmailEmptyCode(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		verifyEmailTx: func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
 			t.Fatal("store must not be reached for an empty code")
@@ -73,6 +76,7 @@ func TestVerifyEmailEmptyCode(t *testing.T) {
 // and never the query string, so the secret verification `code` cannot leak
 // into logs.
 func TestVerifyEmailCodeNotLogged(t *testing.T) {
+	t.Parallel()
 	const secret = "super-secret-verification-code"
 	fake := fakeStore{
 		verifyEmailTx: func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
@@ -99,6 +103,7 @@ func TestVerifyEmailCodeNotLogged(t *testing.T) {
 }
 
 func TestVerifyEmailInvalidCode(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		verifyEmailTx: func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
 			return store.VerifyEmailTxResult{}, store.ErrRecordNotFound

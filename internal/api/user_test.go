@@ -95,6 +95,7 @@ func newTestServerWithStore(t *testing.T, st store.Store) *Server {
 }
 
 func TestCreateUserBadRequest(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(`{"username":""}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -106,6 +107,7 @@ func TestCreateUserBadRequest(t *testing.T) {
 }
 
 func TestCreateUserOK(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		createUserTx: func(_ context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
 			return sqlcdb.User{
@@ -137,6 +139,7 @@ func TestCreateUserOK(t *testing.T) {
 }
 
 func TestCreateUserDuplicate(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
 			return sqlcdb.User{}, store.ErrUniqueViolation
@@ -156,6 +159,7 @@ func TestCreateUserDuplicate(t *testing.T) {
 }
 
 func TestCreateUserPasswordTooLong(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
 			t.Fatal("user must not be created for an over-long password")
@@ -179,6 +183,7 @@ func TestCreateUserPasswordTooLong(t *testing.T) {
 }
 
 func TestLoginUserOK(t *testing.T) {
+	t.Parallel()
 	hashed, err := password.Hash("secret123")
 	if err != nil {
 		t.Fatal(err)
@@ -217,6 +222,7 @@ func TestLoginUserOK(t *testing.T) {
 }
 
 func TestLoginUserWrongPassword(t *testing.T) {
+	t.Parallel()
 	hashed, err := password.Hash("secret123")
 	if err != nil {
 		t.Fatal(err)
@@ -244,6 +250,7 @@ func TestLoginUserWrongPassword(t *testing.T) {
 }
 
 func TestLoginUserUnknown(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		getUser: func(context.Context, string) (sqlcdb.User, error) {
 			return sqlcdb.User{}, store.ErrRecordNotFound

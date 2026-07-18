@@ -49,6 +49,7 @@ func postRenew(t *testing.T, s *Server, refresh string) *httptest.ResponseRecord
 }
 
 func TestRenewTokenOK(t *testing.T) {
+	t.Parallel()
 	tok, session := refreshToken(t, "alice", nil)
 	fake := fakeStore{
 		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
@@ -62,6 +63,7 @@ func TestRenewTokenOK(t *testing.T) {
 }
 
 func TestRenewTokenBlockedSession(t *testing.T) {
+	t.Parallel()
 	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.IsBlocked = true })
 	fake := fakeStore{
 		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
@@ -74,6 +76,7 @@ func TestRenewTokenBlockedSession(t *testing.T) {
 }
 
 func TestRenewTokenUsernameMismatch(t *testing.T) {
+	t.Parallel()
 	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.Username = "bob" })
 	fake := fakeStore{
 		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
@@ -86,6 +89,7 @@ func TestRenewTokenUsernameMismatch(t *testing.T) {
 }
 
 func TestRenewTokenRefreshMismatch(t *testing.T) {
+	t.Parallel()
 	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.RefreshToken = "a-different-token" })
 	fake := fakeStore{
 		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
@@ -98,6 +102,7 @@ func TestRenewTokenRefreshMismatch(t *testing.T) {
 }
 
 func TestRenewTokenExpiredSession(t *testing.T) {
+	t.Parallel()
 	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.ExpiresAt = time.Now().Add(-time.Minute) })
 	fake := fakeStore{
 		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
@@ -110,6 +115,7 @@ func TestRenewTokenExpiredSession(t *testing.T) {
 }
 
 func TestRenewTokenInvalidToken(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	if rec := postRenew(t, s, "not-a-valid-token"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for invalid refresh token, got %d", rec.Code)

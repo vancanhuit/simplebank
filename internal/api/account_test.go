@@ -13,6 +13,7 @@ import (
 )
 
 func TestCreateAccountOK(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		createAccount: func(_ context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
 			return sqlcdb.Account{ID: uuid.New(), Owner: arg.Owner, Currency: arg.Currency}, nil
@@ -32,6 +33,7 @@ func TestCreateAccountOK(t *testing.T) {
 }
 
 func TestCreateAccountUnsupportedCurrency(t *testing.T) {
+	t.Parallel()
 	fake := fakeStore{
 		createAccount: func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
 			t.Fatal("store must not be reached for an unsupported currency")
@@ -54,6 +56,7 @@ func TestCreateAccountUnsupportedCurrency(t *testing.T) {
 // TestListAccountsClampsOversizePage checks the page-size cap: size 500 must be
 // clamped to 100 and page 0 normalized to 1 (offset 0).
 func TestListAccountsClampsOversizePage(t *testing.T) {
+	t.Parallel()
 	var gotLimit, gotOffset int32
 	fake := fakeStore{
 		listAccounts: func(_ context.Context, arg sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
@@ -82,6 +85,7 @@ func TestListAccountsClampsOversizePage(t *testing.T) {
 
 // TestListAccountsDefaultsSize checks size 0 falls back to the default of 5.
 func TestListAccountsDefaultsSize(t *testing.T) {
+	t.Parallel()
 	var gotLimit int32
 	fake := fakeStore{
 		listAccounts: func(_ context.Context, arg sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {

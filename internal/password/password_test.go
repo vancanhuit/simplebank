@@ -10,6 +10,7 @@ import (
 )
 
 func TestHashAndCheck(t *testing.T) {
+	t.Parallel()
 	pw := random.String(8)
 
 	hashed, err := Hash(pw)
@@ -35,6 +36,7 @@ func TestHashAndCheck(t *testing.T) {
 // bcrypt rejects inputs longer than 72 bytes; Hash must surface that error
 // rather than silently truncating.
 func TestHashTooLong(t *testing.T) {
+	t.Parallel()
 	long := make([]byte, 73)
 	for i := range long {
 		long[i] = 'a'

@@ -27,6 +27,7 @@ func newHealthServer(t *testing.T, readiness func(context.Context) error) *Serve
 }
 
 func TestReadyzReady(t *testing.T) {
+	t.Parallel()
 	s := newHealthServer(t, func(context.Context) error { return nil })
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()
@@ -37,6 +38,7 @@ func TestReadyzReady(t *testing.T) {
 }
 
 func TestReadyzUnavailable(t *testing.T) {
+	t.Parallel()
 	s := newHealthServer(t, func(context.Context) error { return errors.New("db down") })
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()
