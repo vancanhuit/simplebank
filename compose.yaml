@@ -116,6 +116,31 @@ services:
     profiles:
       - dev
 
+  worker-dev:
+    <<: *x-app-base
+    command: ["worker"]
+    # The worker exposes no HTTP listener, so the self-probing HTTP healthcheck
+    # inherited from the app base does not apply.
+    healthcheck:
+      disable: true
+    environment:
+      DB_SOURCE: "postgres://simplebank_dev:simplebank_dev@postgres-dev:5432/simplebank_dev?sslmode=disable"
+      JWT_SECRET: "0123456789012345678901234567890123456789"
+      SMTP_HOST: "mailpit-dev"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "no-reply@simplebank.local"
+      SMTP_INSECURE: "true"
+      PUBLIC_BASE_URL: "http://localhost:8080"
+    networks:
+      - dev
+    depends_on:
+      # Wait for the app to run migrations and become healthy; the worker also
+      # runs migrations on startup, so serializing avoids a concurrent-apply race.
+      app-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+
   mailpit-dev-https:
     <<: *x-mailpit-base
     profiles:
@@ -170,6 +195,31 @@ services:
     profiles:
       - dev-https
 
+  worker-dev-https:
+    <<: *x-app-base
+    command: ["worker"]
+    # The worker exposes no HTTP listener, so the self-probing HTTP healthcheck
+    # inherited from the app base does not apply.
+    healthcheck:
+      disable: true
+    environment:
+      DB_SOURCE: "postgres://simplebank_dev_https:simplebank_dev_https@postgres-dev-https:5432/simplebank_dev_https?sslmode=disable"
+      JWT_SECRET: "0123456789012345678901234567890123456789"
+      SMTP_HOST: "mailpit-dev-https"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "no-reply@simplebank.local"
+      SMTP_INSECURE: "true"
+      PUBLIC_BASE_URL: "https://localhost:8443"
+    networks:
+      - dev-https
+    depends_on:
+      # Wait for the app to run migrations and become healthy; the worker also
+      # runs migrations on startup, so serializing avoids a concurrent-apply race.
+      app-dev-https:
+        condition: service_healthy
+    profiles:
+      - dev-https
+
   mailpit-dev-proxy:
     <<: *x-mailpit-base
     profiles:
@@ -219,6 +269,31 @@ services:
       - dev-proxy
     depends_on:
       postgres-dev-proxy:
+        condition: service_healthy
+    profiles:
+      - dev-proxy
+
+  worker-dev-proxy:
+    <<: *x-app-base
+    command: ["worker"]
+    # The worker exposes no HTTP listener, so the self-probing HTTP healthcheck
+    # inherited from the app base does not apply.
+    healthcheck:
+      disable: true
+    environment:
+      DB_SOURCE: "postgres://simplebank_dev_proxy:simplebank_dev_proxy@postgres-dev-proxy:5432/simplebank_dev_proxy?sslmode=disable"
+      JWT_SECRET: "0123456789012345678901234567890123456789"
+      SMTP_HOST: "mailpit-dev-proxy"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "no-reply@simplebank.local"
+      SMTP_INSECURE: "true"
+      PUBLIC_BASE_URL: "https://localhost:8444"
+    networks:
+      - dev-proxy
+    depends_on:
+      # Wait for the app to run migrations and become healthy; the worker also
+      # runs migrations on startup, so serializing avoids a concurrent-apply race.
+      app-dev-proxy:
         condition: service_healthy
     profiles:
       - dev-proxy
