@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -45,6 +46,7 @@ func main() {
 		Commands: []*cli.Command{
 			{Name: "serve", Usage: "Run the HTTP API server", Action: runServe},
 			{Name: "worker", Usage: "Run the background worker", Action: runWorker},
+			{Name: "healthcheck", Usage: "Probe the local liveness endpoint (for container HEALTHCHECK)", Action: runHealthcheck},
 			{
 				Name:  "version",
 				Usage: "Print version information",
@@ -217,4 +219,43 @@ func runWorker(ctx context.Context, cmd *cli.Command) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return app.riverClient.Stop(shutdownCtx)
+}
+
+// runHealthcheck probes the local /livez endpoint so a container HEALTHCHECK can
+// call the binary itself (the distroless image has no shell or curl). It reads
+// only the address and TLS flags, so it works without a database or full config.
+func runHealthcheck(ctx context.Context, cmd *cli.Command) error {
+	addr := cmp.Or(cmd.String("http-addr"), ":8080")
+	certFile := cmd.String("tls-cert-file")
+
+	scheme := "http"
+	transport := &http.Transport{}
+	if certFile != "" {
+		scheme = "https"
+		// Loopback self-probe against the app's own self-signed dev cert; the CA
+		// is not mounted in the container, so skip verification. This is a
+		// liveness check to localhost, not a trust decision on remote traffic.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("%s://localhost%s/livez", scheme, addr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Transport: transport}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck failed: status %d", resp.StatusCode)
+	}
+	return nil
 }

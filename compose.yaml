@@ -22,6 +22,19 @@ x-app: &x-app-base
       COMMIT: ${COMMIT:-unknown}
       BUILD_DATE: ${BUILD_DATE:-unknown}
   command: ["serve"]
+  # The distroless image has no shell/curl, so the binary probes itself. It
+  # reads HTTP_ADDR and TLS_CERT_FILE from each service's environment to pick
+  # the right port and scheme.
+  healthcheck:
+    test: ["CMD", "/simplebank", "healthcheck"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+    start_period: 5s
+
+# NOTE: the JWT_SECRET and Postgres credentials below are throwaway values for
+# local dev/CI profiles only. Never reuse them anywhere real — production
+# secrets belong in a secrets manager.
 
 services:
   postgres-test:
@@ -223,7 +236,8 @@ services:
     networks:
       - dev-proxy
     depends_on:
-      - app-dev-proxy
+      app-dev-proxy:
+        condition: service_healthy
 
 networks:
   dev:

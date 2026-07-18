@@ -6,9 +6,19 @@ on:
   pull_request:
     branches: [ main ]
 
+# Least privilege: the pipeline only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   golangci-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
@@ -19,14 +29,25 @@ jobs:
 
   govulncheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - run: |
           mise run govulncheck
 
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+      - run: |
+          mise run test:unit
+
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
@@ -39,6 +60,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
@@ -59,6 +81,7 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       # Pin the mkcert CA location so `dev:tls:certs` and the curl check below
       # agree on where rootCA.pem lives. No `mkcert -install`, so no root/sudo.
@@ -104,9 +127,12 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: docker/setup-docker-action@v5
         with:
           daemon-config: |
@@ -116,7 +142,26 @@ jobs:
               }
             }
       - uses: docker/setup-buildx-action@v4
+      - name: Derive build metadata
+        run: |
+          source env.bash
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$BUILD_DATE" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          load: true
+          tags: simplebank:latest
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+          # Persist layers across runs; the Dockerfile's cache mounts do not
+          # survive on ephemeral runners without a backing cache.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - run: |
-          mise run docker:build
           docker image ls
           docker image inspect simplebank:latest

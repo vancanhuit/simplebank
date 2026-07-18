@@ -4,8 +4,7 @@ FROM --platform=$BUILDPLATFORM debian:trixie-slim AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update  \
     && apt-get -y --no-install-recommends install  \
-        # install any other dependencies you might need
-        sudo curl git ca-certificates build-essential \
+        curl git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -45,6 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     VERSION=$VERSION COMMIT=$COMMIT BUILD_DATE=$BUILD_DATE \
     mise run app:build
 
-FROM gcr.io/distroless/base-debian13
+FROM gcr.io/distroless/base-debian13:nonroot
+USER nonroot:nonroot
 COPY --from=builder /app/dist/simplebank /simplebank
 ENTRYPOINT ["/simplebank"]
