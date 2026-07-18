@@ -44,6 +44,7 @@
 # CI
 !.github/workflows/*.yml
 !.github/*.yml
+!.github/actions/**/*.yml
 
 # Agent skills
 !.agents/**

@@ -1,0 +1,48 @@
+name: Go cache
+description: >-
+  Restore and save Go caches. The module cache uses a stable key shared across
+  jobs; the build cache is scoped per job with a rolling key so parallel jobs do
+  not clobber each other and fresh artifacts persist across runs.
+
+inputs:
+  id:
+    description: Unique scope for the build cache, typically the job name.
+    required: true
+  lint:
+    description: Also cache the golangci-lint analysis cache.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # Module cache: identical across every job, invalidated only by go.sum.
+    - uses: actions/cache@v6
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-gomod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-gomod-
+
+    # Build cache: per job and rolling. The build cache changes on every source
+    # edit, so a stable go.sum key would freeze after the first save. The
+    # run_id suffix forces a fresh save each run; the restore-keys warm it from
+    # the most recent run for this job.
+    - uses: actions/cache@v6
+      with:
+        path: ~/.cache/go-build
+        key: ${{ runner.os }}-gobuild-${{ inputs.id }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-gobuild-${{ inputs.id }}-${{ hashFiles('**/go.sum') }}-
+          ${{ runner.os }}-gobuild-${{ inputs.id }}-
+
+    # golangci-lint keeps its own analysis cache, separate from go-build. Only
+    # the lint job populates it, so save it only there.
+    - if: inputs.lint == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/golangci-lint
+        key: ${{ runner.os }}-golangci-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-golangci-${{ hashFiles('**/go.sum') }}-
+          ${{ runner.os }}-golangci-
