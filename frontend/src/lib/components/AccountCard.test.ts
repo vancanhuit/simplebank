@@ -19,11 +19,16 @@ describe("AccountCard", () => {
     expect(screen.getByText("USD")).toBeInTheDocument();
   });
 
-  it("shows only the last segment of the account id", () => {
+  it("shows the full account number", () => {
     render(AccountCard, { props: { account } });
 
-    expect(screen.getByText(/555566667777/)).toBeInTheDocument();
-    expect(screen.queryByText(/11111111/)).not.toBeInTheDocument();
+    expect(screen.getByText("11111111-2222-3333-4444-555566667777")).toBeInTheDocument();
+  });
+
+  it("exposes a copy-account-number action", () => {
+    render(AccountCard, { props: { account } });
+
+    expect(screen.getByRole("button", { name: /copy account number/i })).toBeInTheDocument();
   });
 
   it("exposes a send-money action", () => {

@@ -54,6 +54,11 @@ describe("parseAmountToMinor", () => {
     expect(parseAmountToMinor("0", "USD")).toBeNull();
     expect(parseAmountToMinor("-5", "USD")).toBeNull();
   });
+
+  it("accepts numeric input (number-type inputs bind as numbers)", () => {
+    expect(parseAmountToMinor(12.5, "USD")).toBe(1250);
+    expect(parseAmountToMinor(1500, "VND")).toBe(1500);
+  });
 });
 
 describe("currency helpers", () => {

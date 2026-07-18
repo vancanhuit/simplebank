@@ -14,6 +14,10 @@ import (
 
 type createAccountRequest struct {
 	Currency string `json:"currency" validate:"required"`
+	// Balance is an optional opening deposit in minor units (e.g. cents). This
+	// is a demo affordance for seeding funds; a real bank would fund accounts
+	// through a payment rail, not a client-supplied opening balance.
+	Balance int64 `json:"balance" validate:"min=0"`
 }
 
 func (s *Server) createAccount(c *echo.Context) error {
@@ -35,7 +39,7 @@ func (s *Server) createAccount(c *echo.Context) error {
 
 	account, err := s.store.CreateAccount(c.Request().Context(), sqlcdb.CreateAccountParams{
 		Owner:    payload.Username,
-		Balance:  0,
+		Balance:  req.Balance,
 		Currency: req.Currency,
 	})
 	if err != nil {

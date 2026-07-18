@@ -33,11 +33,11 @@ class AccountsStore {
     }
   }
 
-  async create(currency: Currency): Promise<Account> {
+  async create(currency: Currency, balance = 0): Promise<Account> {
     const account = await request<Account>("/accounts", {
       method: "POST",
       authenticated: true,
-      body: { currency },
+      body: { currency, balance },
     });
     this.items = [...this.items, account];
     return account;

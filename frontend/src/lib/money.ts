@@ -52,9 +52,12 @@ export function formatSignedMoney(minorAmount: number, currency: Currency): stri
  * Convert a user-entered major-unit amount (e.g. "12.50") into integer minor
  * units for the API. Returns null when the input is empty, not a finite number,
  * or not strictly positive, so callers can surface a validation error.
+ *
+ * Accepts a number as well as a string because a `<input type="number">` bound
+ * with `bind:value` yields a number at runtime.
  */
-export function parseAmountToMinor(input: string, currency: Currency): number | null {
-  const trimmed = input.trim();
+export function parseAmountToMinor(input: string | number, currency: Currency): number | null {
+  const trimmed = String(input).trim();
   if (trimmed === "") {
     return null;
   }

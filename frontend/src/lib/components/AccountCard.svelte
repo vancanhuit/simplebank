@@ -10,9 +10,8 @@
 
   let { account }: Props = $props();
 
-  // Show only the last segment of the UUID so the card is scannable without
-  // spreading the full identifier across the screen.
-  const shortId = $derived(account.id.split("-").at(-1) ?? account.id);
+  let copied = $state(false);
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
   const created = $derived(
     new Date(account.created_at).toLocaleDateString(undefined, {
@@ -26,24 +25,48 @@
     accounts.transferFromId = account.id;
     navigate("/transfer");
   }
+
+  async function copyId() {
+    try {
+      await navigator.clipboard.writeText(account.id);
+      copied = true;
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => (copied = false), 2000);
+    } catch {
+      // Clipboard may be unavailable (e.g. insecure context); the account number
+      // is still selectable, so no user-facing error is needed.
+    }
+  }
 </script>
 
 <article class="flex flex-col gap-4 rounded-card border border-border bg-surface p-5">
   <div class="flex items-start justify-between">
-    <div>
-      <span
-        class="inline-flex items-center rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-strong"
-      >
-        {account.currency}
-      </span>
-      <p class="mt-2 font-mono text-xs text-muted">•••• {shortId}</p>
-    </div>
+    <span
+      class="inline-flex items-center rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-strong"
+    >
+      {account.currency}
+    </span>
     <span class="text-xs text-muted">Opened {created}</span>
   </div>
 
   <p class="text-2xl font-semibold tracking-tight text-ink tabular-nums">
     {formatMoney(account.balance, account.currency)}
   </p>
+
+  <div>
+    <p class="text-xs font-medium text-muted">Account number</p>
+    <div class="mt-1 flex items-start gap-2">
+      <code class="min-w-0 flex-1 font-mono text-xs break-all text-ink">{account.id}</code>
+      <button
+        type="button"
+        onclick={copyId}
+        class="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium text-brand transition-colors hover:bg-brand-soft"
+        aria-label={copied ? "Account number copied" : "Copy account number"}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  </div>
 
   <button
     type="button"
