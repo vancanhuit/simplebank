@@ -2,3 +2,12 @@
 dist/
 .gitignore
 compose.yaml
+README.md
+Dockerfile
+tls/
+docs/
+.github/
+.agents/
+.editorconfig
+.golangci.yml
+env.bash
