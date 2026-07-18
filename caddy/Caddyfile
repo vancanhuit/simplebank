@@ -1,0 +1,13 @@
+{
+	admin off
+	auto_https off
+}
+
+# Terminate TLS at the proxy and forward plain HTTP to the app. Caddy's
+# reverse_proxy automatically sets X-Forwarded-For, X-Forwarded-Proto and
+# X-Forwarded-Host, which the app uses to log the real client IP, scheme and
+# host. The upstream is addressed by its compose service name.
+https://localhost:8443 {
+	tls /tls/cert.pem /tls/key.pem
+	reverse_proxy app-dev-proxy:8080
+}

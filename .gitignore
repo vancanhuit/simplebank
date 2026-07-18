@@ -30,6 +30,7 @@
 !Dockerfile
 !compose.yaml
 !.dockerignore
+!caddy/Caddyfile
 
 # Tooling
 !mise.toml

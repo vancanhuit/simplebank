@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -15,6 +18,11 @@ import (
 	store "github.com/vancanhuit/simplebank/internal/db"
 	"github.com/vancanhuit/simplebank/internal/token"
 )
+
+// headerXForwardedHost carries the original Host a reverse proxy received, so
+// the app can log the client-facing hostname rather than its own upstream
+// address. Echo has no constant for it (unlike X-Forwarded-For/-Proto).
+const headerXForwardedHost = "X-Forwarded-Host"
 
 type Server struct {
 	config      config.Config
@@ -40,6 +48,12 @@ func NewServer(
 		Validator:        newValidator(),
 	})
 
+	extractor, err := clientIPExtractor(cfg.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
+	e.IPExtractor = extractor
+
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(requestLogger())
@@ -60,6 +74,45 @@ func NewServer(
 }
 
 func (s *Server) Handler() http.Handler { return s.router }
+
+// clientIPExtractor builds the RealIP() strategy. It reads the client address
+// from the X-Forwarded-For header, but only trusts the hop closest to us when it
+// falls inside a trusted proxy range — a directly-connected public client's
+// spoofed XFF header is ignored. When no proxies are configured it uses Echo's
+// defaults (loopback, link-local and private networks), which covers the common
+// "container behind Caddy on a private Docker network" deployment out of the box.
+func clientIPExtractor(trustedProxies []string) (echo.IPExtractor, error) {
+	if len(trustedProxies) == 0 {
+		return echo.ExtractIPFromXFFHeader(), nil
+	}
+	opts := []echo.TrustOption{
+		echo.TrustLoopback(false),
+		echo.TrustLinkLocal(false),
+		echo.TrustPrivateNet(false),
+	}
+	for _, cidr := range trustedProxies {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("parsing trusted proxy CIDR %q: %w", cidr, err)
+		}
+		opts = append(opts, echo.TrustIPRange(ipNet))
+	}
+	return echo.ExtractIPFromXFFHeader(opts...), nil
+}
+
+// forwardedHost returns the original client-facing host. Behind a proxy that
+// rewrites the Host header, the X-Forwarded-Host value carries the hostname the
+// client actually requested; its first entry is the outermost host.
+func forwardedHost(host string, header http.Header) string {
+	fwd := header.Get(headerXForwardedHost)
+	if fwd == "" {
+		return host
+	}
+	if i := strings.IndexByte(fwd, ','); i >= 0 {
+		fwd = fwd[:i]
+	}
+	return strings.TrimSpace(fwd)
+}
 
 func (s *Server) livez(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
@@ -106,7 +159,8 @@ func requestLogger() echo.MiddlewareFunc {
 				slog.String("path", v.URIPath),
 				slog.Int("status", v.Status),
 				slog.Duration("latency", v.Latency),
-				slog.String("host", v.Host),
+				slog.String("scheme", c.Scheme()),
+				slog.String("host", forwardedHost(v.Host, c.Request().Header)),
 				slog.String("bytes_in", v.ContentLength),
 				slog.Int64("bytes_out", v.ResponseSize),
 				slog.String("user_agent", v.UserAgent),

@@ -109,3 +109,12 @@ run = 'docker compose --profile dev-https up -d --wait --build'
 [tasks."compose:dev-https:down"]
 description = "Stop docker compose for development with HTTPS"
 run = 'docker compose --profile dev-https down -v'
+
+[tasks."compose:dev-proxy:up"]
+description = "Run docker compose with a Caddy reverse proxy in front (proxy-aware topology)"
+depends = ["dev:tls:certs"]
+run = 'docker compose --profile dev-proxy up -d --wait --build'
+
+[tasks."compose:dev-proxy:down"]
+description = "Stop docker compose proxy-aware topology"
+run = 'docker compose --profile dev-proxy down -v'

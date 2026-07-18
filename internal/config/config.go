@@ -24,6 +24,7 @@ type Config struct {
 	RiverMaxWorkers int
 	TLSCertFile     string
 	TLSKeyFile      string
+	TrustedProxies  []string
 }
 
 func (c Config) Validate() error {
@@ -60,6 +61,7 @@ func Flags() []cli.Flag {
 		&cli.IntFlag{Name: "river-max-workers", Value: 10, Sources: cli.EnvVars("RIVER_MAX_WORKERS")},
 		&cli.StringFlag{Name: "tls-cert-file", Sources: cli.EnvVars("TLS_CERT_FILE")},
 		&cli.StringFlag{Name: "tls-key-file", Sources: cli.EnvVars("TLS_KEY_FILE")},
+		&cli.StringSliceFlag{Name: "trusted-proxies", Sources: cli.EnvVars("TRUSTED_PROXIES")},
 	}
 }
 
@@ -81,5 +83,6 @@ func FromCommand(cmd *cli.Command) Config {
 		RiverMaxWorkers: cmd.Int("river-max-workers"),
 		TLSCertFile:     cmd.String("tls-cert-file"),
 		TLSKeyFile:      cmd.String("tls-key-file"),
+		TrustedProxies:  cmd.StringSlice("trusted-proxies"),
 	}
 }

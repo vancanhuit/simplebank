@@ -81,6 +81,7 @@ jobs:
       - run: |
           mise run compose:dev:up
           mise run compose:dev-https:up
+          mise run compose:dev-proxy:up
       - name: HTTP smoke test
         run: |
           curl -sSf -v --retry 5 --retry-connrefused \
@@ -90,10 +91,16 @@ jobs:
           curl -sSf -v --retry 5 --retry-connrefused \
             --cacert "$CAROOT/rootCA.pem" \
             https://localhost:8443/livez
+      - name: Reverse-proxy smoke test (Caddy terminates TLS, app behind proxy)
+        run: |
+          curl -sSf -v --retry 5 --retry-connrefused \
+            --cacert "$CAROOT/rootCA.pem" \
+            https://localhost:8444/livez
       - if: always()
         run: |
           mise run compose:dev:down
           mise run compose:dev-https:down
+          mise run compose:dev-proxy:down
 
   docker:
     runs-on: ubuntu-latest

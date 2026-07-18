@@ -155,7 +155,76 @@ services:
     profiles:
       - dev-https
 
+  mailpit-dev-proxy:
+    <<: *x-mailpit-base
+    profiles:
+      - dev-proxy
+    ports:
+      - "8028:8025"
+      - "1028:1025"
+    networks:
+      - dev-proxy
+
+  postgres-dev-proxy:
+    <<: *x-postgres-base
+    profiles:
+      - dev-proxy
+    environment:
+      POSTGRES_USER: simplebank_dev_proxy
+      POSTGRES_PASSWORD: simplebank_dev_proxy
+      POSTGRES_DB: simplebank_dev_proxy
+    ports:
+      - "5435:5432"
+    networks:
+      - dev-proxy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "simplebank_dev_proxy", "-d", "simplebank_dev_proxy"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 5s
+
+  app-dev-proxy:
+    <<: *x-app-base
+    environment:
+      HTTP_ADDR: ":8080"
+      DB_SOURCE: "postgres://simplebank_dev_proxy:simplebank_dev_proxy@postgres-dev-proxy:5432/simplebank_dev_proxy?sslmode=disable"
+      JWT_SECRET: "0123456789012345678901234567890123456789"
+      SMTP_HOST: "mailpit-dev-proxy"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "no-reply@simplebank.local"
+      SMTP_INSECURE: "true"
+      # Trust only the pinned proxy subnet so a spoofed X-Forwarded-For from a
+      # directly-connected client is ignored.
+      TRUSTED_PROXIES: "172.31.0.0/24"
+    networks:
+      - dev-proxy
+    depends_on:
+      postgres-dev-proxy:
+        condition: service_healthy
+    profiles:
+      - dev-proxy
+
+  caddy-dev-proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles:
+      - dev-proxy
+    ports:
+      - "8444:8443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./tls:/tls:ro
+    networks:
+      - dev-proxy
+    depends_on:
+      - app-dev-proxy
+
 networks:
   dev:
   test:
   dev-https:
+  dev-proxy:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
