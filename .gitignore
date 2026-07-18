@@ -25,6 +25,7 @@
 # Docs
 !/README.md
 !docs/**/*.md
+!docs/images/*.png
 
 # Container
 !Dockerfile

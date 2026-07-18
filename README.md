@@ -4,6 +4,21 @@ A cloud-native banking service in Go: user accounts, JWT authentication, and
 atomic money transfers between accounts, with asynchronous email verification.
 Built on echo (HTTP), pgx + sqlc (PostgreSQL), and River (background jobs).
 
+## Web UI
+
+SimpleBank ships a Svelte 5 single-page app, built into `frontend/dist` and
+embedded in the Go binary, so the API and UI are served from the same origin.
+It covers the full journey: registration with email verification, account
+creation with an optional opening balance, transfers between accounts, and
+per-account transfer history.
+
+| | |
+|---|---|
+| ![Sign in](docs/images/login.png) | ![Account overview](docs/images/dashboard.png) |
+| **Sign in** | **Overview** — per-currency balances and accounts |
+| ![Send money](docs/images/transfer.png) | ![Account activity](docs/images/account-activity.png) |
+| **Send money** to another account | **Activity** — per-account transfer history |
+
 ## Quick Start
 
 Prerequisites: [mise](https://mise.jdx.dev/) (manages the Go, golangci-lint, and
@@ -11,11 +26,12 @@ cocogitto toolchain) and Docker (for PostgreSQL and Mailpit).
 
 ```sh
 mise install              # install pinned tools (Go 1.26.5, etc.)
-mise run compose:dev:up   # start PostgreSQL + Mailpit + the app (profile: dev)
+mise run compose:dev:up   # start PostgreSQL + Mailpit + pgAdmin + app + worker (profile: dev)
 ```
 
-The API is served at http://localhost:8080. Mailpit's web UI (sent emails) is at
-http://localhost:8025.
+The API and web UI are served at http://localhost:8080. Mailpit's web UI (sent
+emails) is at http://localhost:8025, and pgAdmin (pre-wired to the dev database)
+is at http://localhost:5050.
 
 To run the server directly against your own database instead of the dev stack:
 
@@ -81,9 +97,10 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 | `POST` | `/api/v1/users/login` | — | Log in, receive access + refresh tokens |
 | `POST` | `/api/v1/tokens/renew` | — | Exchange a refresh token for a new access token |
 | `GET` | `/api/v1/users/verify_email` | — | Verify an email via the link's `id` + `code` |
-| `POST` | `/api/v1/accounts` | Bearer | Create an account |
+| `POST` | `/api/v1/accounts` | Bearer | Create an account (optional opening balance) |
 | `GET` | `/api/v1/accounts/:id` | Bearer | Get an owned account |
 | `GET` | `/api/v1/accounts` | Bearer | List owned accounts (paginated) |
+| `GET` | `/api/v1/accounts/:id/transfers` | Bearer | List an owned account's transfer history (paginated) |
 | `POST` | `/api/v1/transfers` | Bearer | Transfer between accounts you own |
 
 Authenticated routes expect an `Authorization: Bearer <access-token>` header.
