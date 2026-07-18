@@ -67,7 +67,7 @@ func TestSendVerifyEmailWorker(t *testing.T) {
 	if strings.Contains(mailer.msg, "<b>Bob</b>") {
 		t.Errorf("raw HTML from full name leaked into body: %q", mailer.msg)
 	}
-	if !strings.Contains(mailer.msg, "/api/v1/users/verify_email?id=") {
+	if !strings.Contains(mailer.msg, "/verify-email?id=") {
 		t.Errorf("verification link missing from body: %q", mailer.msg)
 	}
 }

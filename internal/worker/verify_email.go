@@ -50,7 +50,9 @@ func (w *SendVerifyEmailWorker) Work(ctx context.Context, job *river.Job[SendVer
 		return fmt.Errorf("creating verify-email record: %w", err)
 	}
 
-	link := fmt.Sprintf("%s/api/v1/users/verify_email?id=%s&code=%s",
+	// Link to the SPA verification page (not the JSON API directly) so the user
+	// lands on a rendered success/error screen. The page calls the API in turn.
+	link := fmt.Sprintf("%s/verify-email?id=%s&code=%s",
 		w.baseURL, ve.ID.String(), ve.SecretCode)
 	body := fmt.Sprintf(
 		`Hello %s,<br/>Please <a href="%s">click here</a> to verify your email address.`,

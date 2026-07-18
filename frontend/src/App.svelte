@@ -9,6 +9,7 @@
   import TransferPage from "./lib/pages/TransferPage.svelte";
   import NewAccountPage from "./lib/pages/NewAccountPage.svelte";
   import NotFoundPage from "./lib/pages/NotFoundPage.svelte";
+  import VerifyEmailPage from "./lib/pages/VerifyEmailPage.svelte";
 
   onMount(() => auth.init());
 
@@ -17,6 +18,11 @@
   // even for the frame before the URL-sync effect runs.
   const view = $derived.by(() => {
     const path = router.path;
+    // Email verification is reachable in any auth state: users may click the
+    // link while signed out, signed in, or in another session entirely.
+    if (path === "/verify-email") {
+      return { component: VerifyEmailPage, chrome: false };
+    }
     if (!auth.isAuthenticated) {
       return path === "/register"
         ? { component: RegisterPage, chrome: false }
@@ -41,10 +47,11 @@
       return;
     }
     const path = router.path;
-    const isAuthPage = path === "/login" || path === "/register";
-    if (!auth.isAuthenticated && !isAuthPage) {
+    // Public pages render regardless of auth and must not be redirected away.
+    const isPublic = path === "/login" || path === "/register" || path === "/verify-email";
+    if (!auth.isAuthenticated && !isPublic) {
       navigate("/login");
-    } else if (auth.isAuthenticated && isAuthPage) {
+    } else if (auth.isAuthenticated && (path === "/login" || path === "/register")) {
       navigate("/");
     }
   });
