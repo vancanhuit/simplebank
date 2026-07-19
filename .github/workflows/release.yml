@@ -1,0 +1,174 @@
+name: Release
+
+# Fires only on semantic version tags like v0.0.0, v1.2.3. The tag itself is
+# the single source of truth for the version: env.bash derives VERSION from
+# `git describe --tags`, so on a tag push that resolves to the exact tag name.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+# Serialize releases per tag; a re-run cancels a stale in-flight one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least privilege. Only the job that needs a scope gets it.
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  # Cross-compile the single binary (with embedded SPA) for each target and
+  # publish a tar.gz per platform as a build artifact for the release job.
+  binaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: jdx/mise-action@v4
+      - uses: ./.github/actions/go-cache
+        with:
+          id: release-${{ matrix.goos }}-${{ matrix.goarch }}
+      - name: Derive build metadata
+        run: |
+          source env.bash
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$BUILD_DATE" >> "$GITHUB_ENV"
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: mise run app:build
+      - name: Package tarball
+        run: |
+          set -euo pipefail
+          name="simplebank-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p "out/${name}"
+          cp dist/simplebank "out/${name}/simplebank"
+          cp README.md "out/${name}/"
+          tar -C out -czf "out/${name}.tar.gz" "${name}"
+          ( cd out && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            out/*.tar.gz
+            out/*.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  # Build and push the multi-arch image to GHCR. Tags/labels are derived from
+  # the git tag by metadata-action (e.g. v1.2.3, 1.2.3, 1.2, latest).
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: docker/setup-docker-action@v5
+        with:
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+      - uses: docker/setup-buildx-action@v4
+      - name: Derive build metadata
+        run: |
+          source env.bash
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$BUILD_DATE" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Generate the changelog from conventional commits and cut the GitHub release
+  # with the binaries attached. Runs only after binaries and image succeed.
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [binaries, docker]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: jdx/mise-action@v4
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: dist-artifacts
+          merge-multiple: true
+      - name: Generate changelog
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          prev="$(git tag --sort=-v:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -Fxv "$tag" \
+            | head -n1 || true)"
+          if [ -n "$prev" ]; then
+            cog changelog "${prev}..${tag}" > RELEASE_NOTES.md
+          else
+            cog changelog --at "$tag" > RELEASE_NOTES.md
+          fi
+          echo "----- release notes -----"
+          cat RELEASE_NOTES.md
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file RELEASE_NOTES.md \
+            dist-artifacts/*
