@@ -48,6 +48,7 @@ export interface Transfer {
   from_account_id: string;
   to_account_id: string;
   amount: number; // minor units
+  idempotency_key: string;
   created_at: string;
 }
 
@@ -57,3 +58,14 @@ export interface TransferResult {
   from_account: Account;
   to_account: Account;
 }
+
+/** Per-currency transfer ceilings, mirroring the backend `config.CurrencyLimit`.
+ *  Amounts are in the currency's minor units; 0 means the limit is disabled. */
+export interface CurrencyLimit {
+  max_per_transfer: number;
+  daily: number;
+}
+
+/** Response from `GET /transfer-limits`: currency code → ceilings. Currencies
+ *  without limits are simply absent from the map. */
+export type TransferLimits = Record<string, CurrencyLimit>;

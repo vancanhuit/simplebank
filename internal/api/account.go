@@ -37,7 +37,7 @@ func (s *Server) createAccount(c *echo.Context) error {
 		return err
 	}
 
-	account, err := s.store.CreateAccount(c.Request().Context(), sqlcdb.CreateAccountParams{
+	account, err := s.store.CreateAccountTx(c.Request().Context(), sqlcdb.CreateAccountParams{
 		Owner:    payload.Username,
 		Balance:  req.Balance,
 		Currency: req.Currency,

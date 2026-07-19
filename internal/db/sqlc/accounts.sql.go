@@ -78,6 +78,35 @@ func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 	return i, err
 }
 
+const getAccountForUpdate = `-- name: GetAccountForUpdate :one
+SELECT id, owner, balance, currency, created_at FROM accounts WHERE id = $1 LIMIT 1 FOR NO KEY UPDATE
+`
+
+func (q *Queries) GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountForUpdate, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Owner,
+		&i.Balance,
+		&i.Currency,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAccountLedgerBalance = `-- name: GetAccountLedgerBalance :one
+SELECT COALESCE(SUM(amount), 0)::bigint AS ledger_balance
+FROM entries WHERE account_id = $1
+`
+
+func (q *Queries) GetAccountLedgerBalance(ctx context.Context, accountID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getAccountLedgerBalance, accountID)
+	var ledger_balance int64
+	err := row.Scan(&ledger_balance)
+	return ledger_balance, err
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, owner, balance, currency, created_at FROM accounts
 WHERE owner = $1

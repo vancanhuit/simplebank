@@ -13,10 +13,11 @@ import (
 )
 
 type transferRequest struct {
-	FromAccountID string `json:"from_account_id" validate:"required,uuid"`
-	ToAccountID   string `json:"to_account_id" validate:"required,uuid"`
-	Amount        int64  `json:"amount" validate:"required,gt=0"`
-	Currency      string `json:"currency" validate:"required"`
+	FromAccountID  string `json:"from_account_id" validate:"required,uuid"`
+	ToAccountID    string `json:"to_account_id" validate:"required,uuid"`
+	Amount         int64  `json:"amount" validate:"required,gt=0"`
+	Currency       string `json:"currency" validate:"required"`
+	IdempotencyKey string `json:"idempotency_key" validate:"required,uuid"`
 }
 
 func (s *Server) createTransfer(c *echo.Context) error {
@@ -28,8 +29,16 @@ func (s *Server) createTransfer(c *echo.Context) error {
 		return err
 	}
 
+	// Transfer limits are per-currency: both accounts share req.Currency, so a
+	// single lookup gives the ceilings in that currency's minor units.
+	limit := s.config.LimitFor(req.Currency)
+	if limit.MaxPerTransfer > 0 && req.Amount > limit.MaxPerTransfer {
+		return echo.NewHTTPError(http.StatusUnprocessableEntity, "amount exceeds the per-transfer limit")
+	}
+
 	fromID, _ := uuid.Parse(req.FromAccountID)
 	toID, _ := uuid.Parse(req.ToAccountID)
+	idempotencyKey, _ := uuid.Parse(req.IdempotencyKey)
 	if fromID == toID {
 		return echo.NewHTTPError(http.StatusBadRequest, "cannot transfer to the same account")
 	}
@@ -52,9 +61,12 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	}
 
 	result, err := s.store.TransferTx(ctx, store.TransferTxParams{
-		FromAccountID: fromID,
-		ToAccountID:   toID,
-		Amount:        req.Amount,
+		FromAccountID:  fromID,
+		ToAccountID:    toID,
+		Amount:         req.Amount,
+		Currency:       req.Currency,
+		IdempotencyKey: idempotencyKey,
+		DailyLimit:     limit.Daily,
 	})
 	if err != nil {
 		return err

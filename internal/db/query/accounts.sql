@@ -6,6 +6,13 @@ RETURNING *;
 -- name: GetAccount :one
 SELECT * FROM accounts WHERE id = $1 LIMIT 1;
 
+-- name: GetAccountForUpdate :one
+SELECT * FROM accounts WHERE id = $1 LIMIT 1 FOR NO KEY UPDATE;
+
+-- name: GetAccountLedgerBalance :one
+SELECT COALESCE(SUM(amount), 0)::bigint AS ledger_balance
+FROM entries WHERE account_id = $1;
+
 -- name: ListAccounts :many
 SELECT * FROM accounts
 WHERE owner = $1

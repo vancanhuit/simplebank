@@ -56,6 +56,11 @@ x-app: &x-app-base
     retries: 5
     start_period: 5s
 
+# Per-currency transfer ceilings, each in that currency's minor units (USD/EUR
+# cents, VND whole dong). Shared by every app service so the enforced limits are
+# identical across profiles. These are demo values, not a real risk policy.
+x-transfer-limits: &transfer-limits '{"USD":{"max_per_transfer":100000,"daily":500000},"EUR":{"max_per_transfer":100000,"daily":500000},"VND":{"max_per_transfer":2000000000,"daily":10000000000}}'
+
 x-pgadmin: &x-pgadmin-base
   image: dpage/pgadmin4:latest
   restart: unless-stopped
@@ -154,6 +159,7 @@ services:
       SMTP_PASSWORD: "simplebank"
       SMTP_TLS_CA_FILE: "/tls/rootCA.pem"
       PUBLIC_BASE_URL: "http://localhost:8080"
+      TRANSFER_LIMITS: *transfer-limits
     volumes:
       - ./tls:/tls:ro
     ports:
@@ -257,6 +263,7 @@ services:
       PUBLIC_BASE_URL: "https://localhost:8443"
       TLS_CERT_FILE: "/tls/cert.pem"
       TLS_KEY_FILE: "/tls/key.pem"
+      TRANSFER_LIMITS: *transfer-limits
     volumes:
       - ./tls:/tls:ro
     ports:
@@ -363,6 +370,7 @@ services:
       # Trust only the pinned proxy subnet so a spoofed X-Forwarded-For from a
       # directly-connected client is ignored.
       TRUSTED_PROXIES: "172.31.0.0/24"
+      TRANSFER_LIMITS: *transfer-limits
     volumes:
       - ./tls:/tls:ro
     networks:

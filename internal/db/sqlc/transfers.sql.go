@@ -7,24 +7,31 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const createTransfer = `-- name: CreateTransfer :one
-INSERT INTO transfers (from_account_id, to_account_id, amount)
-VALUES ($1, $2, $3)
-RETURNING id, from_account_id, to_account_id, amount, created_at
+INSERT INTO transfers (from_account_id, to_account_id, amount, idempotency_key)
+VALUES ($1, $2, $3, $4)
+RETURNING id, from_account_id, to_account_id, amount, created_at, idempotency_key
 `
 
 type CreateTransferParams struct {
-	FromAccountID uuid.UUID `json:"from_account_id"`
-	ToAccountID   uuid.UUID `json:"to_account_id"`
-	Amount        int64     `json:"amount"`
+	FromAccountID  uuid.UUID `json:"from_account_id"`
+	ToAccountID    uuid.UUID `json:"to_account_id"`
+	Amount         int64     `json:"amount"`
+	IdempotencyKey uuid.UUID `json:"idempotency_key"`
 }
 
 func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error) {
-	row := q.db.QueryRow(ctx, createTransfer, arg.FromAccountID, arg.ToAccountID, arg.Amount)
+	row := q.db.QueryRow(ctx, createTransfer,
+		arg.FromAccountID,
+		arg.ToAccountID,
+		arg.Amount,
+		arg.IdempotencyKey,
+	)
 	var i Transfer
 	err := row.Scan(
 		&i.ID,
@@ -32,12 +39,31 @@ func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) 
 		&i.ToAccountID,
 		&i.Amount,
 		&i.CreatedAt,
+		&i.IdempotencyKey,
+	)
+	return i, err
+}
+
+const getTransferByIdempotencyKey = `-- name: GetTransferByIdempotencyKey :one
+SELECT id, from_account_id, to_account_id, amount, created_at, idempotency_key FROM transfers WHERE idempotency_key = $1 LIMIT 1
+`
+
+func (q *Queries) GetTransferByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Transfer, error) {
+	row := q.db.QueryRow(ctx, getTransferByIdempotencyKey, idempotencyKey)
+	var i Transfer
+	err := row.Scan(
+		&i.ID,
+		&i.FromAccountID,
+		&i.ToAccountID,
+		&i.Amount,
+		&i.CreatedAt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
 
 const listTransfersByAccount = `-- name: ListTransfersByAccount :many
-SELECT id, from_account_id, to_account_id, amount, created_at FROM transfers
+SELECT id, from_account_id, to_account_id, amount, created_at, idempotency_key FROM transfers
 WHERE from_account_id = $1 OR to_account_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT $3 OFFSET $2
@@ -64,6 +90,7 @@ func (q *Queries) ListTransfersByAccount(ctx context.Context, arg ListTransfersB
 			&i.ToAccountID,
 			&i.Amount,
 			&i.CreatedAt,
+			&i.IdempotencyKey,
 		); err != nil {
 			return nil, err
 		}
@@ -73,4 +100,22 @@ func (q *Queries) ListTransfersByAccount(ctx context.Context, arg ListTransfersB
 		return nil, err
 	}
 	return items, nil
+}
+
+const sumOutgoingTransfersSince = `-- name: SumOutgoingTransfersSince :one
+SELECT COALESCE(SUM(amount), 0)::bigint AS total
+FROM transfers
+WHERE from_account_id = $1 AND created_at >= $2
+`
+
+type SumOutgoingTransfersSinceParams struct {
+	FromAccountID uuid.UUID `json:"from_account_id"`
+	Since         time.Time `json:"since"`
+}
+
+func (q *Queries) SumOutgoingTransfersSince(ctx context.Context, arg SumOutgoingTransfersSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, sumOutgoingTransfersSince, arg.FromAccountID, arg.Since)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
 }

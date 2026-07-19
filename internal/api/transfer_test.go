@@ -6,17 +6,24 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
 func postTransfer(t *testing.T, s *Server, from, to uuid.UUID, currency, username string) *httptest.ResponseRecorder {
 	t.Helper()
+	return postTransferWithKey(t, s, from, to, currency, username, uuid.NewString())
+}
+
+func postTransferWithKey(t *testing.T, s *Server, from, to uuid.UUID, currency, username, key string) *httptest.ResponseRecorder {
+	t.Helper()
 	body := `{"from_account_id":"` + from.String() + `","to_account_id":"` + to.String() +
-		`","amount":10,"currency":"` + currency + `"}`
+		`","amount":10,"currency":"` + currency + `","idempotency_key":"` + key + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, username))
@@ -30,6 +37,7 @@ func TestCreateTransferOK(t *testing.T) {
 	fromID := uuid.New()
 	toID := uuid.New()
 	var transferred bool
+	var gotArg store.TransferTxParams
 	fake := fakeStore{
 		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
 			owner := "bob"
@@ -40,6 +48,7 @@ func TestCreateTransferOK(t *testing.T) {
 		},
 		transferTx: func(_ context.Context, arg store.TransferTxParams) (store.TransferTxResult, error) {
 			transferred = true
+			gotArg = arg
 			return store.TransferTxResult{
 				Transfer: sqlcdb.Transfer{ID: uuid.New(), FromAccountID: arg.FromAccountID, ToAccountID: arg.ToAccountID, Amount: arg.Amount},
 			}, nil
@@ -47,12 +56,80 @@ func TestCreateTransferOK(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	rec := postTransfer(t, s, fromID, toID, "USD", "alice")
+	key := uuid.NewString()
+	rec := postTransferWithKey(t, s, fromID, toID, "USD", "alice", key)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if !transferred {
 		t.Fatal("TransferTx should run for an authorized, valid transfer")
+	}
+	if gotArg.Currency != "USD" {
+		t.Errorf("currency not forwarded to store: got %q", gotArg.Currency)
+	}
+	if gotArg.IdempotencyKey.String() != key {
+		t.Errorf("idempotency key not forwarded: got %q, want %q", gotArg.IdempotencyKey, key)
+	}
+}
+
+func TestCreateTransferMissingIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	fromID := uuid.New()
+	toID := uuid.New()
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			return sqlcdb.Account{ID: id, Owner: "alice", Currency: "USD"}, nil
+		},
+		transferTx: func(context.Context, store.TransferTxParams) (store.TransferTxResult, error) {
+			t.Fatal("TransferTx must not run without an idempotency key")
+			return store.TransferTxResult{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := `{"from_account_id":"` + fromID.String() + `","to_account_id":"` + toID.String() +
+		`","amount":10,"currency":"USD"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", bearer(t, "alice"))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for missing idempotency key, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateTransferExceedsMaxAmount(t *testing.T) {
+	t.Parallel()
+	fromID := uuid.New()
+	toID := uuid.New()
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			owner := "bob"
+			if id == fromID {
+				owner = "alice"
+			}
+			return sqlcdb.Account{ID: id, Owner: owner, Currency: "USD"}, nil
+		},
+		transferTx: func(context.Context, store.TransferTxParams) (store.TransferTxResult, error) {
+			t.Fatal("TransferTx must not run when the amount exceeds the per-transfer cap")
+			return store.TransferTxResult{}, nil
+		},
+	}
+	// Cap of 5 minor units for USD; the helper posts an amount of 10.
+	s := newTestServerWithConfig(t, fake, config.Config{
+		JWTSecret:  testSecret,
+		AccessTTL:  time.Minute,
+		RefreshTTL: time.Hour,
+		TransferLimits: map[string]config.CurrencyLimit{
+			"USD": {MaxPerTransfer: 5},
+		},
+	})
+
+	rec := postTransfer(t, s, fromID, toID, "USD", "alice")
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for over-limit amount, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
 

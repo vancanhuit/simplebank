@@ -63,9 +63,11 @@ func TestTransferTxConcurrent(t *testing.T) {
 	for range n {
 		go func() {
 			res, err := testStore.TransferTx(t.Context(), TransferTxParams{
-				FromAccountID: acc1.ID,
-				ToAccountID:   acc2.ID,
-				Amount:        amount,
+				FromAccountID:  acc1.ID,
+				ToAccountID:    acc2.ID,
+				Amount:         amount,
+				Currency:       currency.USD,
+				IdempotencyKey: uuid.New(),
 			})
 			ch <- outcome{res, err}
 		}()
@@ -144,9 +146,11 @@ func TestTransferTxDeadlockPrevention(t *testing.T) {
 		}
 		go func() {
 			_, err := testStore.TransferTx(t.Context(), TransferTxParams{
-				FromAccountID: from,
-				ToAccountID:   to,
-				Amount:        amount,
+				FromAccountID:  from,
+				ToAccountID:    to,
+				Amount:         amount,
+				Currency:       currency.USD,
+				IdempotencyKey: uuid.New(),
 			})
 			errs <- err
 		}()
@@ -180,9 +184,11 @@ func TestTransferTxInsufficientBalance(t *testing.T) {
 	acc2 := createTestAccount(t, u2.Username)
 
 	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID: acc1.ID,
-		ToAccountID:   acc2.ID,
-		Amount:        100000,
+		FromAccountID:  acc1.ID,
+		ToAccountID:    acc2.ID,
+		Amount:         100000,
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
 	})
 	if !errors.Is(err, ErrInsufficientBalance) {
 		t.Fatalf("want ErrInsufficientBalance, got %v", err)
@@ -205,20 +211,22 @@ func TestTransferTxInsufficientBalance(t *testing.T) {
 	}
 }
 
-// TestTransferTxForeignKeyViolation transfers to a non-existent account. The
-// CreateTransfer insert must fail the FK constraint and roll the tx back,
-// leaving the source balance untouched.
-func TestTransferTxForeignKeyViolation(t *testing.T) {
+// TestTransferTxMissingAccount transfers to a non-existent account. The
+// in-transaction lock/validate step must fail with ErrRecordNotFound and roll
+// the tx back, leaving the source balance untouched.
+func TestTransferTxMissingAccount(t *testing.T) {
 	u1 := createTestUser(t)
 	acc1 := createTestAccount(t, u1.Username)
 
 	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID: acc1.ID,
-		ToAccountID:   uuid.New(), // no such account
-		Amount:        10,
+		FromAccountID:  acc1.ID,
+		ToAccountID:    uuid.New(), // no such account
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
 	})
-	if !errors.Is(err, ErrForeignKeyViolation) {
-		t.Fatalf("want ErrForeignKeyViolation, got %v", err)
+	if !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("want ErrRecordNotFound, got %v", err)
 	}
 
 	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
@@ -239,9 +247,11 @@ func TestTransferTxExactBalance(t *testing.T) {
 	acc2 := createTestAccount(t, u2.Username)
 
 	res, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID: acc1.ID,
-		ToAccountID:   acc2.ID,
-		Amount:        1000, // entire balance
+		FromAccountID:  acc1.ID,
+		ToAccountID:    acc2.ID,
+		Amount:         1000, // entire balance
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
 	})
 	if err != nil {
 		t.Fatalf("draining the full balance should succeed, got %v", err)
@@ -273,9 +283,11 @@ func TestTransferTxPersistsRows(t *testing.T) {
 
 	amount := int64(25)
 	res, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID: acc1.ID,
-		ToAccountID:   acc2.ID,
-		Amount:        amount,
+		FromAccountID:  acc1.ID,
+		ToAccountID:    acc2.ID,
+		Amount:         amount,
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
 	})
 	if err != nil {
 		t.Fatal(err)

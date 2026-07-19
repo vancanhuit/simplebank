@@ -23,9 +23,10 @@ func TestListTransfersByAccount(t *testing.T) {
 	mk := func(from, to uuid.UUID, amount int64) sqlcdb.Transfer {
 		t.Helper()
 		tr, err := testStore.CreateTransfer(ctx, sqlcdb.CreateTransferParams{
-			FromAccountID: from,
-			ToAccountID:   to,
-			Amount:        amount,
+			FromAccountID:  from,
+			ToAccountID:    to,
+			Amount:         amount,
+			IdempotencyKey: uuid.New(),
 		})
 		if err != nil {
 			t.Fatal(err)

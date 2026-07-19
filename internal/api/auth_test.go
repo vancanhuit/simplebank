@@ -108,7 +108,7 @@ func TestCreateTransferForbiddenWhenNotFromOwner(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"from_account_id":"` + fromID.String() + `","to_account_id":"` + toID.String() + `","amount":10,"currency":"USD"}`
+	body := `{"from_account_id":"` + fromID.String() + `","to_account_id":"` + toID.String() + `","amount":10,"currency":"USD","idempotency_key":"` + uuid.NewString() + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, "alice"))
@@ -131,7 +131,7 @@ func TestCreateTransferSameAccount(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"from_account_id":"` + id.String() + `","to_account_id":"` + id.String() + `","amount":10,"currency":"USD"}`
+	body := `{"from_account_id":"` + id.String() + `","to_account_id":"` + id.String() + `","amount":10,"currency":"USD","idempotency_key":"` + uuid.NewString() + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, "alice"))

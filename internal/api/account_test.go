@@ -15,7 +15,7 @@ import (
 func TestCreateAccountOK(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
-		createAccount: func(_ context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+		createAccountTx: func(_ context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
 			return sqlcdb.Account{ID: uuid.New(), Owner: arg.Owner, Currency: arg.Currency}, nil
 		},
 	}
@@ -35,7 +35,7 @@ func TestCreateAccountOK(t *testing.T) {
 func TestCreateAccountUnsupportedCurrency(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
-		createAccount: func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+		createAccountTx: func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
 			t.Fatal("store must not be reached for an unsupported currency")
 			return sqlcdb.Account{}, nil
 		},

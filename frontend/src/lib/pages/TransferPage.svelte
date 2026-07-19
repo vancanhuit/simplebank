@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { request, toMessage } from "../api/client";
-  import type { TransferResult } from "../api/types";
+  import type { TransferLimits, TransferResult } from "../api/types";
   import { accounts } from "../stores/accounts.svelte";
   import { formatMoney, fractionDigits, parseAmountToMinor } from "../money";
   import Button from "../components/Button.svelte";
@@ -17,6 +17,7 @@
   let amountError = $state<string | null>(null);
   let submitting = $state(false);
   let receipt = $state<TransferResult | null>(null);
+  let limits = $state<TransferLimits>({});
 
   onMount(async () => {
     if (!accounts.loaded) {
@@ -25,6 +26,13 @@
     // Preselect the account chosen from a card, then the first account.
     fromAccountId = accounts.transferFromId ?? accounts.items[0]?.id ?? "";
     accounts.transferFromId = null;
+    // Load the per-currency limits so we can flag an over-limit amount before
+    // hitting the API. A failure here is non-fatal: the server still enforces.
+    try {
+      limits = await request<TransferLimits>("/transfer-limits");
+    } catch {
+      limits = {};
+    }
   });
 
   const fromAccount = $derived(accounts.get(fromAccountId));
@@ -57,6 +65,13 @@
       amountError = "Enter an amount greater than zero.";
       return;
     }
+    // Mirror the server's per-currency ceiling so the user gets immediate
+    // feedback instead of a round-trip rejection.
+    const limit = limits[fromAccount.currency];
+    if (limit && limit.max_per_transfer > 0 && minor > limit.max_per_transfer) {
+      amountError = `Amount exceeds the ${formatMoney(limit.max_per_transfer, fromAccount.currency)} per-transfer limit.`;
+      return;
+    }
 
     submitting = true;
     try {
@@ -68,6 +83,10 @@
           to_account_id: recipient,
           amount: minor,
           currency: fromAccount.currency,
+          // A fresh key per submit makes the request safe to retry at the
+          // network layer without moving money twice. The `submitting` guard
+          // already blocks a second concurrent submit of the same form.
+          idempotency_key: crypto.randomUUID(),
         },
       });
       receipt = result;

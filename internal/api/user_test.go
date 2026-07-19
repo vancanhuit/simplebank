@@ -25,16 +25,16 @@ const testSecret = "01234567890123456789012345678901"
 // method panics, which is the desired signal for an unexpected store access.
 type fakeStore struct {
 	store.Store
-	createUserTx  func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
-	getAccount    func(context.Context, uuid.UUID) (sqlcdb.Account, error)
-	transferTx    func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
-	getUser       func(context.Context, string) (sqlcdb.User, error)
-	createSession func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
-	getSession    func(context.Context, uuid.UUID) (sqlcdb.Session, error)
-	verifyEmailTx func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
-	listAccounts  func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
-	createAccount func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
-	listTransfers func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
+	createUserTx    func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
+	getAccount      func(context.Context, uuid.UUID) (sqlcdb.Account, error)
+	transferTx      func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
+	getUser         func(context.Context, string) (sqlcdb.User, error)
+	createSession   func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
+	getSession      func(context.Context, uuid.UUID) (sqlcdb.Session, error)
+	verifyEmailTx   func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
+	listAccounts    func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
+	createAccountTx func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
+	listTransfers   func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
 }
 
 func (f fakeStore) CreateUserTx(ctx context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
@@ -69,8 +69,8 @@ func (f fakeStore) ListAccounts(ctx context.Context, arg sqlcdb.ListAccountsPara
 	return f.listAccounts(ctx, arg)
 }
 
-func (f fakeStore) CreateAccount(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
-	return f.createAccount(ctx, arg)
+func (f fakeStore) CreateAccountTx(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+	return f.createAccountTx(ctx, arg)
 }
 
 func (f fakeStore) ListTransfersByAccount(ctx context.Context, arg sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error) {
@@ -83,14 +83,18 @@ func newTestServer(t *testing.T) *Server {
 
 func newTestServerWithStore(t *testing.T, st store.Store) *Server {
 	t.Helper()
-	maker, err := token.NewJWTMaker(testSecret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg := config.Config{
+	return newTestServerWithConfig(t, st, config.Config{
 		JWTSecret:  testSecret,
 		AccessTTL:  time.Minute,
 		RefreshTTL: time.Hour,
+	})
+}
+
+func newTestServerWithConfig(t *testing.T, st store.Store, cfg config.Config) *Server {
+	t.Helper()
+	maker, err := token.NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
 	}
 	s, err := NewServer(cfg, st, maker, nil, nil)
 	if err != nil {
