@@ -21,6 +21,8 @@ type Config struct {
 	SMTPPassword    string
 	SMTPFrom        string
 	SMTPInsecure    bool
+	SMTPSSL         bool
+	SMTPTLSCAFile   string
 	RiverMaxWorkers int
 	TLSCertFile     string
 	TLSKeyFile      string
@@ -59,6 +61,8 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "smtp-password", Sources: cli.EnvVars("SMTP_PASSWORD")},
 		&cli.StringFlag{Name: "smtp-from", Sources: cli.EnvVars("SMTP_FROM")},
 		&cli.BoolFlag{Name: "smtp-insecure", Sources: cli.EnvVars("SMTP_INSECURE")},
+		&cli.BoolFlag{Name: "smtp-ssl", Sources: cli.EnvVars("SMTP_SSL")},
+		&cli.StringFlag{Name: "smtp-tls-ca-file", Sources: cli.EnvVars("SMTP_TLS_CA_FILE")},
 		&cli.IntFlag{Name: "river-max-workers", Value: 10, Sources: cli.EnvVars("RIVER_MAX_WORKERS")},
 		&cli.StringFlag{Name: "tls-cert-file", Sources: cli.EnvVars("TLS_CERT_FILE")},
 		&cli.StringFlag{Name: "tls-key-file", Sources: cli.EnvVars("TLS_KEY_FILE")},
@@ -82,6 +86,8 @@ func FromCommand(cmd *cli.Command) Config {
 		SMTPPassword:    cmd.String("smtp-password"),
 		SMTPFrom:        cmd.String("smtp-from"),
 		SMTPInsecure:    cmd.Bool("smtp-insecure"),
+		SMTPSSL:         cmd.Bool("smtp-ssl"),
+		SMTPTLSCAFile:   cmd.String("smtp-tls-ca-file"),
 		RiverMaxWorkers: cmd.Int("river-max-workers"),
 		TLSCertFile:     cmd.String("tls-cert-file"),
 		TLSKeyFile:      cmd.String("tls-key-file"),

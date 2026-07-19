@@ -1,0 +1,6 @@
+# Mailpit SMTP credentials for the local dev stack (throwaway values).
+# Format: username:password (one per line). Plaintext is fine for local dev;
+# Mailpit also accepts bcrypt/apr1/etc. See:
+# https://mailpit.axllent.org/docs/configuration/passwords/
+# Never reuse these anywhere real.
+simplebank:simplebank

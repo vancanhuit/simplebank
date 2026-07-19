@@ -33,6 +33,7 @@
 !.dockerignore
 !caddy/Caddyfile
 !pgadmin/*.json
+!mailpit/*.txt
 
 # Tooling
 !mise.toml

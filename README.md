@@ -33,6 +33,12 @@ The API and web UI are served at http://localhost:8080. Mailpit's web UI (sent
 emails) is at http://localhost:8025, and pgAdmin (pre-wired to the dev database)
 is at http://localhost:5050.
 
+The dev stack runs Mailpit like a real provider: SMTP over implicit TLS (SSL) on
+port 465 with username/password auth. The `compose:dev:up` task generates the
+mkcert certificates it needs (`dev:tls:certs`); the app trusts the mkcert root
+via `SMTP_TLS_CA_FILE` and authenticates with the throwaway credentials in
+`mailpit/smtp-auth.txt`.
+
 To run the server directly against your own database instead of the dev stack:
 
 ```sh
@@ -83,6 +89,9 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 | `SMTP_USERNAME` | `--smtp-username` | — | Mail auth (optional) |
 | `SMTP_PASSWORD` | `--smtp-password` | — | Mail auth (optional) |
 | `SMTP_FROM` | `--smtp-from` | — | Sender address (required) |
+| `SMTP_INSECURE` | `--smtp-insecure` | `false` | Disable TLS (plaintext SMTP) |
+| `SMTP_SSL` | `--smtp-ssl` | `false` | Use implicit TLS (SSL, e.g. port 465) instead of STARTTLS |
+| `SMTP_TLS_CA_FILE` | `--smtp-tls-ca-file` | — | PEM CA bundle to verify the mail server cert (e.g. a mkcert root) |
 | `RIVER_MAX_WORKERS` | `--river-max-workers` | `10` | Background worker concurrency |
 
 ## API

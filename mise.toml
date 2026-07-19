@@ -35,6 +35,7 @@ go build \
 
 [tasks."compose:dev:up"]
 description = "Run docker compose for development"
+depends = ["dev:tls:certs"]
 run = 'docker compose --profile dev up -d --wait --build'
 
 [tasks."compose:dev:down"]
@@ -101,14 +102,20 @@ run = ['go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest', 'sqlc generate']
 
 [tasks."dev:tls:certs"]
 description = "Generate TLS certificates for development"
-outputs = ["tls/cert.pem", "tls/key.pem"]
+outputs = ["tls/cert.pem", "tls/key.pem", "tls/mailpit-cert.pem", "tls/mailpit-key.pem", "tls/rootCA.pem"]
 run = [
   'mkdir -pv tls',
   'mkcert -cert-file tls/cert.pem -key-file tls/key.pem localhost 127.0.0.1 ::1',
-  # The app runs as a non-root user inside the container, so the mkcert key
+  # Mailpit serves SMTP over TLS, so its certificate must be valid for the
+  # compose service names the app/worker dial across the dev profiles.
+  'mkcert -cert-file tls/mailpit-cert.pem -key-file tls/mailpit-key.pem mailpit-dev mailpit-dev-https mailpit-dev-proxy localhost',
+  # Export the mkcert root so the app container (which lacks the host trust
+  # store) can verify Mailpit's certificate via SMTP_TLS_CA_FILE.
+  'cp -v "$(mkcert -CAROOT)/rootCA.pem" tls/rootCA.pem',
+  # The app runs as a non-root user inside the container, so the mkcert keys
   # (written 0600, owned by the host user) would be unreadable. These are
   # throwaway localhost dev certs, never real secrets, so relax the mode.
-  'chmod 0644 tls/key.pem',
+  'chmod 0644 tls/key.pem tls/mailpit-key.pem',
 ]
 
 [tasks."compose:dev-https:up"]
