@@ -1,0 +1,16 @@
+{% if version.tag -%}
+## [{{ version.tag }}]({{ repository_url }}/compare/{{ from.id }}..{{ version.tag }}) - {{ date | date(format="%Y-%m-%d") }}
+{% else -%}
+## Unreleased ({{ from.id | truncate(length=7, end="") }}..{{ version.id | truncate(length=7, end="") }})
+{% endif -%}
+{% for type, typed_commits in commits | sort(attribute="type_order") | group_by(attribute="type") %}
+#### {{ type }}
+{%- for scope, scoped_commits in typed_commits | group_by(attribute="scope") %}
+{%- for commit in scoped_commits %}
+- (**{{ scope }}**) {{ commit.summary }} - ([{{ commit.id | truncate(length=7, end="") }}]({{ repository_url }}/commit/{{ commit.id }})) - [@{{ commit.signature }}]({{ platform }}/{{ commit.signature }})
+{%- endfor %}
+{%- endfor %}
+{%- for commit in typed_commits | unscoped %}
+- {{ commit.summary }} - ([{{ commit.id | truncate(length=7, end="") }}]({{ repository_url }}/commit/{{ commit.id }})) - [@{{ commit.signature }}]({{ platform }}/{{ commit.signature }})
+{%- endfor %}
+{% endfor -%}

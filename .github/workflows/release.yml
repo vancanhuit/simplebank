@@ -112,10 +112,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -152,9 +150,9 @@ jobs:
       - name: Generate changelog
         run: |
           set -euo pipefail
-          # tag_prefix and the remote template are configured in cog.toml, so
-          # --at resolves the v-prefixed tag and renders a titled, linked
-          # changelog section for exactly this release.
+          # cog.toml pins tag_prefix and the custom template, so --at resolves
+          # the v-prefixed tag and renders a titled, linked changelog with
+          # author @mentions derived from the commit signature.
           cog changelog --at "${GITHUB_REF_NAME}" > RELEASE_NOTES.md
           echo "----- release notes -----"
           cat RELEASE_NOTES.md
