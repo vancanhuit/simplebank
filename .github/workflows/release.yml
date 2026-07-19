@@ -159,7 +159,10 @@ jobs:
           if [ -n "$prev" ]; then
             cog changelog "${prev}..${tag}" > RELEASE_NOTES.md
           else
-            cog changelog --at "$tag" > RELEASE_NOTES.md
+            # First tag: cocogitto's --at is broken without a prior tag, so
+            # range from the root commit to the tag instead.
+            root="$(git rev-list --max-parents=0 HEAD | tail -1)"
+            cog changelog "${root}..${tag}" > RELEASE_NOTES.md
           fi
           echo "----- release notes -----"
           cat RELEASE_NOTES.md
