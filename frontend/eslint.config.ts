@@ -11,7 +11,8 @@ export default defineConfig([
     files: ["**/*.{js,mjs,cjs,ts,mts,cts,svelte,svelte.ts,svelte.js}"],
     plugins: { js },
     extends: ["js/recommended"],
-    languageOptions: { globals: globals.browser },
+    // __APP_VERSION__ is a compile-time constant injected by Vite's `define`.
+    languageOptions: { globals: { ...globals.browser, __APP_VERSION__: "readonly" } },
   },
   tseslint.configs.recommended,
   svelte.configs.recommended,
