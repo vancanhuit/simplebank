@@ -10,6 +10,12 @@ const backend = "http://localhost:8080";
 
 export default defineConfig({
   plugins: [svelte(), tailwindcss(), svelteTesting()],
+  // Bake the build-time VERSION (set by env.bash / the Docker build) into the
+  // bundle so the footer can show which build is running. Falls back to "dev"
+  // for plain `vite` runs that don't source the env.
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.VERSION ?? "dev"),
+  },
   server: {
     proxy: {
       "/api": backend,

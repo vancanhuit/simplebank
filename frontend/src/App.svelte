@@ -3,6 +3,7 @@
   import { auth } from "./lib/stores/auth.svelte";
   import { navigate, router } from "./lib/router.svelte";
   import AppHeader from "./lib/components/AppHeader.svelte";
+  import AppFooter from "./lib/components/AppFooter.svelte";
   import LoginPage from "./lib/pages/LoginPage.svelte";
   import RegisterPage from "./lib/pages/RegisterPage.svelte";
   import DashboardPage from "./lib/pages/DashboardPage.svelte";
@@ -109,30 +110,27 @@
       aria-label="Loading"
     ></span>
   </div>
-{:else if view.chrome}
-  <div class="flex min-h-screen flex-col">
-    <a
-      href="#main"
-      class="sr-only rounded-md bg-brand px-4 py-2 text-surface focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10"
-    >
-      Skip to content
-    </a>
-
-    <AppHeader />
-
-    <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-      <Page />
-    </main>
-
-    <footer class="border-t border-border bg-surface">
-      <div
-        class="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6"
-      >
-        <p>© 2026 SimpleBank. Demo interface.</p>
-        <p>A cloud-native reference application.</p>
-      </div>
-    </footer>
-  </div>
 {:else}
-  <Page />
+  <div class="flex min-h-screen flex-col">
+    {#if view.chrome}
+      <a
+        href="#main"
+        class="sr-only rounded-md bg-brand px-4 py-2 text-surface focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10"
+      >
+        Skip to content
+      </a>
+
+      <AppHeader />
+
+      <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        <Page />
+      </main>
+    {:else}
+      <!-- Public pages (auth, email verification) render their own <main>,
+           which grows to fill the shell so the footer stays at the bottom. -->
+      <Page />
+    {/if}
+
+    <AppFooter />
+  </div>
 {/if}

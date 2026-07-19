@@ -11,7 +11,7 @@
   let { title, subtitle, children, footer }: Props = $props();
 </script>
 
-<main class="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-12">
+<main class="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-12">
   <div class="mb-8 flex items-center gap-2 text-lg font-semibold text-ink">
     <span
       class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-surface"
