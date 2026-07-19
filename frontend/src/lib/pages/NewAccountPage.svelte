@@ -18,6 +18,7 @@
   let currency = $state<Currency>("USD");
   let deposit = $state("");
   let error = $state<string | null>(null);
+  let depositError = $state<string | null>(null);
   let submitting = $state(false);
 
   onMount(() => {
@@ -43,6 +44,7 @@
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     error = null;
+    depositError = null;
 
     // The opening deposit is optional; an empty field opens the account at zero.
     // A number-type input binds as a number at runtime, so coerce before testing.
@@ -50,7 +52,7 @@
     if (String(deposit).trim() !== "") {
       const minor = parseAmountToMinor(deposit, currency);
       if (minor === null) {
-        error = "Enter an opening deposit greater than zero, or leave it blank.";
+        depositError = "Enter an opening deposit greater than zero, or leave it blank.";
         return;
       }
       balance = minor;
@@ -110,6 +112,7 @@
         bind:value={deposit}
         placeholder="0.00"
         hint="Optional. Seed the account with a starting balance, or leave blank to open at zero."
+        error={depositError ?? undefined}
       />
 
       <Button type="submit" loading={submitting}>Create account</Button>

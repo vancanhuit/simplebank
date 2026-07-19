@@ -13,6 +13,8 @@
   let toAccountId = $state("");
   let amount = $state("");
   let error = $state<string | null>(null);
+  let toError = $state<string | null>(null);
+  let amountError = $state<string | null>(null);
   let submitting = $state(false);
   let receipt = $state<TransferResult | null>(null);
 
@@ -33,6 +35,8 @@
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     error = null;
+    toError = null;
+    amountError = null;
     receipt = null;
 
     if (!fromAccount) {
@@ -41,16 +45,16 @@
     }
     const recipient = toAccountId.trim();
     if (!recipient) {
-      error = "Enter the recipient account id.";
+      toError = "Enter the recipient account id.";
       return;
     }
     if (recipient === fromAccount.id) {
-      error = "Choose a different recipient account.";
+      toError = "Choose a different recipient account.";
       return;
     }
     const minor = parseAmountToMinor(amount, fromAccount.currency);
     if (minor === null) {
-      error = "Enter an amount greater than zero.";
+      amountError = "Enter an amount greater than zero.";
       return;
     }
 
@@ -140,6 +144,7 @@
         bind:value={toAccountId}
         placeholder="00000000-0000-0000-0000-000000000000"
         hint="The recipient's account must use the same currency."
+        error={toError ?? undefined}
         required
       />
 
@@ -152,6 +157,7 @@
         min="0"
         bind:value={amount}
         placeholder="0.00"
+        error={amountError ?? undefined}
         required
       />
 

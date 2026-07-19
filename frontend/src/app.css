@@ -9,7 +9,9 @@
   --color-surface-muted: #f1f5f9;
   --color-border: #e2e8f0;
   --color-ink: #0f172a;
-  --color-muted: #64748b;
+  /* Muted text: darkened from slate-500 so it clears the 4.5:1 AA floor even on
+     the tinted canvas background, not just on white surfaces. */
+  --color-muted: #556070;
   --color-brand: #0d9488;
   --color-brand-strong: #0f766e;
   --color-brand-soft: #ccfbf1;
@@ -53,4 +55,23 @@ body {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
   border-radius: 0.375rem;
+}
+
+/* Programmatic focus targets (e.g. the main region focused on route change)
+   are containers, not controls, so they should not paint a focus ring. */
+[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* Respect users who ask for reduced motion: neutralize the spinners, pulse
+   skeletons, and color transitions used across the app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
