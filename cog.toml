@@ -1,2 +1,10 @@
+tag_prefix = "v"
+
+[changelog]
+template = "remote"
+remote = "github.com"
+owner = "vancanhuit"
+repository = "simplebank"
+
 [git_hooks.commit-msg]
 script = "cog verify --file $1"
