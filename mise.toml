@@ -102,7 +102,13 @@ run = ['go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest', 'sqlc generate']
 
 [tasks."dev:tls:certs"]
 description = "Generate TLS certificates for development"
-outputs = ["tls/cert.pem", "tls/key.pem", "tls/mailpit-cert.pem", "tls/mailpit-key.pem", "tls/rootCA.pem"]
+outputs = [
+  "tls/cert.pem",
+  "tls/key.pem",
+  "tls/mailpit-cert.pem",
+  "tls/mailpit-key.pem",
+  "tls/rootCA.pem",
+]
 run = [
   'mkdir -pv tls',
   'mkcert -cert-file tls/cert.pem -key-file tls/key.pem localhost 127.0.0.1 ::1',
