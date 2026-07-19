@@ -93,6 +93,11 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 | `SMTP_SSL` | `--smtp-ssl` | `false` | Use implicit TLS (SSL, e.g. port 465) instead of STARTTLS |
 | `SMTP_TLS_CA_FILE` | `--smtp-tls-ca-file` | — | PEM CA bundle to verify the mail server cert (e.g. a mkcert root) |
 | `RIVER_MAX_WORKERS` | `--river-max-workers` | `10` | Background worker concurrency |
+| `TLS_CERT_FILE` | `--tls-cert-file` | — | Serve HTTPS with this cert (must be set with the key) |
+| `TLS_KEY_FILE` | `--tls-key-file` | — | Private key for `TLS_CERT_FILE` |
+| `TRUSTED_PROXIES` | `--trusted-proxies` | — | CIDRs/IPs whose forwarded headers are trusted (repeatable) |
+| `PUBLIC_BASE_URL` | `--public-base-url` | — | External base URL used to build email verification links |
+| `TRANSFER_LIMITS` | `--transfer-limits` | — | Per-currency ceilings as JSON; see [Transfer limits](#transfer-limits) |
 
 ## API
 
@@ -106,13 +111,31 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 | `POST` | `/api/v1/users/login` | — | Log in, receive access + refresh tokens |
 | `POST` | `/api/v1/tokens/renew` | — | Exchange a refresh token for a new access token |
 | `GET` | `/api/v1/users/verify_email` | — | Verify an email via the link's `id` + `code` |
+| `GET` | `/api/v1/transfer-limits` | — | Per-currency transfer ceilings (policy, so the UI validates against the same limits) |
 | `POST` | `/api/v1/accounts` | Bearer | Create an account (optional opening balance) |
 | `GET` | `/api/v1/accounts/:id` | Bearer | Get an owned account |
 | `GET` | `/api/v1/accounts` | Bearer | List owned accounts (paginated) |
 | `GET` | `/api/v1/accounts/:id/transfers` | Bearer | List an owned account's transfer history (paginated) |
-| `POST` | `/api/v1/transfers` | Bearer | Transfer between accounts you own |
+| `POST` | `/api/v1/transfers` | Bearer | Transfer between accounts you own (requires an `idempotency_key`) |
 
 Authenticated routes expect an `Authorization: Bearer <access-token>` header.
+
+### Transfer limits
+
+`TRANSFER_LIMITS` is a JSON object keyed by currency code. Each entry sets a
+`max_per_transfer` and an optional `daily` ceiling, both in that currency's own
+minor units (USD/EUR cents, VND whole dong). A zero or omitted field disables
+that limit, so limits are opt-in per currency, and a currency with no entry is
+unlimited.
+
+```sh
+export TRANSFER_LIMITS='{"USD":{"max_per_transfer":100000,"daily":500000},"VND":{"max_per_transfer":2000000000}}'
+```
+
+Each transfer request carries a client-generated `idempotency_key` (a UUID) so a
+retry after a lost response replays the original transfer instead of moving
+money twice. See [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md)
+for the full rationale.
 
 ## Architecture
 
@@ -140,10 +163,15 @@ Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/RE
 - [ADR-0002](docs/decisions/0002-hash-refresh-tokens-at-rest.md) — hashing refresh tokens at rest.
 - [ADR-0003](docs/decisions/0003-server-owns-routing-with-injected-readiness.md) — the Server owns routing with an injected readiness probe.
 - [ADR-0004](docs/decisions/0004-split-util-into-domain-packages.md) — splitting `util` into domain packages, separating crypto from non-crypto randomness.
+- [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with in-transaction re-validation and per-currency limits.
 
-Money transfers run in a single database transaction with a deterministic
-account lock order to avoid deadlocks; see `TransferTx` in
-`internal/db/transfer_tx.go`.
+Money transfers run in a single database transaction that locks both accounts in
+a deterministic order (avoiding deadlocks), re-validates currency against the
+locked rows (closing the TOCTOU gap), enforces per-currency and rolling daily
+limits, and moves balances under a guarded `UPDATE` that rejects overdrafts. A
+client-supplied idempotency key collapses retries onto a single transfer. See
+`TransferTx` in `internal/db/transfer_tx.go` and
+[ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md).
 
 ## Testing
 
