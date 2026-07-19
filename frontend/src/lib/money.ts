@@ -50,21 +50,38 @@ export function formatSignedMoney(minorAmount: number, currency: Currency): stri
 
 /**
  * Convert a user-entered major-unit amount (e.g. "12.50") into integer minor
- * units for the API. Returns null when the input is empty, not a finite number,
- * or not strictly positive, so callers can surface a validation error.
+ * units for the API. Returns null when the input is empty, malformed, carries
+ * more fraction digits than the currency supports, is not strictly positive, or
+ * exceeds the range JavaScript can represent exactly, so callers can surface a
+ * validation error.
+ *
+ * Scaling is done with integer string math rather than `value * MINOR_UNITS`
+ * to avoid binary-float error (e.g. `1.005 * 100` is `100.4999…`, which would
+ * round *down* to 100). Excess precision is rejected instead of silently
+ * rounded away (`"12.999"` USD would otherwise become $13.00).
  *
  * Accepts a number as well as a string because a `<input type="number">` bound
  * with `bind:value` yields a number at runtime.
  */
 export function parseAmountToMinor(input: string | number, currency: Currency): number | null {
   const trimmed = String(input).trim();
-  if (trimmed === "") {
+  // Strict base-10 decimal: no sign, exponent, or separators. Rejects "",
+  // "abc", "1e3", "0x10", "Infinity", "-5".
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(trimmed);
+  if (!match) {
     return null;
   }
-  const value = Number(trimmed);
-  if (!Number.isFinite(value) || value <= 0) {
+  const [, intPart, fracPart = ""] = match;
+  const digits = FRACTION_DIGITS[currency];
+  if (fracPart.length > digits) {
     return null;
   }
-  const minor = Math.round(value * MINOR_UNITS[currency]);
-  return minor > 0 ? minor : null;
+  // Left-justify the fraction to the currency's precision, then concatenate to
+  // form the minor-unit integer as a string (avoids any float multiplication).
+  const combined = intPart + fracPart.padEnd(digits, "0");
+  const minor = Number(combined);
+  if (!Number.isSafeInteger(minor) || minor <= 0) {
+    return null;
+  }
+  return minor;
 }

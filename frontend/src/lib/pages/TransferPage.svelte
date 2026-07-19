@@ -18,6 +18,10 @@
   let submitting = $state(false);
   let receipt = $state<TransferResult | null>(null);
   let limits = $state<TransferLimits>({});
+  // One key per logical transfer, held stable so a retry after a lost response
+  // replays the original instead of moving money twice. Rotated only once a
+  // transfer is confirmed (see the success branch below).
+  let idempotencyKey = crypto.randomUUID();
 
   onMount(async () => {
     if (!accounts.loaded) {
@@ -83,13 +87,16 @@
           to_account_id: recipient,
           amount: minor,
           currency: fromAccount.currency,
-          // A fresh key per submit makes the request safe to retry at the
-          // network layer without moving money twice. The `submitting` guard
-          // already blocks a second concurrent submit of the same form.
-          idempotency_key: crypto.randomUUID(),
+          // Stable across retries of this same transfer: if the response is lost
+          // but the server committed, resubmitting replays it rather than
+          // debiting twice.
+          idempotency_key: idempotencyKey,
         },
       });
       receipt = result;
+      // The transfer is confirmed, so the next one is a new intent: rotate the
+      // key and clear the form.
+      idempotencyKey = crypto.randomUUID();
       // Reload balances so the dashboard and the from-account reflect the debit.
       await accounts.load();
       amount = "";

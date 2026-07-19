@@ -44,15 +44,35 @@ describe("parseAmountToMinor", () => {
     expect(parseAmountToMinor("1500", "VND")).toBe(1500);
   });
 
-  it("rounds to the nearest minor unit", () => {
-    expect(parseAmountToMinor("1.239", "USD")).toBe(124);
+  it("scales without binary-float error", () => {
+    // 1.005 * 100 is 100.4999… in IEEE-754; integer scaling must stay exact.
+    expect(parseAmountToMinor("1.00", "USD")).toBe(100);
+    expect(parseAmountToMinor("0.10", "USD")).toBe(10);
+  });
+
+  it("rejects more precision than the currency supports", () => {
+    expect(parseAmountToMinor("1.239", "USD")).toBeNull();
+    expect(parseAmountToMinor("12.999", "USD")).toBeNull();
+    expect(parseAmountToMinor("1.5", "VND")).toBeNull();
   });
 
   it("rejects empty, non-numeric, and non-positive input", () => {
     expect(parseAmountToMinor("", "USD")).toBeNull();
     expect(parseAmountToMinor("abc", "USD")).toBeNull();
     expect(parseAmountToMinor("0", "USD")).toBeNull();
+    expect(parseAmountToMinor("0.00", "USD")).toBeNull();
     expect(parseAmountToMinor("-5", "USD")).toBeNull();
+  });
+
+  it("rejects non-decimal notations and separators", () => {
+    expect(parseAmountToMinor("1e3", "USD")).toBeNull();
+    expect(parseAmountToMinor("0x10", "USD")).toBeNull();
+    expect(parseAmountToMinor("Infinity", "USD")).toBeNull();
+    expect(parseAmountToMinor("1,000", "USD")).toBeNull();
+  });
+
+  it("rejects amounts beyond the exact-integer range", () => {
+    expect(parseAmountToMinor("999999999999999999", "USD")).toBeNull();
   });
 
   it("accepts numeric input (number-type inputs bind as numbers)", () => {
