@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import type { Account } from "../api/types";
   import { formatMoney } from "../money";
   import { accounts } from "../stores/accounts.svelte";
@@ -12,6 +13,10 @@
 
   let copied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Clear a pending reset if the card unmounts, so the timer never writes to a
+  // destroyed instance.
+  onDestroy(() => clearTimeout(copyTimer));
 
   const created = $derived(
     new Date(account.created_at).toLocaleDateString(undefined, {

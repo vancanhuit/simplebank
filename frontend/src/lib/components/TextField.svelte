@@ -1,6 +1,8 @@
 <script lang="ts">
   interface Props {
-    id: string;
+    /** Optional explicit id. Defaults to a unique, SSR-safe id so callers
+        don't have to hand-manage one and fields can repeat without collisions. */
+    id?: string;
     label: string;
     value: string;
     type?: "text" | "email" | "password" | "number";
@@ -15,8 +17,10 @@
     disabled?: boolean;
   }
 
+  const uid = $props.id();
+
   let {
-    id,
+    id = uid,
     label,
     value = $bindable(),
     type = "text",

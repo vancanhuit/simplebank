@@ -43,15 +43,8 @@
       <Alert variant="error">{error}</Alert>
     {/if}
 
+    <TextField label="Username" bind:value={username} autocomplete="username" required />
     <TextField
-      id="username"
-      label="Username"
-      bind:value={username}
-      autocomplete="username"
-      required
-    />
-    <TextField
-      id="password"
       label="Password"
       type="password"
       bind:value={password}

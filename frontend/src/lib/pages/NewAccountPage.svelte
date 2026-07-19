@@ -103,7 +103,6 @@
       </fieldset>
 
       <TextField
-        id="deposit"
         label={`Opening deposit (${currency})`}
         type="number"
         inputmode="decimal"

@@ -139,7 +139,6 @@
       </div>
 
       <TextField
-        id="to"
         label="Recipient account id"
         bind:value={toAccountId}
         placeholder="00000000-0000-0000-0000-000000000000"
@@ -149,7 +148,6 @@
       />
 
       <TextField
-        id="amount"
         label={`Amount${fromAccount ? ` (${fromAccount.currency})` : ""}`}
         type="number"
         inputmode="decimal"
