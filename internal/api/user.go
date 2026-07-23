@@ -16,6 +16,7 @@ import (
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 	"github.com/vancanhuit/simplebank/internal/password"
 	"github.com/vancanhuit/simplebank/internal/random"
+	"github.com/vancanhuit/simplebank/internal/token"
 	"github.com/vancanhuit/simplebank/internal/worker"
 )
 
@@ -64,11 +65,8 @@ func newUserResponse(u sqlcdb.User) userResponse {
 }
 
 func (s *Server) createUser(c *echo.Context) error {
-	var req createUserRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[createUserRequest](c)
+	if err != nil {
 		return err
 	}
 
@@ -112,11 +110,8 @@ type loginUserResponse struct {
 }
 
 func (s *Server) loginUser(c *echo.Context) error {
-	var req loginUserRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[loginUserRequest](c)
+	if err != nil {
 		return err
 	}
 
@@ -135,36 +130,59 @@ func (s *Server) loginUser(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 	}
 
-	accessToken, accessPayload, err := s.tokenMaker.CreateToken(user.Username, roleDepositor, s.config.AccessTTL)
-	if err != nil {
-		return err
-	}
-	refreshToken, refreshPayload, err := s.tokenMaker.CreateToken(user.Username, roleDepositor, s.config.RefreshTTL)
+	tokens, err := s.issueTokenPair(user.Username, roleDepositor)
 	if err != nil {
 		return err
 	}
 
 	session, err := s.store.CreateSession(ctx, sqlcdb.CreateSessionParams{
-		ID:           refreshPayload.ID,
+		ID:           tokens.refreshPayload.ID,
 		Username:     user.Username,
-		RefreshToken: hashRefreshToken(refreshToken),
+		RefreshToken: hashRefreshToken(tokens.refresh),
 		UserAgent:    c.Request().UserAgent(),
 		ClientIp:     c.RealIP(),
 		IsBlocked:    false,
-		ExpiresAt:    refreshPayload.ExpiresAt.Time,
+		ExpiresAt:    tokens.refreshPayload.ExpiresAt.Time,
 	})
 	if err != nil {
 		return store.ClassifyError(err)
 	}
 
 	return c.JSON(http.StatusOK, loginUserResponse{
-		AccessToken:           accessToken,
-		AccessTokenExpiresAt:  accessPayload.ExpiresAt.Time,
-		RefreshToken:          refreshToken,
-		RefreshTokenExpiresAt: refreshPayload.ExpiresAt.Time,
+		AccessToken:           tokens.access,
+		AccessTokenExpiresAt:  tokens.accessPayload.ExpiresAt.Time,
+		RefreshToken:          tokens.refresh,
+		RefreshTokenExpiresAt: tokens.refreshPayload.ExpiresAt.Time,
 		SessionID:             session.ID.String(),
 		User:                  newUserResponse(user),
 	})
+}
+
+// tokenPair holds a freshly-issued access/refresh token and their payloads.
+type tokenPair struct {
+	access         string
+	accessPayload  *token.Payload
+	refresh        string
+	refreshPayload *token.Payload
+}
+
+// issueTokenPair mints an access and a refresh token for the given identity,
+// each with its configured TTL.
+func (s *Server) issueTokenPair(username, role string) (tokenPair, error) {
+	access, accessPayload, err := s.tokenMaker.CreateToken(username, role, s.config.AccessTTL)
+	if err != nil {
+		return tokenPair{}, err
+	}
+	refresh, refreshPayload, err := s.tokenMaker.CreateToken(username, role, s.config.RefreshTTL)
+	if err != nil {
+		return tokenPair{}, err
+	}
+	return tokenPair{
+		access:         access,
+		accessPayload:  accessPayload,
+		refresh:        refresh,
+		refreshPayload: refreshPayload,
+	}, nil
 }
 
 type renewTokenRequest struct {
@@ -172,11 +190,8 @@ type renewTokenRequest struct {
 }
 
 func (s *Server) renewToken(c *echo.Context) error {
-	var req renewTokenRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[renewTokenRequest](c)
+	if err != nil {
 		return err
 	}
 
