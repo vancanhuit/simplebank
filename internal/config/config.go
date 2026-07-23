@@ -22,26 +22,28 @@ type CurrencyLimit struct {
 }
 
 type Config struct {
-	HTTPAddr        string
-	DBSource        string
-	DBMaxConns      int
-	DBMinConns      int
-	JWTSecret       string
-	AccessTTL       time.Duration
-	RefreshTTL      time.Duration
-	SMTPHost        string
-	SMTPPort        int
-	SMTPUsername    string
-	SMTPPassword    string
-	SMTPFrom        string
-	SMTPInsecure    bool
-	SMTPSSL         bool
-	SMTPTLSCAFile   string
-	RiverMaxWorkers int
-	TLSCertFile     string
-	TLSKeyFile      string
-	TrustedProxies  []string
-	PublicBaseURL   string
+	HTTPAddr          string
+	DBSource          string
+	DBMaxConns        int
+	DBMinConns        int
+	DBMaxConnLifetime time.Duration
+	DBMaxConnIdleTime time.Duration
+	JWTSecret         string
+	AccessTTL         time.Duration
+	RefreshTTL        time.Duration
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUsername      string
+	SMTPPassword      string
+	SMTPFrom          string
+	SMTPInsecure      bool
+	SMTPSSL           bool
+	SMTPTLSCAFile     string
+	RiverMaxWorkers   int
+	TLSCertFile       string
+	TLSKeyFile        string
+	TrustedProxies    []string
+	PublicBaseURL     string
 	// TransferLimits maps a currency code to its transfer ceilings. Because a
 	// transfer's two accounts share one currency, each request resolves to a
 	// single currency's limits. A currency absent from the map disables its
@@ -94,6 +96,8 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "db-source", Sources: cli.EnvVars("DB_SOURCE")},
 		&cli.IntFlag{Name: "db-max-conns", Sources: cli.EnvVars("DB_MAX_CONNS")},
 		&cli.IntFlag{Name: "db-min-conns", Sources: cli.EnvVars("DB_MIN_CONNS")},
+		&cli.DurationFlag{Name: "db-max-conn-lifetime", Sources: cli.EnvVars("DB_MAX_CONN_LIFETIME")},
+		&cli.DurationFlag{Name: "db-max-conn-idle-time", Sources: cli.EnvVars("DB_MAX_CONN_IDLE_TIME")},
 		&cli.StringFlag{Name: "jwt-secret", Sources: cli.EnvVars("JWT_SECRET")},
 		&cli.DurationFlag{Name: "access-ttl", Value: 15 * time.Minute, Sources: cli.EnvVars("ACCESS_TTL")},
 		&cli.DurationFlag{Name: "refresh-ttl", Value: 24 * time.Hour, Sources: cli.EnvVars("REFRESH_TTL")},
@@ -121,6 +125,8 @@ func FromCommand(cmd *cli.Command) Config {
 		DBSource:          cmd.String("db-source"),
 		DBMaxConns:        cmd.Int("db-max-conns"),
 		DBMinConns:        cmd.Int("db-min-conns"),
+		DBMaxConnLifetime: cmd.Duration("db-max-conn-lifetime"),
+		DBMaxConnIdleTime: cmd.Duration("db-max-conn-idle-time"),
 		JWTSecret:         cmd.String("jwt-secret"),
 		AccessTTL:         cmd.Duration("access-ttl"),
 		RefreshTTL:        cmd.Duration("refresh-ttl"),

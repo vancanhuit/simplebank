@@ -88,6 +88,12 @@ func newPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 	if cfg.DBMinConns > 0 {
 		poolCfg.MinConns = int32(cfg.DBMinConns)
 	}
+	if cfg.DBMaxConnLifetime > 0 {
+		poolCfg.MaxConnLifetime = cfg.DBMaxConnLifetime
+	}
+	if cfg.DBMaxConnIdleTime > 0 {
+		poolCfg.MaxConnIdleTime = cfg.DBMaxConnIdleTime
+	}
 	poolCfg.MaxConnLifetimeJitter = poolCfg.MaxConnLifetime / 10
 	return pgxpool.NewWithConfig(ctx, poolCfg)
 }
