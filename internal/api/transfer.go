@@ -21,11 +21,8 @@ type transferRequest struct {
 }
 
 func (s *Server) createTransfer(c *echo.Context) error {
-	var req transferRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[transferRequest](c)
+	if err != nil {
 		return err
 	}
 

@@ -64,11 +64,8 @@ func newUserResponse(u sqlcdb.User) userResponse {
 }
 
 func (s *Server) createUser(c *echo.Context) error {
-	var req createUserRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[createUserRequest](c)
+	if err != nil {
 		return err
 	}
 
@@ -112,11 +109,8 @@ type loginUserResponse struct {
 }
 
 func (s *Server) loginUser(c *echo.Context) error {
-	var req loginUserRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[loginUserRequest](c)
+	if err != nil {
 		return err
 	}
 
@@ -172,11 +166,8 @@ type renewTokenRequest struct {
 }
 
 func (s *Server) renewToken(c *echo.Context) error {
-	var req renewTokenRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[renewTokenRequest](c)
+	if err != nil {
 		return err
 	}
 

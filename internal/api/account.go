@@ -21,11 +21,8 @@ type createAccountRequest struct {
 }
 
 func (s *Server) createAccount(c *echo.Context) error {
-	var req createAccountRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-	if err := c.Validate(&req); err != nil {
+	req, err := bindValidate[createAccountRequest](c)
+	if err != nil {
 		return err
 	}
 	if !currency.IsSupported(req.Currency) {
