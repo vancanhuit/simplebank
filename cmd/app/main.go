@@ -176,8 +176,15 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	}
 	server.RegisterSPA(dist)
 
+	return startServer(ctx, app.cfg, server.Handler())
+}
+
+// startServer runs the HTTP server with hardened timeouts and graceful
+// shutdown, serving over TLS when a certificate is configured and plain HTTP
+// otherwise.
+func startServer(ctx context.Context, cfg config.Config, handler http.Handler) error {
 	sc := echo.StartConfig{
-		Address:         app.cfg.HTTPAddr,
+		Address:         cfg.HTTPAddr,
 		GracefulTimeout: 10 * time.Second,
 		BeforeServeFunc: func(s *http.Server) error {
 			s.ReadHeaderTimeout = 5 * time.Second // slow-loris protection
@@ -187,23 +194,23 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		},
 	}
 
-	if app.cfg.TLSCertFile != "" {
-		cert, err := os.ReadFile(app.cfg.TLSCertFile)
+	if cfg.TLSCertFile != "" {
+		cert, err := os.ReadFile(cfg.TLSCertFile)
 		if err != nil {
-			return fmt.Errorf("reading tls cert file %s: %w", app.cfg.TLSCertFile, err)
+			return fmt.Errorf("reading tls cert file %s: %w", cfg.TLSCertFile, err)
 		}
-		key, err := os.ReadFile(app.cfg.TLSKeyFile)
+		key, err := os.ReadFile(cfg.TLSKeyFile)
 		if err != nil {
-			return fmt.Errorf("reading tls key file %s: %w", app.cfg.TLSKeyFile, err)
+			return fmt.Errorf("reading tls key file %s: %w", cfg.TLSKeyFile, err)
 		}
-		slog.Info("starting server with TLS", "addr", app.cfg.HTTPAddr)
-		if err := sc.StartTLS(ctx, server.Handler(), cert, key); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Info("starting server with TLS", "addr", cfg.HTTPAddr)
+		if err := sc.StartTLS(ctx, handler, cert, key); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
 	}
 
-	if err := sc.Start(ctx, server.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := sc.Start(ctx, handler); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
