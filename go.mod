@@ -10,8 +10,8 @@ require (
 	github.com/labstack/echo-jwt/v5 v5.0.2
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/pressly/goose/v3 v3.27.3
-	github.com/riverqueue/river v0.42.0
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.42.0
+	github.com/riverqueue/river v0.43.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.43.0
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/wneessen/go-mail v0.8.1
 	go.uber.org/goleak v1.3.0
@@ -19,8 +19,7 @@ require (
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.14 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -28,12 +27,10 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/riverqueue/river/riverdriver v0.42.0 // indirect
-	github.com/riverqueue/river/rivershared v0.42.0 // indirect
-	github.com/riverqueue/river/rivertype v0.42.0 // indirect
+	github.com/riverqueue/river/riverdriver v0.43.0 // indirect
+	github.com/riverqueue/river/rivershared v0.43.0 // indirect
+	github.com/riverqueue/river/rivertype v0.43.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -43,5 +40,4 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
