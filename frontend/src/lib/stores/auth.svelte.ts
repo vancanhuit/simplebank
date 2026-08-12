@@ -1,5 +1,11 @@
 import { request } from "../api/client";
-import type { LoginResponse, RegisterInput, AcceptedResponse, RenewResponse, User } from "../api/types";
+import type {
+  LoginResponse,
+  RegisterInput,
+  AcceptedResponse,
+  RenewResponse,
+  User,
+} from "../api/types";
 import { navigate } from "../router.svelte";
 
 /**

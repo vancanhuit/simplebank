@@ -3,7 +3,7 @@ import { AuthStore } from "./auth.svelte";
 
 function jsonResponse(status: number, body: unknown): Response {
   // 204 No Content must not have a body.
-  const responseBody = status === 204 ? null : (body === undefined ? "" : JSON.stringify(body));
+  const responseBody = status === 204 ? null : body === undefined ? "" : JSON.stringify(body);
   return new Response(responseBody, {
     status,
     headers: status === 204 ? {} : { "Content-Type": "application/json" },

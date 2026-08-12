@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  openingLimitFor,
-  openingLimitInputMax,
-  validateOpeningBalance,
-} from "./opening-limits";
+import { openingLimitFor, openingLimitInputMax, validateOpeningBalance } from "./opening-limits";
 
 describe("opening limits", () => {
   const limits = { USD: 100000, EUR: 100000, VND: 25000000 };

@@ -10,11 +10,7 @@
     parseAmountToMinor,
     type Currency,
   } from "../money";
-  import {
-    openingLimitFor,
-    openingLimitInputMax,
-    validateOpeningBalance,
-  } from "../opening-limits";
+  import { openingLimitFor, openingLimitInputMax, validateOpeningBalance } from "../opening-limits";
   import { navigate } from "../router.svelte";
   import Button from "../components/Button.svelte";
   import Alert from "../components/Alert.svelte";
