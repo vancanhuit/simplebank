@@ -21,7 +21,7 @@
 
   function logout() {
     accounts.reset();
-    auth.logout();
+    void auth.logout();
   }
 </script>
 

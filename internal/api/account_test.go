@@ -2,13 +2,16 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/vancanhuit/simplebank/internal/config"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
@@ -105,5 +108,78 @@ func TestListAccountsDefaultsSize(t *testing.T) {
 	}
 	if gotLimit != 5 {
 		t.Errorf("size not defaulted: Limit = %d, want 5", gotLimit)
+	}
+}
+
+func TestCreateAccountOpeningBalanceLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		balance    int64
+		wantStatus int
+		wantStore  bool
+	}{
+		{name: "below", balance: 99999, wantStatus: http.StatusCreated, wantStore: true},
+		{name: "equal", balance: 100000, wantStatus: http.StatusCreated, wantStore: true},
+		{name: "above", balance: 100001, wantStatus: http.StatusUnprocessableEntity, wantStore: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			fake := fakeStore{createAccountTx: func(_ context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+				called = true
+				return sqlcdb.Account{ID: uuid.New(), Owner: arg.Owner, Balance: arg.Balance, Currency: arg.Currency}, nil
+			}}
+			s := newTestServerWithConfig(t, fake, config.Config{
+				JWTSecret:            testSecret,
+				AccessTTL:            time.Minute,
+				RefreshTTL:           time.Hour,
+				AccountOpeningLimits: map[string]int64{"USD": 100000},
+			})
+			body := fmt.Sprintf(`{"currency":"USD","balance":%d}`, tt.balance)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", bearer(t, "alice"))
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			if rec.Code != tt.wantStatus || called != tt.wantStore {
+				t.Fatalf("status=%d called=%v, want status=%d called=%v", rec.Code, called, tt.wantStatus, tt.wantStore)
+			}
+		})
+	}
+}
+
+func TestCreateAccountMissingCurrencyLimitPermitsZeroRejectsPositive(t *testing.T) {
+	t.Parallel()
+
+	fake := fakeStore{createAccountTx: func(_ context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+		return sqlcdb.Account{ID: uuid.New(), Owner: arg.Owner, Balance: arg.Balance, Currency: arg.Currency}, nil
+	}}
+	s := newTestServerWithConfig(t, fake, config.Config{
+		JWTSecret:            testSecret,
+		AccessTTL:            time.Minute,
+		RefreshTTL:           time.Hour,
+		AccountOpeningLimits: map[string]int64{"USD": 100000},
+	})
+
+	// Zero opening balance should succeed for EUR (not configured)
+	reqZero := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(`{"currency":"EUR","balance":0}`))
+	reqZero.Header.Set("Content-Type", "application/json")
+	reqZero.Header.Set("Authorization", bearer(t, "alice"))
+	recZero := httptest.NewRecorder()
+	s.Handler().ServeHTTP(recZero, reqZero)
+	if recZero.Code != http.StatusCreated {
+		t.Errorf("zero balance for missing currency: want 201, got %d (%s)", recZero.Code, recZero.Body.String())
+	}
+
+	// Positive opening balance should be rejected for EUR (not configured)
+	reqPos := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(`{"currency":"EUR","balance":1}`))
+	reqPos.Header.Set("Content-Type", "application/json")
+	reqPos.Header.Set("Authorization", bearer(t, "alice"))
+	recPos := httptest.NewRecorder()
+	s.Handler().ServeHTTP(recPos, reqPos)
+	if recPos.Code != http.StatusUnprocessableEntity {
+		t.Errorf("positive balance for missing currency: want 422, got %d (%s)", recPos.Code, recPos.Body.String())
 	}
 }

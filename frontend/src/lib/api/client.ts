@@ -37,6 +37,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
     method: options.method ?? "GET",
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    credentials: "same-origin",
     signal: options.signal,
   });
 }
@@ -49,7 +50,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   let response = await send(path, options);
 
-  if (response.status === 401 && options.authenticated && auth.canRefresh) {
+  if (response.status === 401 && options.authenticated) {
     const refreshed = await auth.tryRefresh();
     if (refreshed) {
       response = await send(path, options);

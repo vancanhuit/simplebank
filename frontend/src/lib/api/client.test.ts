@@ -48,7 +48,6 @@ describe("request", () => {
       .mockResolvedValueOnce(jsonResponse(401, { error: "token has expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(auth, "canRefresh", "get").mockReturnValue(true);
     const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
 
     const data = await request<{ ok: boolean }>("/accounts", { authenticated: true });
@@ -61,7 +60,6 @@ describe("request", () => {
   it("does not retry when the refresh fails", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: "token has expired" }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(auth, "canRefresh", "get").mockReturnValue(true);
     vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
 
     await expect(request("/accounts", { authenticated: true })).rejects.toBeInstanceOf(ApiError);

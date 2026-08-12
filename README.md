@@ -97,7 +97,9 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 | `TLS_KEY_FILE` | `--tls-key-file` | — | Private key for `TLS_CERT_FILE` |
 | `TRUSTED_PROXIES` | `--trusted-proxies` | — | CIDRs/IPs whose forwarded headers are trusted (repeatable) |
 | `PUBLIC_BASE_URL` | `--public-base-url` | — | External base URL used to build email verification links |
+| `SESSION_COOKIE_SECURE` | `--session-cookie-secure` | `true` | Require HTTPS for refresh cookie transport |
 | `TRANSFER_LIMITS` | `--transfer-limits` | — | Per-currency ceilings as JSON; see [Transfer limits](#transfer-limits) |
+| `ACCOUNT_OPENING_LIMITS` | `--account-opening-limits` | — | Per-currency demo opening caps in minor units |
 
 ## API
 
@@ -107,18 +109,21 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 |--------|------|------|-------------|
 | `GET` | `/livez` | — | Liveness (process up) |
 | `GET` | `/readyz` | — | Readiness (database reachable) |
-| `POST` | `/api/v1/users` | — | Register a user (queues a verification email) |
-| `POST` | `/api/v1/users/login` | — | Log in, receive access + refresh tokens |
-| `POST` | `/api/v1/tokens/renew` | — | Exchange a refresh token for a new access token |
+| `POST` | `/api/v1/users` | — | Register a user, return `202 Accepted`, and queue verification mail |
+| `POST` | `/api/v1/users/login` | — | Log in, receive an access token, and set the refresh token as an HttpOnly cookie |
+| `POST` | `/api/v1/users/logout` | Refresh cookie | Block the current session and clear the refresh cookie (`204 No Content`) |
+| `POST` | `/api/v1/tokens/renew` | Refresh cookie | Rotate the refresh cookie and return a fresh access token |
+| `POST` | `/api/v1/users/verify_email/resend` | — | Return `202 Accepted` and (re)queue verification mail without disclosing account existence |
 | `GET` | `/api/v1/users/verify_email` | — | Verify an email via the link's `id` + `code` |
 | `GET` | `/api/v1/transfer-limits` | — | Per-currency transfer ceilings (policy, so the UI validates against the same limits) |
+| `GET` | `/api/v1/account-opening-limits` | — | Per-currency opening-balance caps for the account-opening form |
 | `POST` | `/api/v1/accounts` | Bearer | Create an account (optional opening balance) |
 | `GET` | `/api/v1/accounts/:id` | Bearer | Get an owned account |
 | `GET` | `/api/v1/accounts` | Bearer | List owned accounts (paginated) |
 | `GET` | `/api/v1/accounts/:id/transfers` | Bearer | List an owned account's transfer history (paginated) |
 | `POST` | `/api/v1/transfers` | Bearer | Transfer between accounts you own (requires an `idempotency_key`) |
 
-Authenticated routes expect an `Authorization: Bearer <access-token>` header.
+Protected routes accept only `Authorization: Bearer <access-token>` credentials. Refresh tokens are never returned in JSON responses; the server stores them in the `simplebank_refresh` HttpOnly same-site cookie on `/api/v1`, and only the renew/logout endpoints consume that cookie.
 
 ### Transfer limits
 
@@ -136,6 +141,21 @@ Each transfer request carries a client-generated `idempotency_key` (a UUID) so a
 retry after a lost response replays the original transfer instead of moving
 money twice. See [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md)
 for the full rationale.
+
+### Account opening limits
+
+`ACCOUNT_OPENING_LIMITS` is a JSON object keyed by currency code. Each value is
+the maximum opening balance the demo permits for a newly created account,
+expressed in that currency's minor units. A missing currency entry means a zero
+cap: the account may still be opened, but only with a zero opening deposit.
+
+```sh
+export ACCOUNT_OPENING_LIMITS='{"USD":100000,"EUR":100000,"VND":25000000}'
+```
+
+The SPA reads the live policy from `/api/v1/account-opening-limits` and validates
+the requested opening deposit before submit, while the server remains
+authoritative and enforces the same cap before account creation.
 
 ## Architecture
 

@@ -19,12 +19,15 @@ var errorCatalog = []struct {
 	message string
 }{
 	{store.ErrRecordNotFound, http.StatusNotFound, "resource not found"},
+	{store.ErrUsernameExists, http.StatusConflict, "resource already exists"},
 	{store.ErrUniqueViolation, http.StatusConflict, "resource already exists"},
 	{store.ErrForeignKeyViolation, http.StatusConflict, "related resource not found"},
 	{store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient balance"},
 	{store.ErrCurrencyMismatch, http.StatusBadRequest, "currency mismatch"},
 	{store.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, "daily transfer limit exceeded"},
 	{store.ErrNumericOutOfRange, http.StatusUnprocessableEntity, "amount too large"},
+	{store.ErrIdempotencyConflict, http.StatusConflict, "idempotency key conflicts with an existing transfer"},
+	{store.ErrInvalidSession, http.StatusUnauthorized, "invalid session"},
 	{token.ErrExpiredToken, http.StatusUnauthorized, "token has expired"},
 	{token.ErrInvalidToken, http.StatusUnauthorized, "token is invalid"},
 }

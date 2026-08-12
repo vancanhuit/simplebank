@@ -26,7 +26,7 @@
         email: email.trim(),
         password,
       });
-      // Registration does not return tokens; send the user to sign in with a
+      // Registration returns 202 Accepted; send the user to sign in with a
       // one-shot success notice.
       navigate("/login", { registered: true });
     } catch (err) {

@@ -3,8 +3,11 @@ INSERT INTO transfers (from_account_id, to_account_id, amount, idempotency_key)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
--- name: GetTransferByIdempotencyKey :one
-SELECT * FROM transfers WHERE idempotency_key = $1 LIMIT 1;
+-- name: GetTransferBySourceAndIdempotencyKey :one
+SELECT * FROM transfers
+WHERE from_account_id = sqlc.arg(from_account_id)
+  AND idempotency_key = sqlc.arg(idempotency_key)
+LIMIT 1;
 
 -- name: SumOutgoingTransfersSince :one
 SELECT COALESCE(SUM(amount), 0)::bigint AS total

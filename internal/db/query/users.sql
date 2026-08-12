@@ -6,6 +6,9 @@ RETURNING *;
 -- name: GetUser :one
 SELECT * FROM users WHERE username = $1 LIMIT 1;
 
+-- name: GetUserByEmail :one
+SELECT * FROM users WHERE email = $1 LIMIT 1;
+
 -- name: VerifyUserEmail :one
 UPDATE users SET is_email_verified = true
 WHERE username = $1

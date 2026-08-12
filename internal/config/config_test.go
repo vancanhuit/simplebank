@@ -59,9 +59,10 @@ func TestLimitFor(t *testing.T) {
 func TestValidate(t *testing.T) {
 	t.Parallel()
 	valid := Config{
-		DBSource:  "postgres://u:p@localhost:5432/db",
-		JWTSecret: "01234567890123456789012345678901",
-		SMTPFrom:  "no-reply@example.com",
+		DBSource:            "postgres://u:p@localhost:5432/db",
+		JWTSecret:           "01234567890123456789012345678901",
+		SMTPFrom:            "no-reply@example.com",
+		SessionCookieSecure: true,
 	}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("expected valid config, got %v", err)
@@ -85,5 +86,129 @@ func TestValidate(t *testing.T) {
 				t.Error("expected error, got nil")
 			}
 		})
+	}
+}
+
+func TestValidateSessionCookieSecure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+	}{
+		{
+			name: "https public url rejects insecure cookie",
+			cfg: Config{
+				DBSource:            "postgres://u:p@localhost:5432/db",
+				JWTSecret:           "01234567890123456789012345678901",
+				SMTPFrom:            "no-reply@example.com",
+				PublicBaseURL:       "https://localhost:8443",
+				SessionCookieSecure: false,
+			},
+			wantErr: true,
+		},
+		{
+			name: "http public url allows insecure cookie",
+			cfg: Config{
+				DBSource:            "postgres://u:p@localhost:5432/db",
+				JWTSecret:           "01234567890123456789012345678901",
+				SMTPFrom:            "no-reply@example.com",
+				PublicBaseURL:       "http://localhost:8080",
+				SessionCookieSecure: false,
+			},
+		},
+		{
+			name: "scheme-less public url rejected",
+			cfg: Config{
+				DBSource:            "postgres://u:p@localhost:5432/db",
+				JWTSecret:           "01234567890123456789012345678901",
+				SMTPFrom:            "no-reply@example.com",
+				PublicBaseURL:       "localhost:8080",
+				SessionCookieSecure: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "unsupported public url scheme rejected",
+			cfg: Config{
+				DBSource:            "postgres://u:p@localhost:5432/db",
+				JWTSecret:           "01234567890123456789012345678901",
+				SMTPFrom:            "no-reply@example.com",
+				PublicBaseURL:       "ftp://localhost:8080",
+				SessionCookieSecure: true,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.cfg.Validate()
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected valid config, got %v", err)
+			}
+		})
+	}
+}
+
+func TestParseAccountOpeningLimits(t *testing.T) {
+	t.Parallel()
+
+	empty, err := parseAccountOpeningLimits("")
+	if err != nil {
+		t.Fatalf("empty input should not error, got %v", err)
+	}
+	if empty != nil {
+		t.Errorf("empty input should yield no limits, got %v", empty)
+	}
+
+	limits, err := parseAccountOpeningLimits(`{"USD":100000,"EUR":100000,"VND":25000000}`)
+	if err != nil {
+		t.Fatalf("valid JSON should parse, got %v", err)
+	}
+	if got := limits["USD"]; got != 100000 {
+		t.Errorf("USD limit = %d, want 100000", got)
+	}
+	if got := limits["VND"]; got != 25000000 {
+		t.Errorf("VND limit = %d, want 25000000", got)
+	}
+
+	if _, err := parseAccountOpeningLimits("not json"); err == nil {
+		t.Error("malformed JSON should error")
+	}
+
+	if _, err := parseAccountOpeningLimits(`{"USD":-100}`); err == nil {
+		t.Error("negative cap should error")
+	}
+}
+
+func TestValidateRejectsBadAccountOpeningLimits(t *testing.T) {
+	t.Parallel()
+	_, err := parseAccountOpeningLimits("{bad")
+	cfg := Config{
+		DBSource:                "x",
+		JWTSecret:               "01234567890123456789012345678901",
+		SMTPFrom:                "a@b.c",
+		accountOpeningLimitsErr: err,
+	}
+	if cfg.Validate() == nil {
+		t.Error("expected Validate to reject an account-opening-limits parse error")
+	}
+}
+
+func TestOpeningBalanceLimitFor(t *testing.T) {
+	t.Parallel()
+	cfg := Config{AccountOpeningLimits: map[string]int64{"USD": 100000, "VND": 25000000}}
+	if got := cfg.OpeningBalanceLimitFor("USD"); got != 100000 {
+		t.Errorf("USD opening limit = %d, want 100000", got)
+	}
+	// An unconfigured currency resolves to zero (only zero opening allowed).
+	if got := cfg.OpeningBalanceLimitFor("EUR"); got != 0 {
+		t.Errorf("unconfigured currency should return 0, got %d", got)
 	}
 }

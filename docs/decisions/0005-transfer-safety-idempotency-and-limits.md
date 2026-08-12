@@ -29,16 +29,21 @@ comparable, so one global ceiling is meaningless across currencies.
 
 ## Decision
 Every transfer carries a **client-generated idempotency key** (a required UUID
-in the request body), and all safety checks run **inside the money-moving
-transaction** against locked rows.
+in the request body), scoped to the **source account** via the composite unique
+constraint `(from_account_id, idempotency_key)`, and all safety checks run
+**inside the money-moving transaction** against locked rows.
 
-- **Idempotency.** The key is stored on the transfer row under a unique
-  constraint. `TransferTx` takes a fast path: if a transfer already exists for
-  the key, it replays the original result without touching balances. A
-  concurrent request that wins the `CreateTransfer` race makes the loser hit the
-  unique-constraint violation, which is resolved by replaying the winner. The
-  key is the client's to own — the SPA holds one key stable across retries and
-  rotates it only after a confirmed receipt (see the frontend transfer flow).
+- **Idempotency.** The key is stored on the transfer row under the composite
+  unique constraint `(from_account_id, idempotency_key)`. `TransferTx` takes a
+  fast path: if a transfer already exists for the same source account and key,
+  it replays the original result without touching balances. A concurrent request
+  that wins the `CreateTransfer` race makes the loser hit the unique-constraint
+  violation, which is resolved by replaying the winner. If a caller reuses the
+  same source-scoped key with different immutable parameters (destination,
+  amount, or asserted currency), the replay path returns `409 Conflict` instead
+  of silently returning the wrong transfer. The key is the client's to own —
+  the SPA holds one key stable across retries and rotates it only after a
+  confirmed receipt (see the frontend transfer flow).
 - **In-transaction re-validation.** Both accounts are locked with
   `SELECT … FOR UPDATE` in a deterministic order (smaller UUID first) to avoid
   deadlocks between opposing transfers. Currency is re-checked against the locked
@@ -90,8 +95,9 @@ transaction** against locked rows.
 - Rejected: a single guarded `UPDATE` makes the check and the write atomic.
 
 ## Consequences
-- A transfer is safe to retry: the same key always yields the same result, and
-  balances move at most once per key.
+- A transfer is safe to retry: the same source-scoped key always yields the
+  same result, and balances move at most once per `(from_account_id,
+  idempotency_key)` pair.
 - Concurrent transfers between the same two accounts cannot deadlock (fixed lock
   order) and cannot overdraw or jointly bust a daily cap (locked-row checks).
 - Limits are configuration, not code: operators tune ceilings per currency via

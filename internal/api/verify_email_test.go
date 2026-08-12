@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,11 +13,21 @@ import (
 	"github.com/google/uuid"
 
 	store "github.com/vancanhuit/simplebank/internal/db"
+	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
 func getVerifyEmail(t *testing.T, s *Server, id, code string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/verify_email?id="+id+"&code="+code, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func postResendVerifyEmail(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/verify_email/resend", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
@@ -113,5 +124,44 @@ func TestVerifyEmailInvalidCode(t *testing.T) {
 
 	if rec := getVerifyEmail(t, s, uuid.NewString(), "wrong-code"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for invalid/expired code, got %d", rec.Code)
+	}
+}
+
+func TestResendVerifyEmailPrivacy(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		user sqlcdb.User
+		err  error
+	}{
+		{name: "unknown", err: store.ErrRecordNotFound},
+		{name: "verified", user: sqlcdb.User{Username: "alice", Email: "alice@example.com", IsEmailVerified: true}},
+		{name: "unverified", user: sqlcdb.User{Username: "alice", Email: "alice@example.com", IsEmailVerified: false}},
+	}
+
+	const body = `{"email":"alice@example.com"}`
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fake := fakeStore{
+				getUserByEmail: func(context.Context, string) (sqlcdb.User, error) {
+					return tc.user, tc.err
+				},
+			}
+			s := newTestServerWithStore(t, fake)
+
+			rec := postResendVerifyEmail(t, s, body)
+			if rec.Code != http.StatusAccepted {
+				t.Fatalf("want 202, got %d (%s)", rec.Code, rec.Body.String())
+			}
+			var got map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got["message"] != verificationAccepted["message"] {
+				t.Fatalf("want generic body %q, got %q", verificationAccepted["message"], got["message"])
+			}
+		})
 	}
 }
