@@ -1,8 +1,8 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"net/http"
@@ -30,6 +30,10 @@ var dummyPasswordHash = func() string {
 	}
 	return h
 }()
+
+var verificationAccepted = map[string]string{
+	"message": "check your email for verification instructions",
+}
 
 // hashRefreshToken returns the value stored in sessions.refresh_token. Storing a
 // hash instead of the raw token means a database leak does not yield usable
@@ -64,6 +68,30 @@ func newUserResponse(u sqlcdb.User) userResponse {
 	}
 }
 
+func (s *Server) queueVerifyEmailTx(ctx context.Context, tx pgx.Tx, username string) error {
+	if s.riverClient == nil {
+		return nil
+	}
+	_, err := s.riverClient.InsertTx(ctx, tx, worker.SendVerifyEmailArgs{Username: username}, nil)
+	return err
+}
+
+func (s *Server) queueVerifyEmail(ctx context.Context, username string) error {
+	if s.riverClient == nil {
+		return nil
+	}
+	_, err := s.riverClient.Insert(ctx, worker.SendVerifyEmailArgs{Username: username}, nil)
+	return err
+}
+
+func (s *Server) queueRegistrationNotice(ctx context.Context, email string) error {
+	if s.riverClient == nil {
+		return nil
+	}
+	_, err := s.riverClient.Insert(ctx, worker.SendRegistrationNoticeArgs{Email: email}, nil)
+	return err
+}
+
 func (s *Server) createUser(c *echo.Context) error {
 	req, err := bindValidate[createUserRequest](c)
 	if err != nil {
@@ -76,7 +104,7 @@ func (s *Server) createUser(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	user, err := s.store.CreateUserTx(ctx, store.CreateUserTxParams{
+	_, err = s.store.CreateUserTx(ctx, store.CreateUserTxParams{
 		CreateUserParams: sqlcdb.CreateUserParams{
 			Username:       req.Username,
 			HashedPassword: hashed,
@@ -84,15 +112,25 @@ func (s *Server) createUser(c *echo.Context) error {
 			Email:          req.Email,
 		},
 		AfterCreate: func(tx pgx.Tx, u sqlcdb.User) error {
-			_, err := s.riverClient.InsertTx(ctx, tx, worker.SendVerifyEmailArgs{Username: u.Username}, nil)
-			return err
+			return s.queueVerifyEmailTx(ctx, tx, u.Username)
 		},
 	})
 	if err != nil {
-		return store.ClassifyError(err)
+		classified := store.ClassifyError(err)
+		if errors.Is(classified, store.ErrUsernameExists) {
+			return classified
+		}
+		if errors.Is(classified, store.ErrEmailExists) {
+			if enqueueErr := s.queueRegistrationNotice(ctx, req.Email); enqueueErr != nil {
+				c.Logger().Error("enqueue registration notice", "error", enqueueErr)
+			}
+			return c.JSON(http.StatusAccepted, verificationAccepted)
+		}
+		c.Logger().Error("create user transaction", "error", classified)
+		return c.JSON(http.StatusAccepted, verificationAccepted)
 	}
 
-	return c.JSON(http.StatusCreated, newUserResponse(user))
+	return c.JSON(http.StatusAccepted, verificationAccepted)
 }
 
 type loginUserRequest struct {
@@ -101,12 +139,10 @@ type loginUserRequest struct {
 }
 
 type loginUserResponse struct {
-	AccessToken           string       `json:"access_token"`
-	AccessTokenExpiresAt  time.Time    `json:"access_token_expires_at"`
-	RefreshToken          string       `json:"refresh_token"`
-	RefreshTokenExpiresAt time.Time    `json:"refresh_token_expires_at"`
-	SessionID             string       `json:"session_id"`
-	User                  userResponse `json:"user"`
+	AccessToken          string       `json:"access_token"`
+	AccessTokenExpiresAt time.Time    `json:"access_token_expires_at"`
+	SessionID            string       `json:"session_id"`
+	User                 userResponse `json:"user"`
 }
 
 func (s *Server) loginUser(c *echo.Context) error {
@@ -129,6 +165,9 @@ func (s *Server) loginUser(c *echo.Context) error {
 	if err := password.Check(req.Password, user.HashedPassword); err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 	}
+	if !user.IsEmailVerified {
+		return echo.NewHTTPError(http.StatusForbidden, "email verification required")
+	}
 
 	tokens, err := s.issueTokenPair(user.Username, roleDepositor)
 	if err != nil {
@@ -147,14 +186,13 @@ func (s *Server) loginUser(c *echo.Context) error {
 	if err != nil {
 		return store.ClassifyError(err)
 	}
+	s.setRefreshCookie(c, tokens.refresh, tokens.refreshPayload.ExpiresAt.Time)
 
 	return c.JSON(http.StatusOK, loginUserResponse{
-		AccessToken:           tokens.access,
-		AccessTokenExpiresAt:  tokens.accessPayload.ExpiresAt.Time,
-		RefreshToken:          tokens.refresh,
-		RefreshTokenExpiresAt: tokens.refreshPayload.ExpiresAt.Time,
-		SessionID:             session.ID.String(),
-		User:                  newUserResponse(user),
+		AccessToken:          tokens.access,
+		AccessTokenExpiresAt: tokens.accessPayload.ExpiresAt.Time,
+		SessionID:            session.ID.String(),
+		User:                 newUserResponse(user),
 	})
 }
 
@@ -169,11 +207,21 @@ type tokenPair struct {
 // issueTokenPair mints an access and a refresh token for the given identity,
 // each with its configured TTL.
 func (s *Server) issueTokenPair(username, role string) (tokenPair, error) {
-	access, accessPayload, err := s.tokenMaker.CreateToken(username, role, s.config.AccessTTL)
+	return s.issueTokenPairWithRefreshID(uuid.Nil, username, role)
+}
+
+func (s *Server) issueTokenPairWithRefreshID(refreshID uuid.UUID, username, role string) (tokenPair, error) {
+	access, accessPayload, err := s.tokenMaker.CreateToken(username, role, token.Access, s.config.AccessTTL)
 	if err != nil {
 		return tokenPair{}, err
 	}
-	refresh, refreshPayload, err := s.tokenMaker.CreateToken(username, role, s.config.RefreshTTL)
+	var refresh string
+	var refreshPayload *token.Payload
+	if refreshID == uuid.Nil {
+		refresh, refreshPayload, err = s.tokenMaker.CreateToken(username, role, token.Refresh, s.config.RefreshTTL)
+	} else {
+		refresh, refreshPayload, err = s.tokenMaker.CreateTokenWithID(refreshID, username, role, token.Refresh, s.config.RefreshTTL)
+	}
 	if err != nil {
 		return tokenPair{}, err
 	}
@@ -185,42 +233,83 @@ func (s *Server) issueTokenPair(username, role string) (tokenPair, error) {
 	}, nil
 }
 
-type renewTokenRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+type renewTokenResponse struct {
+	AccessToken          string       `json:"access_token"`
+	AccessTokenExpiresAt time.Time    `json:"access_token_expires_at"`
+	User                 userResponse `json:"user"`
 }
 
 func (s *Server) renewToken(c *echo.Context) error {
-	req, err := bindValidate[renewTokenRequest](c)
+	refreshCookie, err := c.Cookie(refreshCookieName)
 	if err != nil {
-		return err
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
 	}
 
-	refreshPayload, err := s.tokenMaker.VerifyToken(req.RefreshToken)
+	refreshPayload, err := s.tokenMaker.VerifyToken(refreshCookie.Value, token.Refresh)
 	if err != nil {
 		return err
 	}
 
 	ctx := c.Request().Context()
-	session, err := s.store.GetSession(ctx, refreshPayload.ID)
+	var tokens tokenPair
+	_, err = s.store.RotateSessionTx(ctx, store.RotateSessionTxParams{
+		ID:               refreshPayload.ID,
+		Username:         refreshPayload.Username,
+		RefreshTokenHash: hashRefreshToken(refreshCookie.Value),
+		Now:              time.Now(),
+		NewSession: func() (store.SessionReplacement, error) {
+			var issueErr error
+			tokens, issueErr = s.issueTokenPairWithRefreshID(refreshPayload.ID, refreshPayload.Username, refreshPayload.Role)
+			if issueErr != nil {
+				return store.SessionReplacement{}, issueErr
+			}
+			return store.SessionReplacement{
+				ID:               tokens.refreshPayload.ID,
+				RefreshTokenHash: hashRefreshToken(tokens.refresh),
+				ExpiresAt:        tokens.refreshPayload.ExpiresAt.Time,
+			}, nil
+		},
+	})
 	if err != nil {
 		return store.ClassifyError(err)
 	}
-	tokenMatch := subtle.ConstantTimeCompare(
-		[]byte(session.RefreshToken), []byte(hashRefreshToken(req.RefreshToken))) == 1
-	usernameMatch := session.Username == refreshPayload.Username
-	expired := time.Now().After(session.ExpiresAt)
-	if session.IsBlocked || !usernameMatch || !tokenMatch || expired {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
+	user, err := s.store.GetUser(ctx, refreshPayload.Username)
+	if err != nil {
+		return store.ClassifyError(err)
+	}
+	s.setRefreshCookie(c, tokens.refresh, tokens.refreshPayload.ExpiresAt.Time)
+
+	return c.JSON(http.StatusOK, renewTokenResponse{
+		AccessToken:          tokens.access,
+		AccessTokenExpiresAt: tokens.accessPayload.ExpiresAt.Time,
+		User:                 newUserResponse(user),
+	})
+}
+
+func (s *Server) logoutUser(c *echo.Context) error {
+	refreshCookie, err := c.Cookie(refreshCookieName)
+	s.clearRefreshCookie(c)
+	if err != nil {
+		return c.NoContent(http.StatusNoContent)
 	}
 
-	accessToken, accessPayload, err := s.tokenMaker.CreateToken(refreshPayload.Username, refreshPayload.Role, s.config.AccessTTL)
+	refreshPayload, err := s.tokenMaker.VerifyToken(refreshCookie.Value, token.Refresh)
 	if err != nil {
-		return err
+		return c.NoContent(http.StatusNoContent)
 	}
-	return c.JSON(http.StatusOK, map[string]any{
-		"access_token":            accessToken,
-		"access_token_expires_at": accessPayload.ExpiresAt.Time,
-	})
+
+	_, err = s.store.BlockSession(c.Request().Context(), refreshPayload.ID)
+	if err != nil {
+		classified := store.ClassifyError(err)
+		if errors.Is(classified, store.ErrRecordNotFound) {
+			// Missing or already-rotated sessions are normalized so logout does
+			// not reveal whether a refresh session row exists.
+			return c.NoContent(http.StatusNoContent)
+		}
+		return classified
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (s *Server) verifyEmail(c *echo.Context) error {
@@ -246,4 +335,32 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"is_verified": true})
+}
+
+type resendVerifyEmailRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+func (s *Server) resendVerifyEmail(c *echo.Context) error {
+	req, err := bindValidate[resendVerifyEmailRequest](c)
+	if err != nil {
+		return err
+	}
+
+	ctx := c.Request().Context()
+	user, err := s.store.GetUserByEmail(ctx, req.Email)
+	if err != nil {
+		classified := store.ClassifyError(err)
+		if errors.Is(classified, store.ErrRecordNotFound) {
+			return c.JSON(http.StatusAccepted, verificationAccepted)
+		}
+		return classified
+	}
+	if user.IsEmailVerified {
+		return c.JSON(http.StatusAccepted, verificationAccepted)
+	}
+	if enqueueErr := s.queueVerifyEmail(ctx, user.Username); enqueueErr != nil {
+		c.Logger().Error("enqueue verify email", "error", enqueueErr)
+	}
+	return c.JSON(http.StatusAccepted, verificationAccepted)
 }

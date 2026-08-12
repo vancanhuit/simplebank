@@ -12,6 +12,29 @@ import (
 	"github.com/google/uuid"
 )
 
+const blockSession = `-- name: BlockSession :one
+UPDATE sessions
+SET is_blocked = true
+WHERE id = $1
+RETURNING id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at, created_at
+`
+
+func (q *Queries) BlockSession(ctx context.Context, id uuid.UUID) (Session, error) {
+	row := q.db.QueryRow(ctx, blockSession, id)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.RefreshToken,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.IsBlocked,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -58,6 +81,56 @@ SELECT id, username, refresh_token, user_agent, client_ip, is_blocked, expires_a
 
 func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error) {
 	row := q.db.QueryRow(ctx, getSession, id)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.RefreshToken,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.IsBlocked,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getSessionForUpdate = `-- name: GetSessionForUpdate :one
+SELECT id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at, created_at FROM sessions WHERE id = $1 LIMIT 1 FOR UPDATE
+`
+
+func (q *Queries) GetSessionForUpdate(ctx context.Context, id uuid.UUID) (Session, error) {
+	row := q.db.QueryRow(ctx, getSessionForUpdate, id)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.RefreshToken,
+		&i.UserAgent,
+		&i.ClientIp,
+		&i.IsBlocked,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const rotateSession = `-- name: RotateSession :one
+UPDATE sessions
+SET refresh_token = $1,
+    expires_at = $2
+WHERE id = $3
+RETURNING id, username, refresh_token, user_agent, client_ip, is_blocked, expires_at, created_at
+`
+
+type RotateSessionParams struct {
+	NewRefreshToken string    `json:"new_refresh_token"`
+	NewExpiresAt    time.Time `json:"new_expires_at"`
+	OldID           uuid.UUID `json:"old_id"`
+}
+
+func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (Session, error) {
+	row := q.db.QueryRow(ctx, rotateSession, arg.NewRefreshToken, arg.NewExpiresAt, arg.OldID)
 	var i Session
 	err := row.Scan(
 		&i.ID,

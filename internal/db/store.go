@@ -16,6 +16,7 @@ type Store interface {
 	VerifyEmailTx(ctx context.Context, arg VerifyEmailTxParams) (VerifyEmailTxResult, error)
 	CreateAccountTx(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (Reconciliation, error)
+	RotateSessionTx(ctx context.Context, arg RotateSessionTxParams) (sqlcdb.Session, error)
 }
 
 type SQLStore struct {

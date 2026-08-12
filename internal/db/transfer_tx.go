@@ -39,8 +39,11 @@ type TransferTxResult struct {
 func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (TransferTxResult, error) {
 	// Idempotency fast path: a completed transfer for this key is replayed
 	// without touching balances.
-	if existing, err := s.GetTransferByIdempotencyKey(ctx, arg.IdempotencyKey); err == nil {
-		return s.replayTransfer(ctx, existing)
+	if existing, err := s.GetTransferBySourceAndIdempotencyKey(ctx, sqlcdb.GetTransferBySourceAndIdempotencyKeyParams{
+		FromAccountID:  arg.FromAccountID,
+		IdempotencyKey: arg.IdempotencyKey,
+	}); err == nil {
+		return s.replayTransfer(ctx, existing, arg)
 	} else if classified := ClassifyError(err); !errors.Is(classified, ErrRecordNotFound) {
 		return TransferTxResult{}, classified
 	}
@@ -120,8 +123,11 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 	// A concurrent request carrying the same key can win the CreateTransfer race;
 	// its unique-constraint violation is resolved by replaying the winner.
 	if errors.Is(err, ErrUniqueViolation) {
-		if existing, getErr := s.GetTransferByIdempotencyKey(ctx, arg.IdempotencyKey); getErr == nil {
-			return s.replayTransfer(ctx, existing)
+		if existing, getErr := s.GetTransferBySourceAndIdempotencyKey(ctx, sqlcdb.GetTransferBySourceAndIdempotencyKeyParams{
+			FromAccountID:  arg.FromAccountID,
+			IdempotencyKey: arg.IdempotencyKey,
+		}); getErr == nil {
+			return s.replayTransfer(ctx, existing, arg)
 		}
 	}
 
@@ -154,20 +160,40 @@ func lockAccounts(
 	return fromAccount, toAccount, nil
 }
 
-// replayTransfer reconstructs a result for an already-committed transfer. The
-// balances reflect the accounts' current state; the per-transfer entries are
-// not re-read because a replay posts nothing new.
-func (s *SQLStore) replayTransfer(ctx context.Context, t sqlcdb.Transfer) (TransferTxResult, error) {
-	fromAccount, err := s.GetAccount(ctx, t.FromAccountID)
+// replayTransfer reconstructs a result for an already-committed transfer after
+// validating the request-bound immutable fields. The balances reflect the
+// accounts' current state; the per-transfer entries are not re-read because a
+// replay posts nothing new.
+func (s *SQLStore) replayTransfer(
+	ctx context.Context,
+	existing sqlcdb.Transfer,
+	arg TransferTxParams,
+) (TransferTxResult, error) {
+	// Verify all request-bound immutable fields match the existing transfer.
+	// If the caller is reusing the same key for a different transfer, reject
+	// it as a conflict instead of silently returning the wrong transfer.
+	if existing.FromAccountID != arg.FromAccountID ||
+		existing.ToAccountID != arg.ToAccountID ||
+		existing.Amount != arg.Amount {
+		return TransferTxResult{}, ErrIdempotencyConflict
+	}
+
+	fromAccount, err := s.GetAccount(ctx, existing.FromAccountID)
 	if err != nil {
 		return TransferTxResult{}, ClassifyError(err)
 	}
-	toAccount, err := s.GetAccount(ctx, t.ToAccountID)
+	toAccount, err := s.GetAccount(ctx, existing.ToAccountID)
 	if err != nil {
 		return TransferTxResult{}, ClassifyError(err)
 	}
+
+	// Currency is not stored on the transfer, but it must match the accounts.
+	if fromAccount.Currency != arg.Currency || toAccount.Currency != arg.Currency {
+		return TransferTxResult{}, ErrIdempotencyConflict
+	}
+
 	return TransferTxResult{
-		Transfer:    t,
+		Transfer:    existing,
 		FromAccount: fromAccount,
 		ToAccount:   toAccount,
 	}, nil

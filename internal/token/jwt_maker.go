@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type JWTMaker struct {
@@ -18,24 +19,33 @@ func NewJWTMaker(secretKey string) (*JWTMaker, error) {
 	return &JWTMaker{secretKey: secretKey}, nil
 }
 
-func (m *JWTMaker) CreateToken(username, role string, duration time.Duration) (string, *Payload, error) {
-	payload, err := NewPayload(username, role, duration)
+func (m *JWTMaker) CreateToken(username, role string, tokenType Type, duration time.Duration) (string, *Payload, error) {
+	payload, err := NewPayload(username, role, tokenType, duration)
 	if err != nil {
 		return "", nil, err
 	}
+	return m.signPayload(payload)
+}
+
+func (m *JWTMaker) CreateTokenWithID(id uuid.UUID, username, role string, tokenType Type, duration time.Duration) (string, *Payload, error) {
+	payload := NewPayloadWithID(id, username, role, tokenType, duration)
+	return m.signPayload(payload)
+}
+
+func (m *JWTMaker) signPayload(payload *Payload) (string, *Payload, error) {
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
 	signed, err := jwtToken.SignedString([]byte(m.secretKey))
 	return signed, payload, err
 }
 
-func (m *JWTMaker) VerifyToken(token string) (*Payload, error) {
+func (m *JWTMaker) VerifyToken(token string, expectedType Type) (*Payload, error) {
 	keyFunc := func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, ErrInvalidToken
 		}
 		return []byte(m.secretKey), nil
 	}
-	parsed, err := jwt.ParseWithClaims(token, &Payload{}, keyFunc,
+	parsed, err := jwt.ParseWithClaims(token, NewExpectedPayload(expectedType), keyFunc,
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {

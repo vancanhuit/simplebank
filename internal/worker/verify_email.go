@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"time"
 
 	"github.com/riverqueue/river"
 
@@ -14,10 +15,17 @@ import (
 )
 
 type SendVerifyEmailArgs struct {
-	Username string `json:"username"`
+	Username string `json:"username" river:"unique"`
 }
 
 func (SendVerifyEmailArgs) Kind() string { return "send_verify_email" }
+
+func (SendVerifyEmailArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{UniqueOpts: river.UniqueOpts{
+		ByArgs:   true,
+		ByPeriod: 15 * time.Minute,
+	}}
+}
 
 type SendVerifyEmailWorker struct {
 	river.WorkerDefaults[SendVerifyEmailArgs]

@@ -22,8 +22,6 @@ export interface User {
 export interface LoginResponse {
   access_token: string;
   access_token_expires_at: string;
-  refresh_token: string;
-  refresh_token_expires_at: string;
   session_id: string;
   user: User;
 }
@@ -32,6 +30,16 @@ export interface LoginResponse {
 export interface RenewResponse {
   access_token: string;
   access_token_expires_at: string;
+  user: User;
+}
+
+/** Response from `GET /account-opening-limits`: currency code → maximum opening
+ *  deposit in minor units. Missing currencies are treated as a zero cap. */
+export type AccountOpeningLimits = Partial<Record<Currency, number>>;
+
+/** Generic accepted response for async operations. */
+export interface AcceptedResponse {
+  message: string;
 }
 
 /** Payload for `POST /users`. */

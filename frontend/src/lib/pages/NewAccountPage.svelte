@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { toMessage } from "../api/client";
+  import { request, toMessage } from "../api/client";
+  import type { AccountOpeningLimits } from "../api/types";
   import { accounts } from "../stores/accounts.svelte";
   import {
     CURRENCIES,
@@ -9,6 +10,7 @@
     parseAmountToMinor,
     type Currency,
   } from "../money";
+  import { openingLimitFor, openingLimitInputMax, validateOpeningBalance } from "../opening-limits";
   import { navigate } from "../router.svelte";
   import Button from "../components/Button.svelte";
   import Alert from "../components/Alert.svelte";
@@ -20,11 +22,15 @@
   let error = $state<string | null>(null);
   let depositError = $state<string | null>(null);
   let submitting = $state(false);
+  let openingLimits = $state<AccountOpeningLimits>({});
+  let policyLoading = $state(true);
+  let policyError = $state<string | null>(null);
 
   onMount(() => {
     if (!accounts.loaded) {
       void accounts.load();
     }
+    void loadOpeningLimits();
   });
 
   // The API rejects a second account in a currency the user already holds, so
@@ -34,6 +40,13 @@
   );
 
   const depositStep = $derived(fractionDigits(currency) === 0 ? "1" : "0.01");
+  const openingLimit = $derived(openingLimitFor(openingLimits, currency));
+  const depositMax = $derived(openingLimitInputMax(openingLimit, currency));
+  const policyReady = $derived(!policyLoading && policyError === null);
+  const formDisabled = $derived(!policyReady || submitting);
+  const depositHint = $derived(
+    `Optional. Maximum ${formatMoney(openingLimit, currency)}. Leave blank to open at zero.`,
+  );
 
   $effect(() => {
     if (available.length > 0 && !available.includes(currency)) {
@@ -41,10 +54,29 @@
     }
   });
 
+  async function loadOpeningLimits(): Promise<void> {
+    policyLoading = true;
+    policyError = null;
+
+    try {
+      openingLimits = await request<AccountOpeningLimits>("/account-opening-limits");
+    } catch (err) {
+      openingLimits = {};
+      policyError = `Couldn't load the account opening policy. ${toMessage(err)}`;
+    } finally {
+      policyLoading = false;
+    }
+  }
+
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     error = null;
     depositError = null;
+
+    if (!policyReady) {
+      error = "Account opening policy is unavailable. Retry once it finishes loading.";
+      return;
+    }
 
     // The opening deposit is optional; an empty field opens the account at zero.
     // A number-type input binds as a number at runtime, so coerce before testing.
@@ -56,6 +88,11 @@
         return;
       }
       balance = minor;
+      const limitMessage = validateOpeningBalance(balance, currency, openingLimits);
+      if (limitMessage) {
+        depositError = limitMessage;
+        return;
+      }
     }
 
     submitting = true;
@@ -80,10 +117,19 @@
       <Alert variant="error">{error}</Alert>
     {/if}
 
+    {#if policyError}
+      <Alert variant="error">
+        {policyError}
+        <button type="button" class="ml-2 underline" onclick={loadOpeningLimits}>Retry</button>
+      </Alert>
+    {:else if policyLoading}
+      <Alert variant="info">Loading the account opening policy…</Alert>
+    {/if}
+
     {#if available.length === 0}
       <Alert variant="info">You already hold an account in every supported currency.</Alert>
     {:else}
-      <fieldset class="flex flex-col gap-3">
+      <fieldset class="flex flex-col gap-3" aria-busy={policyLoading}>
         <legend class="text-sm font-medium text-ink">Currency</legend>
         {#each available as code (code)}
           <label
@@ -94,6 +140,7 @@
               name="currency"
               value={code}
               bind:group={currency}
+              disabled={formDisabled}
               class="accent-brand"
             />
             <span class="font-semibold text-ink">{code}</span>
@@ -108,13 +155,17 @@
         inputmode="decimal"
         step={depositStep}
         min="0"
+        max={depositMax}
         bind:value={deposit}
         placeholder="0.00"
-        hint="Optional. Seed the account with a starting balance, or leave blank to open at zero."
+        hint={depositHint}
         error={depositError ?? undefined}
+        disabled={formDisabled}
       />
 
-      <Button type="submit" loading={submitting}>Create account</Button>
+      <Button type="submit" loading={submitting} disabled={!policyReady || available.length === 0}>
+        Create account
+      </Button>
     {/if}
   </form>
 </div>

@@ -12,6 +12,7 @@
     inputmode?: "text" | "numeric" | "decimal" | "email";
     step?: string;
     min?: string;
+    max?: string;
     hint?: string;
     error?: string;
     disabled?: boolean;
@@ -30,6 +31,7 @@
     inputmode,
     step,
     min,
+    max,
     hint,
     error,
     disabled = false,
@@ -53,6 +55,7 @@
     {inputmode}
     {step}
     {min}
+    {max}
     {disabled}
     bind:value
     aria-describedby={describedBy}

@@ -32,6 +32,7 @@ func NewClient(
 ) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, NewSendVerifyEmailWorker(st, mailer, baseURL))
+	river.AddWorker(workers, NewSendRegistrationNoticeWorker(mailer))
 
 	return river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues: map[string]river.QueueConfig{

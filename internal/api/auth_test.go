@@ -23,7 +23,7 @@ func bearer(t *testing.T, username string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, _, err := maker.CreateToken(username, roleDepositor, time.Minute)
+	tok, _, err := maker.CreateToken(username, roleDepositor, token.Access, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +50,32 @@ func TestProtectedRouteRejectsBadToken(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for malformed token, got %d", rec.Code)
+	}
+}
+
+func TestProtectedRouteRejectsRefreshToken(t *testing.T) {
+	t.Parallel()
+	maker, err := token.NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := maker.CreateToken("alice", roleDepositor, token.Refresh, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := fakeStore{
+		listAccounts: func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
+			t.Fatal("refresh token must be rejected before handler execution")
+			return nil, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for refresh bearer, got %d", rec.Code)
 	}
 }
 

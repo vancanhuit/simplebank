@@ -20,7 +20,7 @@ func (s *Server) authMiddleware() echo.MiddlewareFunc {
 		SigningKey: []byte(s.config.JWTSecret),
 		ContextKey: authContextKey,
 		NewClaimsFunc: func(c *echo.Context) jwt.Claims {
-			return new(token.Payload)
+			return token.NewExpectedPayload(token.Access)
 		},
 	})
 }

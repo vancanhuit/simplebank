@@ -224,3 +224,110 @@ func TestReconcileAccountAfterTransfer(t *testing.T) {
 		}
 	}
 }
+
+func TestTransferTxSameKeyDifferentSourceDoesNotReplay(t *testing.T) {
+	firstOwner := createTestUser(t)
+	secondOwner := createTestUser(t)
+	recipient := createTestUser(t)
+	firstSource := createTestAccount(t, firstOwner.Username)
+	secondSource := createTestAccount(t, secondOwner.Username)
+	destination := createTestAccount(t, recipient.Username)
+	key := uuid.New()
+
+	first, err := testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  firstSource.ID,
+		ToAccountID:    destination.ID,
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  secondSource.ID,
+		ToAccountID:    destination.ID,
+		Amount:         20,
+		Currency:       currency.USD,
+		IdempotencyKey: key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Transfer.ID == first.Transfer.ID || second.Transfer.FromAccountID != secondSource.ID {
+		t.Fatalf("cross-source key replayed original transfer: %+v", second.Transfer)
+	}
+}
+
+func TestTransferIdempotencyRollbackPreconditionDetectsDuplicateKeys(t *testing.T) {
+	firstOwner := createTestUser(t)
+	secondOwner := createTestUser(t)
+	recipient := createTestUser(t)
+	firstSource := createTestAccount(t, firstOwner.Username)
+	secondSource := createTestAccount(t, secondOwner.Username)
+	destination := createTestAccount(t, recipient.Username)
+	key := uuid.New()
+
+	if _, err := testStore.CreateTransfer(t.Context(), sqlcdb.CreateTransferParams{
+		FromAccountID:  firstSource.ID,
+		ToAccountID:    destination.ID,
+		Amount:         10,
+		IdempotencyKey: key,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.CreateTransfer(t.Context(), sqlcdb.CreateTransferParams{
+		FromAccountID:  secondSource.ID,
+		ToAccountID:    destination.ID,
+		Amount:         20,
+		IdempotencyKey: key,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var duplicateExists bool
+	if err := testPool.QueryRow(t.Context(), `
+		SELECT EXISTS (
+			SELECT 1
+			FROM transfers
+			WHERE idempotency_key = $1
+			GROUP BY idempotency_key
+			HAVING COUNT(*) > 1
+		)`, key).Scan(&duplicateExists); err != nil {
+		t.Fatal(err)
+	}
+	if !duplicateExists {
+		t.Fatal("rollback precondition failed to detect duplicate idempotency key rows")
+	}
+}
+
+func TestTransferTxRejectsMismatchedReplay(t *testing.T) {
+	owner := createTestUser(t)
+	recipientA := createTestUser(t)
+	recipientB := createTestUser(t)
+	source := createTestAccount(t, owner.Username)
+	destinationA := createTestAccount(t, recipientA.Username)
+	destinationB := createTestAccount(t, recipientB.Username)
+	key := uuid.New()
+
+	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  source.ID,
+		ToAccountID:    destinationA.ID,
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  source.ID,
+		ToAccountID:    destinationB.ID,
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: key,
+	})
+	if !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("want ErrIdempotencyConflict, got %v", err)
+	}
+}

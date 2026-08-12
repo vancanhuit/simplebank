@@ -16,6 +16,14 @@ func TestClassifyError(t *testing.T) {
 	if !errors.Is(ClassifyError(uniq), ErrUniqueViolation) {
 		t.Error("23505 should map to ErrUniqueViolation")
 	}
+	username := &pgconn.PgError{Code: "23505", ConstraintName: "users_username_key"}
+	if !errors.Is(ClassifyError(username), ErrUsernameExists) {
+		t.Error("users_username_key should map to ErrUsernameExists")
+	}
+	email := &pgconn.PgError{Code: "23505", ConstraintName: "users_email_key"}
+	if !errors.Is(ClassifyError(email), ErrEmailExists) {
+		t.Error("users_email_key should map to ErrEmailExists")
+	}
 	fk := &pgconn.PgError{Code: "23503"}
 	if !errors.Is(ClassifyError(fk), ErrForeignKeyViolation) {
 		t.Error("23503 should map to ErrForeignKeyViolation")
@@ -26,5 +34,17 @@ func TestClassifyError(t *testing.T) {
 	}
 	if ClassifyError(nil) != nil {
 		t.Error("nil should classify as nil")
+	}
+}
+
+func TestErrInvalidSession(t *testing.T) {
+	// ErrInvalidSession is a sentinel error returned directly, not classified
+	if !errors.Is(ErrInvalidSession, ErrInvalidSession) {
+		t.Error("ErrInvalidSession should match itself")
+	}
+	// Ensure it doesn't expose hash values
+	msg := ErrInvalidSession.Error()
+	if msg != "invalid session" {
+		t.Errorf("ErrInvalidSession message = %q, want %q", msg, "invalid session")
 	}
 }

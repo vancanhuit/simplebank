@@ -2,13 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 	"github.com/vancanhuit/simplebank/internal/token"
 )
@@ -21,7 +21,7 @@ func refreshToken(t *testing.T, username string, mutate func(*sqlcdb.Session)) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, payload, err := maker.CreateToken(username, roleDepositor, time.Hour)
+	tok, payload, err := maker.CreateToken(username, roleDepositor, token.Refresh, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,9 +40,10 @@ func refreshToken(t *testing.T, username string, mutate func(*sqlcdb.Session)) (
 
 func postRenew(t *testing.T, s *Server, refresh string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := `{"refresh_token":"` + refresh + `"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/tokens/renew", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tokens/renew", nil)
+	if refresh != "" {
+		req.AddCookie(&http.Cookie{Name: refreshCookieName, Value: refresh, Path: "/api/v1"})
+	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
@@ -51,8 +52,21 @@ func postRenew(t *testing.T, s *Server, refresh string) *httptest.ResponseRecord
 func TestRenewTokenOK(t *testing.T) {
 	t.Parallel()
 	tok, session := refreshToken(t, "alice", nil)
+	var rotated store.RotateSessionTxParams
+	var replacementSession store.SessionReplacement
 	fake := fakeStore{
-		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
+		rotateSessionTx: func(_ context.Context, arg store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			rotated = arg
+			newSession, err := arg.NewSession()
+			if err != nil {
+				return sqlcdb.Session{}, err
+			}
+			replacementSession = newSession
+			return sqlcdb.Session{ID: newSession.ID, Username: arg.Username, RefreshToken: newSession.RefreshTokenHash, ExpiresAt: newSession.ExpiresAt}, nil
+		},
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", Email: "alice@example.com"}, nil
+		},
 	}
 	s := newTestServerWithStore(t, fake)
 
@@ -60,13 +74,54 @@ func TestRenewTokenOK(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
+	if rotated.ID != session.ID {
+		t.Fatalf("RotateSessionTx ID = %s, want %s", rotated.ID, session.ID)
+	}
+	if rotated.Username != session.Username {
+		t.Fatalf("RotateSessionTx username = %q, want %q", rotated.Username, session.Username)
+	}
+	if rotated.RefreshTokenHash != hashRefreshToken(tok) {
+		t.Fatalf("RotateSessionTx hash = %q, want %q", rotated.RefreshTokenHash, hashRefreshToken(tok))
+	}
+	if replacementSession.ID != session.ID {
+		t.Fatalf("renew replacement session ID = %s, want stable %s", replacementSession.ID, session.ID)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["access_token"] == "" {
+		t.Fatalf("renew response missing access token: %+v", body)
+	}
+	if _, ok := body["user"]; !ok {
+		t.Fatalf("renew response missing user: %+v", body)
+	}
+	if _, ok := body["refresh_token"]; ok {
+		t.Fatalf("renew response exposed refresh token: %+v", body)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("want 1 cookie, got %d", len(cookies))
+	}
+	if got := cookies[0]; got.Name != refreshCookieName || got.Value == tok || got.Value == "" {
+		t.Fatalf("renew must replace refresh cookie, got %+v", got)
+	}
+	newRefreshPayload, err := s.tokenMaker.VerifyToken(cookies[0].Value, token.Refresh)
+	if err != nil {
+		t.Fatalf("verify rotated refresh cookie: %v", err)
+	}
+	if newRefreshPayload.ID != session.ID {
+		t.Fatalf("rotated refresh token ID = %s, want stable %s", newRefreshPayload.ID, session.ID)
+	}
 }
 
 func TestRenewTokenBlockedSession(t *testing.T) {
 	t.Parallel()
-	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.IsBlocked = true })
+	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
-		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
+		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			return sqlcdb.Session{}, store.ErrInvalidSession
+		},
 	}
 	s := newTestServerWithStore(t, fake)
 
@@ -77,9 +132,11 @@ func TestRenewTokenBlockedSession(t *testing.T) {
 
 func TestRenewTokenUsernameMismatch(t *testing.T) {
 	t.Parallel()
-	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.Username = "bob" })
+	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
-		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
+		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			return sqlcdb.Session{}, store.ErrInvalidSession
+		},
 	}
 	s := newTestServerWithStore(t, fake)
 
@@ -90,9 +147,11 @@ func TestRenewTokenUsernameMismatch(t *testing.T) {
 
 func TestRenewTokenRefreshMismatch(t *testing.T) {
 	t.Parallel()
-	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.RefreshToken = "a-different-token" })
+	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
-		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
+		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			return sqlcdb.Session{}, store.ErrInvalidSession
+		},
 	}
 	s := newTestServerWithStore(t, fake)
 
@@ -103,9 +162,11 @@ func TestRenewTokenRefreshMismatch(t *testing.T) {
 
 func TestRenewTokenExpiredSession(t *testing.T) {
 	t.Parallel()
-	tok, session := refreshToken(t, "alice", func(s *sqlcdb.Session) { s.ExpiresAt = time.Now().Add(-time.Minute) })
+	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
-		getSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) { return session, nil },
+		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			return sqlcdb.Session{}, store.ErrInvalidSession
+		},
 	}
 	s := newTestServerWithStore(t, fake)
 
@@ -119,5 +180,28 @@ func TestRenewTokenInvalidToken(t *testing.T) {
 	s := newTestServer(t)
 	if rec := postRenew(t, s, "not-a-valid-token"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for invalid refresh token, got %d", rec.Code)
+	}
+}
+
+func TestRenewTokenMissingCookie(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	if rec := postRenew(t, s, ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for missing refresh cookie, got %d", rec.Code)
+	}
+}
+
+func TestRenewTokenReusedOldCookie(t *testing.T) {
+	t.Parallel()
+	tok, _ := refreshToken(t, "alice", nil)
+	fake := fakeStore{
+		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			return sqlcdb.Session{}, store.ErrInvalidSession
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	if rec := postRenew(t, s, tok); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for reused rotated refresh token, got %d", rec.Code)
 	}
 }

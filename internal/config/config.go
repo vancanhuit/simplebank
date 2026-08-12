@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -22,40 +23,55 @@ type CurrencyLimit struct {
 }
 
 type Config struct {
-	HTTPAddr          string
-	DBSource          string
-	DBMaxConns        int
-	DBMinConns        int
-	DBMaxConnLifetime time.Duration
-	DBMaxConnIdleTime time.Duration
-	JWTSecret         string
-	AccessTTL         time.Duration
-	RefreshTTL        time.Duration
-	SMTPHost          string
-	SMTPPort          int
-	SMTPUsername      string
-	SMTPPassword      string
-	SMTPFrom          string
-	SMTPInsecure      bool
-	SMTPSSL           bool
-	SMTPTLSCAFile     string
-	RiverMaxWorkers   int
-	TLSCertFile       string
-	TLSKeyFile        string
-	TrustedProxies    []string
-	PublicBaseURL     string
+	HTTPAddr            string
+	DBSource            string
+	DBMaxConns          int
+	DBMinConns          int
+	DBMaxConnLifetime   time.Duration
+	DBMaxConnIdleTime   time.Duration
+	JWTSecret           string
+	AccessTTL           time.Duration
+	RefreshTTL          time.Duration
+	SMTPHost            string
+	SMTPPort            int
+	SMTPUsername        string
+	SMTPPassword        string
+	SMTPFrom            string
+	SMTPInsecure        bool
+	SMTPSSL             bool
+	SMTPTLSCAFile       string
+	RiverMaxWorkers     int
+	TLSCertFile         string
+	TLSKeyFile          string
+	TrustedProxies      []string
+	PublicBaseURL       string
+	SessionCookieSecure bool
 	// TransferLimits maps a currency code to its transfer ceilings. Because a
 	// transfer's two accounts share one currency, each request resolves to a
 	// single currency's limits. A currency absent from the map disables its
 	// limits, so limits are opt-in per currency.
 	TransferLimits    map[string]CurrencyLimit
 	transferLimitsErr error
+	// AccountOpeningLimits maps a currency code to the maximum opening balance
+	// (in minor units) permitted when creating a new account. A missing
+	// currency entry means zero: zero opening balance is allowed, positive is
+	// rejected. This is a demo affordance; production banks fund accounts
+	// through payment rails, not client-supplied opening balances.
+	AccountOpeningLimits    map[string]int64
+	accountOpeningLimitsErr error
 }
 
 // LimitFor returns the configured ceilings for a currency, or a zero-value
 // (both limits disabled) when the currency has no entry.
 func (c Config) LimitFor(currencyCode string) CurrencyLimit {
 	return c.TransferLimits[currencyCode]
+}
+
+// OpeningBalanceLimitFor returns the configured cap for opening balances in a
+// given currency. A missing currency entry returns zero, meaning only zero
+// opening balance is allowed for that currency.
+func (c Config) OpeningBalanceLimitFor(currencyCode string) int64 {
+	return c.AccountOpeningLimits[currencyCode]
 }
 
 func (c Config) Validate() error {
@@ -71,8 +87,23 @@ func (c Config) Validate() error {
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
 		return errors.New("tls-cert-file and tls-key-file must be set together")
 	}
+	if c.PublicBaseURL != "" {
+		baseURL, err := url.Parse(c.PublicBaseURL)
+		if err != nil {
+			return fmt.Errorf("invalid public-base-url: %w", err)
+		}
+		if !strings.EqualFold(baseURL.Scheme, "http") && !strings.EqualFold(baseURL.Scheme, "https") {
+			return errors.New("public-base-url must use an explicit http or https scheme")
+		}
+		if strings.EqualFold(baseURL.Scheme, "https") && !c.SessionCookieSecure {
+			return errors.New("session-cookie-secure must be true for an HTTPS public-base-url")
+		}
+	}
 	if c.transferLimitsErr != nil {
 		return fmt.Errorf("invalid transfer-limits: %w", c.transferLimitsErr)
+	}
+	if c.accountOpeningLimitsErr != nil {
+		return fmt.Errorf("invalid account-opening-limits: %w", c.accountOpeningLimitsErr)
 	}
 	return nil
 }
@@ -86,6 +117,26 @@ func parseTransferLimits(raw string) (map[string]CurrencyLimit, error) {
 	var limits map[string]CurrencyLimit
 	if err := json.Unmarshal([]byte(raw), &limits); err != nil {
 		return nil, err
+	}
+	return limits, nil
+}
+
+// parseAccountOpeningLimits decodes the account-opening-limits JSON object. An
+// empty value yields no limits; malformed JSON or negative caps are returned as
+// errors surfaced by Validate.
+func parseAccountOpeningLimits(raw string) (map[string]int64, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var limits map[string]int64
+	if err := json.Unmarshal([]byte(raw), &limits); err != nil {
+		return nil, err
+	}
+	// Reject any negative cap.
+	for currency, cap := range limits {
+		if cap < 0 {
+			return nil, fmt.Errorf("negative opening balance cap for %s: %d", currency, cap)
+		}
 	}
 	return limits, nil
 }
@@ -114,36 +165,42 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "tls-key-file", Sources: cli.EnvVars("TLS_KEY_FILE")},
 		&cli.StringSliceFlag{Name: "trusted-proxies", Sources: cli.EnvVars("TRUSTED_PROXIES")},
 		&cli.StringFlag{Name: "public-base-url", Sources: cli.EnvVars("PUBLIC_BASE_URL")},
+		&cli.BoolFlag{Name: "session-cookie-secure", Value: true, Sources: cli.EnvVars("SESSION_COOKIE_SECURE")},
 		&cli.StringFlag{Name: "transfer-limits", Sources: cli.EnvVars("TRANSFER_LIMITS")},
+		&cli.StringFlag{Name: "account-opening-limits", Sources: cli.EnvVars("ACCOUNT_OPENING_LIMITS")},
 	}
 }
 
 func FromCommand(cmd *cli.Command) Config {
 	limits, limitsErr := parseTransferLimits(cmd.String("transfer-limits"))
+	openingLimits, openingLimitsErr := parseAccountOpeningLimits(cmd.String("account-opening-limits"))
 	return Config{
-		HTTPAddr:          cmd.String("http-addr"),
-		DBSource:          cmd.String("db-source"),
-		DBMaxConns:        cmd.Int("db-max-conns"),
-		DBMinConns:        cmd.Int("db-min-conns"),
-		DBMaxConnLifetime: cmd.Duration("db-max-conn-lifetime"),
-		DBMaxConnIdleTime: cmd.Duration("db-max-conn-idle-time"),
-		JWTSecret:         cmd.String("jwt-secret"),
-		AccessTTL:         cmd.Duration("access-ttl"),
-		RefreshTTL:        cmd.Duration("refresh-ttl"),
-		SMTPHost:          cmd.String("smtp-host"),
-		SMTPPort:          cmd.Int("smtp-port"),
-		SMTPUsername:      cmd.String("smtp-username"),
-		SMTPPassword:      cmd.String("smtp-password"),
-		SMTPFrom:          cmd.String("smtp-from"),
-		SMTPInsecure:      cmd.Bool("smtp-insecure"),
-		SMTPSSL:           cmd.Bool("smtp-ssl"),
-		SMTPTLSCAFile:     cmd.String("smtp-tls-ca-file"),
-		RiverMaxWorkers:   cmd.Int("river-max-workers"),
-		TLSCertFile:       cmd.String("tls-cert-file"),
-		TLSKeyFile:        cmd.String("tls-key-file"),
-		TrustedProxies:    cmd.StringSlice("trusted-proxies"),
-		PublicBaseURL:     cmd.String("public-base-url"),
-		TransferLimits:    limits,
-		transferLimitsErr: limitsErr,
+		HTTPAddr:                cmd.String("http-addr"),
+		DBSource:                cmd.String("db-source"),
+		DBMaxConns:              cmd.Int("db-max-conns"),
+		DBMinConns:              cmd.Int("db-min-conns"),
+		DBMaxConnLifetime:       cmd.Duration("db-max-conn-lifetime"),
+		DBMaxConnIdleTime:       cmd.Duration("db-max-conn-idle-time"),
+		JWTSecret:               cmd.String("jwt-secret"),
+		AccessTTL:               cmd.Duration("access-ttl"),
+		RefreshTTL:              cmd.Duration("refresh-ttl"),
+		SMTPHost:                cmd.String("smtp-host"),
+		SMTPPort:                cmd.Int("smtp-port"),
+		SMTPUsername:            cmd.String("smtp-username"),
+		SMTPPassword:            cmd.String("smtp-password"),
+		SMTPFrom:                cmd.String("smtp-from"),
+		SMTPInsecure:            cmd.Bool("smtp-insecure"),
+		SMTPSSL:                 cmd.Bool("smtp-ssl"),
+		SMTPTLSCAFile:           cmd.String("smtp-tls-ca-file"),
+		RiverMaxWorkers:         cmd.Int("river-max-workers"),
+		TLSCertFile:             cmd.String("tls-cert-file"),
+		TLSKeyFile:              cmd.String("tls-key-file"),
+		TrustedProxies:          cmd.StringSlice("trusted-proxies"),
+		PublicBaseURL:           cmd.String("public-base-url"),
+		SessionCookieSecure:     cmd.Bool("session-cookie-secure"),
+		TransferLimits:          limits,
+		AccountOpeningLimits:    openingLimits,
+		accountOpeningLimitsErr: openingLimitsErr,
+		transferLimitsErr:       limitsErr,
 	}
 }

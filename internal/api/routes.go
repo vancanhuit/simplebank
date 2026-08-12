@@ -14,9 +14,12 @@ func (s *Server) registerRoutes() {
 
 	v1.POST("/users", s.createUser, authLimiter)
 	v1.POST("/users/login", s.loginUser, authLimiter)
+	v1.POST("/users/logout", s.logoutUser, authLimiter)
 	v1.POST("/tokens/renew", s.renewToken, authLimiter)
+	v1.POST("/users/verify_email/resend", s.resendVerifyEmail, authLimiter)
 	v1.GET("/users/verify_email", s.verifyEmail, authLimiter)
 	v1.GET("/transfer-limits", s.transferLimits)
+	v1.GET("/account-opening-limits", s.accountOpeningLimits)
 
 	auth := v1.Group("")
 	auth.Use(s.authMiddleware())

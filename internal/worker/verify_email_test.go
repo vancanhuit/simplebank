@@ -2,8 +2,10 @@ package worker
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -69,5 +71,13 @@ func TestSendVerifyEmailWorker(t *testing.T) {
 	}
 	if !strings.Contains(mailer.msg, "/verify-email?id=") {
 		t.Errorf("verification link missing from body: %q", mailer.msg)
+	}
+}
+
+func TestSendVerifyEmailArgsInsertOpts(t *testing.T) {
+	got := (SendVerifyEmailArgs{}).InsertOpts().UniqueOpts
+	want := river.UniqueOpts{ByArgs: true, ByPeriod: 15 * time.Minute}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unique opts = %#v, want %#v", got, want)
 	}
 }

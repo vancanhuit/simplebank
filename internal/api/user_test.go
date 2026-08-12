@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,8 +32,11 @@ type fakeStore struct {
 	getAccount      func(context.Context, uuid.UUID) (sqlcdb.Account, error)
 	transferTx      func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
 	getUser         func(context.Context, string) (sqlcdb.User, error)
+	getUserByEmail  func(context.Context, string) (sqlcdb.User, error)
 	createSession   func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
 	getSession      func(context.Context, uuid.UUID) (sqlcdb.Session, error)
+	rotateSessionTx func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error)
+	blockSession    func(context.Context, uuid.UUID) (sqlcdb.Session, error)
 	verifyEmailTx   func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
 	listAccounts    func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
 	createAccountTx func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
@@ -53,12 +59,24 @@ func (f fakeStore) GetUser(ctx context.Context, username string) (sqlcdb.User, e
 	return f.getUser(ctx, username)
 }
 
+func (f fakeStore) GetUserByEmail(ctx context.Context, email string) (sqlcdb.User, error) {
+	return f.getUserByEmail(ctx, email)
+}
+
 func (f fakeStore) CreateSession(ctx context.Context, arg sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
 	return f.createSession(ctx, arg)
 }
 
 func (f fakeStore) GetSession(ctx context.Context, id uuid.UUID) (sqlcdb.Session, error) {
 	return f.getSession(ctx, id)
+}
+
+func (f fakeStore) RotateSessionTx(ctx context.Context, arg store.RotateSessionTxParams) (sqlcdb.Session, error) {
+	return f.rotateSessionTx(ctx, arg)
+}
+
+func (f fakeStore) BlockSession(ctx context.Context, id uuid.UUID) (sqlcdb.Session, error) {
+	return f.blockSession(ctx, id)
 }
 
 func (f fakeStore) VerifyEmailTx(ctx context.Context, arg store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
@@ -84,9 +102,10 @@ func newTestServer(t *testing.T) *Server {
 func newTestServerWithStore(t *testing.T, st store.Store) *Server {
 	t.Helper()
 	return newTestServerWithConfig(t, st, config.Config{
-		JWTSecret:  testSecret,
-		AccessTTL:  time.Minute,
-		RefreshTTL: time.Hour,
+		JWTSecret:           testSecret,
+		AccessTTL:           time.Minute,
+		RefreshTTL:          time.Hour,
+		SessionCookieSecure: true,
 	})
 }
 
@@ -135,23 +154,84 @@ func TestCreateUserOK(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("want 201, got %d (%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	var got userResponse
+	var got map[string]string
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.Username != "alice" || got.Email != "alice@example.com" {
+	if got["message"] != "check your email for verification instructions" {
 		t.Fatalf("unexpected response: %+v", got)
 	}
 }
 
-func TestCreateUserDuplicate(t *testing.T) {
+func TestCreateUserEmailExistsReturnsGenericAccepted(t *testing.T) {
+	t.Parallel()
+	fake := fakeStore{
+		createUserTx: func(_ context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
+			return sqlcdb.User{}, store.ErrEmailExists
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for existing email, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got["message"] != "check your email for verification instructions" {
+		t.Fatalf("unexpected response: %+v", got)
+	}
+}
+
+func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
+	t.Parallel()
+	const internalErr = "river enqueue failed"
+	fake := fakeStore{
+		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
+			return sqlcdb.User{}, errors.New(internalErr)
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+	var logBuf bytes.Buffer
+	s.router.Logger = slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for internal create-user transaction error, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got["message"] != "check your email for verification instructions" {
+		t.Fatalf("unexpected response: %+v", got)
+	}
+	logged := logBuf.String()
+	if !strings.Contains(logged, "create user transaction") || !strings.Contains(logged, internalErr) {
+		t.Fatalf("expected internal create-user error to be logged, got %q", logged)
+	}
+}
+
+func TestCreateUserUsernameExistsReturnsConflict(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
 		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
-			return sqlcdb.User{}, store.ErrUniqueViolation
+			return sqlcdb.User{}, store.ErrUsernameExists
 		},
 	}
 	s := newTestServerWithStore(t, fake)
@@ -200,7 +280,7 @@ func TestLoginUserOK(t *testing.T) {
 	var sessionCreated bool
 	fake := fakeStore{
 		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
-			return sqlcdb.User{Username: username, HashedPassword: hashed, Email: "alice@example.com"}, nil
+			return sqlcdb.User{Username: username, HashedPassword: hashed, Email: "alice@example.com", IsEmailVerified: true}, nil
 		},
 		createSession: func(_ context.Context, arg sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
 			sessionCreated = true
@@ -221,13 +301,109 @@ func TestLoginUserOK(t *testing.T) {
 	if !sessionCreated {
 		t.Fatal("login must create a session")
 	}
-	var got loginUserResponse
+	var got map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.AccessToken == "" || got.RefreshToken == "" {
-		t.Fatalf("expected tokens in response: %+v", got)
+	if got["access_token"] == "" {
+		t.Fatalf("expected access token in response: %+v", got)
 	}
+	if _, ok := got["refresh_token"]; ok {
+		t.Fatal("login JSON exposed refresh token")
+	}
+	if _, ok := got["refresh_token_expires_at"]; ok {
+		t.Fatal("login JSON exposed refresh expiry")
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("want 1 cookie, got %d", len(cookies))
+	}
+	cookie := cookies[0]
+	if cookie.Name != refreshCookieName || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("unsafe refresh cookie: %+v", cookie)
+	}
+	if cookie.Path != "/api/v1" {
+		t.Fatalf("refresh cookie path = %q, want /api/v1", cookie.Path)
+	}
+	if !cookie.Secure {
+		t.Fatalf("refresh cookie must be secure by default: %+v", cookie)
+	}
+	if cookie.Value == "" {
+		t.Fatal("refresh cookie value must be set")
+	}
+}
+
+func TestLogoutUserOK(t *testing.T) {
+	t.Parallel()
+	tokens := mustIssueTokenPair(t, "alice")
+	var blocked uuid.UUID
+	blockedCalled := false
+	fake := fakeStore{
+		blockSession: func(_ context.Context, id uuid.UUID) (sqlcdb.Session, error) {
+			blockedCalled = true
+			blocked = id
+			return sqlcdb.Session{ID: id, IsBlocked: true}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/logout", nil)
+	req.AddCookie(&http.Cookie{Name: refreshCookieName, Value: tokens.refresh, Path: "/api/v1"})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !blockedCalled {
+		t.Fatal("logout must block the session for a valid refresh cookie")
+	}
+	if blocked != tokens.refreshPayload.ID {
+		t.Fatalf("blocked session ID = %s, want %s", blocked, tokens.refreshPayload.ID)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("want 1 cookie, got %d", len(cookies))
+	}
+	if got := cookies[0]; got.Name != refreshCookieName || got.Value != "" || got.MaxAge != -1 {
+		t.Fatalf("logout must clear refresh cookie, got %+v", got)
+	}
+}
+
+func TestLogoutUserWithoutCookie(t *testing.T) {
+	t.Parallel()
+	fake := fakeStore{
+		blockSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) {
+			t.Fatal("logout without a cookie must be idempotent")
+			return sqlcdb.Session{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/logout", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("want 1 cookie, got %d", len(cookies))
+	}
+	if got := cookies[0]; got.Name != refreshCookieName || got.Value != "" || got.MaxAge != -1 {
+		t.Fatalf("logout must clear refresh cookie, got %+v", got)
+	}
+}
+
+func mustIssueTokenPair(t *testing.T, username string) tokenPair {
+	t.Helper()
+	s := newTestServer(t)
+	tokens, err := s.issueTokenPair(username, roleDepositor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tokens
 }
 
 func TestLoginUserWrongPassword(t *testing.T) {
@@ -276,5 +452,36 @@ func TestLoginUserUnknown(t *testing.T) {
 	// Unknown user must be indistinguishable from wrong password: 401, not 404.
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for unknown user, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoginUserUnverified(t *testing.T) {
+	t.Parallel()
+	hashed, err := password.Hash("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", HashedPassword: hashed, IsEmailVerified: false}, nil
+		},
+		createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+			t.Fatal("unverified login must not create a session")
+			return sqlcdb.Session{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := `{"username":"alice","password":"secret123"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if len(rec.Result().Cookies()) != 0 {
+		t.Fatalf("unverified login must not set cookies, got %d", len(rec.Result().Cookies()))
 	}
 }

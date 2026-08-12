@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AddAccountBalance(ctx context.Context, arg AddAccountBalanceParams) (Account, error)
+	BlockSession(ctx context.Context, id uuid.UUID) (Session, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateEntry(ctx context.Context, arg CreateEntryParams) (Entry, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
@@ -22,10 +23,13 @@ type Querier interface {
 	GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountLedgerBalance(ctx context.Context, accountID uuid.UUID) (int64, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
-	GetTransferByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Transfer, error)
+	GetSessionForUpdate(ctx context.Context, id uuid.UUID) (Session, error)
+	GetTransferBySourceAndIdempotencyKey(ctx context.Context, arg GetTransferBySourceAndIdempotencyKeyParams) (Transfer, error)
 	GetUser(ctx context.Context, username string) (User, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListTransfersByAccount(ctx context.Context, arg ListTransfersByAccountParams) ([]Transfer, error)
+	RotateSession(ctx context.Context, arg RotateSessionParams) (Session, error)
 	SumOutgoingTransfersSince(ctx context.Context, arg SumOutgoingTransfersSinceParams) (int64, error)
 	UpdateVerifyEmail(ctx context.Context, arg UpdateVerifyEmailParams) (VerifyEmail, error)
 	VerifyUserEmail(ctx context.Context, username string) (User, error)

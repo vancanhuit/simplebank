@@ -37,7 +37,9 @@
 <AuthLayout title="Welcome back" subtitle="Sign in to your SimpleBank account.">
   <form class="flex flex-col gap-4" onsubmit={handleSubmit} novalidate>
     {#if registered}
-      <Alert variant="success">Account created. Check your email to verify it, then sign in.</Alert>
+      <Alert variant="success"
+        >Account request accepted. Check your email to verify it, then sign in.</Alert
+      >
     {/if}
     {#if error}
       <Alert variant="error">{error}</Alert>

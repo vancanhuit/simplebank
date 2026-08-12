@@ -61,6 +61,10 @@ x-app: &x-app-base
 # identical across profiles. These are demo values, not a real risk policy.
 x-transfer-limits: &transfer-limits '{"USD":{"max_per_transfer":100000,"daily":500000},"EUR":{"max_per_transfer":100000,"daily":500000},"VND":{"max_per_transfer":2000000000,"daily":10000000000}}'
 
+# Per-currency opening balance caps (minor units). An absent currency means zero:
+# zero opening allowed, positive rejected. Demo values only.
+x-account-opening-limits: &account-opening-limits '{"USD":100000,"EUR":100000,"VND":25000000}'
+
 x-pgadmin: &x-pgadmin-base
   image: dpage/pgadmin4:latest
   restart: unless-stopped
@@ -159,7 +163,9 @@ services:
       SMTP_PASSWORD: "simplebank"
       SMTP_TLS_CA_FILE: "/tls/rootCA.pem"
       PUBLIC_BASE_URL: "http://localhost:8080"
+      SESSION_COOKIE_SECURE: "false"
       TRANSFER_LIMITS: *transfer-limits
+      ACCOUNT_OPENING_LIMITS: *account-opening-limits
     volumes:
       - ./tls:/tls:ro
     ports:
@@ -264,6 +270,7 @@ services:
       TLS_CERT_FILE: "/tls/cert.pem"
       TLS_KEY_FILE: "/tls/key.pem"
       TRANSFER_LIMITS: *transfer-limits
+      ACCOUNT_OPENING_LIMITS: *account-opening-limits
     volumes:
       - ./tls:/tls:ro
     ports:
@@ -371,6 +378,7 @@ services:
       # directly-connected client is ignored.
       TRUSTED_PROXIES: "172.31.0.0/24"
       TRANSFER_LIMITS: *transfer-limits
+      ACCOUNT_OPENING_LIMITS: *account-opening-limits
     volumes:
       - ./tls:/tls:ro
     networks:

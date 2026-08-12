@@ -1,8 +1,7 @@
-/// <reference types="vitest/config" />
 import tailwindcss from "@tailwindcss/vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { svelteTesting } from "@testing-library/svelte/vite";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // Proxy API and health routes to the Go backend during development so the SPA
 // and API share an origin (matching production, where the API embeds the SPA).

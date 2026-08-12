@@ -44,12 +44,20 @@ func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) 
 	return i, err
 }
 
-const getTransferByIdempotencyKey = `-- name: GetTransferByIdempotencyKey :one
-SELECT id, from_account_id, to_account_id, amount, created_at, idempotency_key FROM transfers WHERE idempotency_key = $1 LIMIT 1
+const getTransferBySourceAndIdempotencyKey = `-- name: GetTransferBySourceAndIdempotencyKey :one
+SELECT id, from_account_id, to_account_id, amount, created_at, idempotency_key FROM transfers
+WHERE from_account_id = $1
+  AND idempotency_key = $2
+LIMIT 1
 `
 
-func (q *Queries) GetTransferByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Transfer, error) {
-	row := q.db.QueryRow(ctx, getTransferByIdempotencyKey, idempotencyKey)
+type GetTransferBySourceAndIdempotencyKeyParams struct {
+	FromAccountID  uuid.UUID `json:"from_account_id"`
+	IdempotencyKey uuid.UUID `json:"idempotency_key"`
+}
+
+func (q *Queries) GetTransferBySourceAndIdempotencyKey(ctx context.Context, arg GetTransferBySourceAndIdempotencyKeyParams) (Transfer, error) {
+	row := q.db.QueryRow(ctx, getTransferBySourceAndIdempotencyKey, arg.FromAccountID, arg.IdempotencyKey)
 	var i Transfer
 	err := row.Scan(
 		&i.ID,
