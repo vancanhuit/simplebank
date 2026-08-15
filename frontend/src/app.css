@@ -5,6 +5,7 @@
    AI purple. Tokens generate utilities like bg-surface, text-muted, etc. */
 @theme {
   --font-sans: "IBM Plex Sans Variable", ui-sans-serif, sans-serif;
+  --font-mono: "Liberation Mono", monospace;
   --color-canvas: oklch(0.97 0.005 250);
   --color-surface: oklch(1 0 0);
   --color-surface-raised: oklch(1 0 0);
