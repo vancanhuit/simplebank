@@ -4,6 +4,15 @@ import { auth } from "../stores/auth.svelte";
  *  dev server proxies it to the Go backend (see vite.config.ts). */
 const BASE_URL = "/api/v1";
 
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshAccessToken(): Promise<boolean> {
+  refreshPromise ??= auth.tryRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
 /** Error thrown for any non-2xx API response. Carries the HTTP status and the
  *  server's client-safe `{"error": "..."}` message. */
 export class ApiError extends Error {
@@ -51,7 +60,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   let response = await send(path, options);
 
   if (response.status === 401 && options.authenticated) {
-    const refreshed = await auth.tryRefresh();
+    const refreshed = await refreshAccessToken();
     if (refreshed) {
       response = await send(path, options);
     }

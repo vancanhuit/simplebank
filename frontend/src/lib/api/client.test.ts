@@ -65,6 +65,63 @@ describe("request", () => {
     await expect(request("/accounts", { authenticated: true })).rejects.toBeInstanceOf(ApiError);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("shares one refresh across concurrent 401 responses", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: "a" }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+
+    const results = await Promise.all([
+      request<{ id: string }>("/accounts/a", { authenticated: true }),
+      request<{ id: string }>("/accounts/b", { authenticated: true }),
+    ]);
+
+    expect(results).toEqual([{ id: "a" }, { id: "b" }]);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not retry when concurrent refresh fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
+
+    const results = await Promise.all([
+      request<{ id: string }>("/accounts/a", { authenticated: true }).catch((e) => e),
+      request<{ id: string }>("/accounts/b", { authenticated: true }).catch((e) => e),
+    ]);
+
+    expect(results).toEqual([expect.any(ApiError), expect.any(ApiError)]);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts a new refresh for independent 401 cycles", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: "a" }))
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+
+    const result1 = await request<{ id: string }>("/accounts/a", { authenticated: true });
+    const result2 = await request<{ id: string }>("/accounts/b", { authenticated: true });
+
+    expect(result1).toEqual({ id: "a" });
+    expect(result2).toEqual({ id: "b" });
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
 });
 
 describe("toMessage", () => {
