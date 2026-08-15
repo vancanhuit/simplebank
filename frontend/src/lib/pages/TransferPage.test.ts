@@ -111,4 +111,51 @@ describe("TransferPage", () => {
     const alerts = screen.queryAllByRole("alert");
     expect(alerts).toHaveLength(0);
   });
+
+  it("clears recipient validation when the user edits the field", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+
+    render(TransferPage);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+
+    const recipient = screen.getByRole("textbox", { name: "Recipient account id" });
+    expect(recipient).toHaveFocus();
+    expect(recipient).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter the recipient account id.");
+
+    await fireEvent.input(recipient, { target: { value: "acct-2" } });
+
+    expect(recipient).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByText("Enter the recipient account id.")).not.toBeInTheDocument();
+  });
+
+  it("clears amount validation when the user edits the field", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+
+    render(TransferPage);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    await fireEvent.input(screen.getByRole("textbox", { name: "Recipient account id" }), {
+      target: { value: "acct-2" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+
+    const amount = screen.getByRole("spinbutton", { name: "Amount (USD)" });
+    expect(amount).toHaveFocus();
+    expect(amount).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter an amount greater than zero.");
+
+    await fireEvent.input(amount, { target: { value: "10.00" } });
+
+    expect(amount).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByText("Enter an amount greater than zero.")).not.toBeInTheDocument();
+  });
 });

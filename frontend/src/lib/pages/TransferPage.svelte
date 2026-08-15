@@ -175,6 +175,7 @@
         placeholder="00000000-0000-0000-0000-000000000000"
         hint="The recipient's account must use the same currency."
         error={toError ?? undefined}
+        oninput={() => (toError = null)}
         required
       />
 
@@ -187,6 +188,7 @@
         bind:value={amount}
         placeholder="0.00"
         error={amountError ?? undefined}
+        oninput={() => (amountError = null)}
         required
       />
 

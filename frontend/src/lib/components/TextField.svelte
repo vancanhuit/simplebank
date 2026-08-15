@@ -16,6 +16,7 @@
     hint?: string;
     error?: string;
     disabled?: boolean;
+    oninput?: (event: Event) => void;
   }
 
   const uid = $props.id();
@@ -35,6 +36,7 @@
     hint,
     error,
     disabled = false,
+    oninput,
   }: Props = $props();
 
   const hintId = $derived(hint ? `${id}-hint` : undefined);
@@ -67,6 +69,7 @@
     {min}
     {max}
     {disabled}
+    {oninput}
     bind:value
     bind:this={inputElement}
     aria-describedby={describedBy}
