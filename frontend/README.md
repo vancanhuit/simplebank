@@ -29,18 +29,18 @@ build.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `mise run frontend:install` | Install locked dependencies with Bun |
-| `mise run frontend:dev` | Start the Vite development server |
-| `mise run frontend:build` | Build production assets into `frontend/dist` |
-| `mise run frontend:preview` | Preview the production frontend build |
-| `mise run frontend:check` | Run `svelte-check` and TypeScript checks |
-| `mise run frontend:lint` | Lint Svelte and TypeScript sources with ESLint |
-| `mise run frontend:format:check` | Check formatting with Prettier |
-| `mise run frontend:test` | Run Vitest unit tests once |
-| `mise run frontend:test:e2e` | Run Playwright responsive accessibility tests |
-| `mise run frontend:test:e2e:install` | Install Chromium for Playwright |
+| Command                              | Description                                    |
+| ------------------------------------ | ---------------------------------------------- |
+| `mise run frontend:install`          | Install locked dependencies with Bun           |
+| `mise run frontend:dev`              | Start the Vite development server              |
+| `mise run frontend:build`            | Build production assets into `frontend/dist`   |
+| `mise run frontend:preview`          | Preview the production frontend build          |
+| `mise run frontend:check`            | Run `svelte-check` and TypeScript checks       |
+| `mise run frontend:lint`             | Lint Svelte and TypeScript sources with ESLint |
+| `mise run frontend:format:check`     | Check formatting with Prettier                 |
+| `mise run frontend:test`             | Run Vitest unit tests once                     |
+| `mise run frontend:test:e2e`         | Run Playwright responsive accessibility tests  |
+| `mise run frontend:test:e2e:install` | Install Chromium for Playwright                |
 
 The package also provides watch, coverage, auto-fix, and formatting scripts for
 interactive use; see `package.json` for the complete list.
