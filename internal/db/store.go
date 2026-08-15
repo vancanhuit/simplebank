@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
@@ -32,15 +33,7 @@ func New(pool *pgxpool.Pool) Store {
 }
 
 func (s *SQLStore) execTx(ctx context.Context, fn func(*sqlcdb.Queries) error) error {
-	tx, err := s.connPool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	q := sqlcdb.New(tx)
-	if err := fn(q); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return pgx.BeginFunc(ctx, s.connPool, func(tx pgx.Tx) error {
+		return fn(sqlcdb.New(tx))
+	})
 }

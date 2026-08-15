@@ -18,27 +18,18 @@ type CreateUserTxParams struct {
 
 func (s *SQLStore) CreateUserTx(ctx context.Context, arg CreateUserTxParams) (sqlcdb.User, error) {
 	var user sqlcdb.User
-
-	tx, err := s.connPool.Begin(ctx)
-	if err != nil {
-		return user, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	q := sqlcdb.New(tx)
-	user, err = q.CreateUser(ctx, arg.CreateUserParams)
-	if err != nil {
-		return user, ClassifyError(err)
-	}
-
-	if arg.AfterCreate != nil {
-		if err := arg.AfterCreate(tx, user); err != nil {
-			return user, err
+	err := pgx.BeginFunc(ctx, s.connPool, func(tx pgx.Tx) error {
+		q := sqlcdb.New(tx)
+		var err error
+		user, err = q.CreateUser(ctx, arg.CreateUserParams)
+		if err != nil {
+			return ClassifyError(err)
 		}
-	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return user, err
-	}
-	return user, nil
+		if arg.AfterCreate != nil {
+			return arg.AfterCreate(tx, user)
+		}
+		return nil
+	})
+	return user, err
 }
