@@ -115,7 +115,7 @@
     {#if view.chrome}
       <a
         href="#main"
-        class="sr-only rounded-md bg-brand px-4 py-2 text-surface focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10"
+        class="sr-only min-h-11 rounded-md bg-brand px-4 py-2 text-surface focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10 focus:inline-flex focus:items-center"
       >
         Skip to content
       </a>

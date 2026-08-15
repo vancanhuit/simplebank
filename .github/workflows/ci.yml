@@ -92,6 +92,30 @@ jobs:
       - run: mise run frontend:format:check
       - run: mise run frontend:build
 
+  frontend-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+      # Cache Bun's global install cache separately from browser binaries;
+      # Playwright pins and manages its own Chromium revision.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: mise run frontend:test:e2e:ci
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: frontend/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
   test:
     runs-on: ubuntu-latest
     # Only pay for Docker + integration once the code compiles, lints and

@@ -110,7 +110,11 @@
 </script>
 
 <div class="mx-auto max-w-lg">
-  <Link href="/" class="text-sm font-medium text-brand hover:text-brand-strong">← Back</Link>
+  <Link
+    href="/"
+    class="inline-flex min-h-11 items-center text-sm font-medium text-brand hover:text-brand-strong"
+    >← Back</Link
+  >
   <h1 class="mt-4 text-2xl font-semibold text-ink">Send money</h1>
   <p class="mt-1 text-sm text-muted">Transfer funds to another SimpleBank account.</p>
 
@@ -154,7 +158,7 @@
         <select
           id="from"
           bind:value={fromAccountId}
-          class="rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-ink focus-visible:border-brand"
+          class="min-h-11 rounded-md border border-control bg-surface px-3 py-2.5 text-sm text-ink focus-visible:border-brand"
         >
           {#each accounts.items as account (account.id)}
             <option value={account.id}>

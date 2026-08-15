@@ -173,6 +173,25 @@ description = "Run the frontend unit tests (Vitest)"
 dir = "frontend"
 run = 'bun run test'
 
+[tasks."frontend:test:e2e"]
+description = "Run the frontend browser accessibility tests (Playwright)"
+dir = "frontend"
+run = 'bun run test:e2e'
+
+[tasks."frontend:test:e2e:install"]
+description = "Install Chromium for frontend browser tests"
+dir = "frontend"
+run = 'bun run test:e2e:install'
+
+[tasks."frontend:test:e2e:ci"]
+description = "Install Chromium dependencies and run frontend browser tests in CI"
+dir = "frontend"
+depends = ["frontend:install"]
+run = [
+  'bunx playwright install --with-deps chromium',
+  'bun run test:e2e',
+]
+
 [tasks."frontend:lint"]
 description = "Lint the frontend with ESLint"
 dir = "frontend"

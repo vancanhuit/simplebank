@@ -47,13 +47,13 @@
     <div class="flex gap-3">
       <Link
         href="/transfer"
-        class="rounded-md bg-surface px-4 py-2.5 text-sm font-semibold text-brand-strong transition-colors hover:bg-brand-soft"
+        class="inline-flex min-h-11 items-center rounded-md bg-surface px-4 py-2.5 text-sm font-semibold text-brand-strong transition-colors hover:bg-brand-soft"
       >
         Send money
       </Link>
       <Link
         href="/accounts/new"
-        class="rounded-md border border-brand-soft/40 px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand"
+        class="inline-flex min-h-11 items-center rounded-md border border-brand-soft/40 px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand"
       >
         New account
       </Link>
@@ -100,7 +100,11 @@
   {:else if accounts.error}
     <Alert variant="error">
       {accounts.error}
-      <button type="button" class="ml-2 underline" onclick={() => accounts.load()}>Retry</button>
+      <button
+        type="button"
+        class="ml-2 inline-flex min-h-11 items-center underline"
+        onclick={() => accounts.load()}>Retry</button
+      >
     </Alert>
   {:else if accounts.items.length === 0}
     <div class="rounded-card border border-dashed border-border bg-surface px-6 py-12 text-center">
@@ -111,7 +115,7 @@
       <div class="mt-4 flex justify-center">
         <Link
           href="/accounts/new"
-          class="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
+          class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
         >
           Open an account
         </Link>

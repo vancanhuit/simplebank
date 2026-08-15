@@ -108,7 +108,11 @@
 </script>
 
 <div class="mx-auto max-w-lg">
-  <Link href="/" class="text-sm font-medium text-brand hover:text-brand-strong">← Back</Link>
+  <Link
+    href="/"
+    class="inline-flex min-h-11 items-center text-sm font-medium text-brand hover:text-brand-strong"
+    >← Back</Link
+  >
   <h1 class="mt-4 text-2xl font-semibold text-ink">Open a new account</h1>
   <p class="mt-1 text-sm text-muted">Choose a currency for your new account.</p>
 
@@ -120,7 +124,11 @@
     {#if policyError}
       <Alert variant="error">
         {policyError}
-        <button type="button" class="ml-2 underline" onclick={loadOpeningLimits}>Retry</button>
+        <button
+          type="button"
+          class="ml-2 inline-flex min-h-11 items-center underline"
+          onclick={loadOpeningLimits}>Retry</button
+        >
       </Alert>
     {:else if policyLoading}
       <Alert variant="info">Loading the account opening policy…</Alert>
@@ -133,7 +141,7 @@
         <legend class="text-sm font-medium text-ink">Currency</legend>
         {#each available as code (code)}
           <label
-            class="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-surface px-4 py-3 text-sm has-[:checked]:border-brand has-[:checked]:bg-brand-soft/40"
+            class="flex cursor-pointer items-center gap-3 rounded-md border border-control bg-surface px-4 py-3 text-sm has-[:checked]:border-brand has-[:checked]:bg-brand-soft/40"
           >
             <input
               type="radio"

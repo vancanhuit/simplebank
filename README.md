@@ -59,6 +59,8 @@ Migrations (schema + River) run automatically on startup.
 | `mise run frontend:dev` | Run the Vite dev server (proxies `/api` to `:8080`) |
 | `mise run frontend:build` | Build the SPA into `frontend/dist` |
 | `mise run frontend:test` | Frontend unit tests (Vitest) |
+| `mise run frontend:test:e2e` | Frontend responsive accessibility tests (Playwright + axe) |
+| `mise run frontend:test:e2e:install` | Install Chromium required by frontend browser tests |
 | `mise run compose:dev:up` / `:down` | Start / stop the dev stack (DB, Mailpit, app) |
 | `mise run compose:test:up` / `:down` | Start / stop the test stack |
 | `mise run test:unit` | Unit tests (`-race -cover`) |

@@ -65,7 +65,7 @@
       <button
         type="button"
         onclick={copyId}
-        class="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium text-brand transition-colors hover:bg-brand-soft"
+        class="min-h-11 shrink-0 rounded-md border border-control px-3 py-2 text-xs font-medium text-brand transition-colors hover:bg-brand-soft"
         aria-label={copied ? "Account number copied" : "Copy account number"}
       >
         {copied ? "Copied" : "Copy"}
@@ -76,14 +76,14 @@
   <div class="flex items-center justify-between gap-3">
     <button
       type="button"
-      class="text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
+      class="inline-flex min-h-11 items-center text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
       onclick={sendFromHere}
     >
       Send money →
     </button>
     <Link
       href={`/accounts/${account.id}`}
-      class="text-sm font-medium text-muted transition-colors hover:text-ink"
+      class="inline-flex min-h-11 items-center text-sm font-medium text-muted transition-colors hover:text-ink"
     >
       Activity
     </Link>

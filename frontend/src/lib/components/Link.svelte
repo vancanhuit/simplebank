@@ -5,10 +5,11 @@
   interface Props {
     href: string;
     class?: string;
+    onclick?: (event: MouseEvent) => void;
     children: Snippet;
   }
 
-  let { href, class: className = "", children }: Props = $props();
+  let { href, class: className = "", onclick, children }: Props = $props();
 
   const isCurrent = $derived(router.path === href);
 
@@ -19,6 +20,7 @@
     }
     event.preventDefault();
     navigate(href);
+    onclick?.(event);
   }
 </script>
 

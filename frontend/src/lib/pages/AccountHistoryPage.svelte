@@ -54,7 +54,11 @@
 </script>
 
 <div class="mx-auto max-w-2xl">
-  <Link href="/" class="text-sm font-medium text-brand hover:text-brand-strong">← Back</Link>
+  <Link
+    href="/"
+    class="inline-flex min-h-11 items-center text-sm font-medium text-brand hover:text-brand-strong"
+    >← Back</Link
+  >
   <h1 class="mt-4 text-2xl font-semibold text-ink">Account activity</h1>
 
   {#if account}
@@ -79,7 +83,11 @@
     <div class="mt-6">
       <Alert variant="error">
         {error}
-        <button type="button" class="ml-2 underline" onclick={load}>Retry</button>
+        <button
+          type="button"
+          class="ml-2 inline-flex min-h-11 items-center underline"
+          onclick={load}>Retry</button
+        >
       </Alert>
     </div>
   {:else if loading}
@@ -99,7 +107,7 @@
       <div class="mt-4 flex justify-center">
         <Link
           href="/transfer"
-          class="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
+          class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
         >
           Send money
         </Link>

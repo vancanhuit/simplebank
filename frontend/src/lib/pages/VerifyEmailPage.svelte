@@ -67,7 +67,7 @@
       </div>
       <Link
         href={destination}
-        class="mt-2 inline-flex justify-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-strong"
+        class="mt-2 inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-strong"
       >
         {destinationLabel}
       </Link>
@@ -90,7 +90,7 @@
       </div>
       <Link
         href={destination}
-        class="mt-2 inline-flex justify-center rounded-md border border-border px-4 py-2 text-sm font-semibold text-ink hover:bg-canvas"
+        class="mt-2 inline-flex min-h-11 items-center justify-center rounded-md border border-control px-4 py-2 text-sm font-semibold text-ink hover:bg-canvas"
       >
         {destinationLabel}
       </Link>

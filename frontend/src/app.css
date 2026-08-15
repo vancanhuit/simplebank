@@ -8,12 +8,13 @@
   --color-surface: #ffffff;
   --color-surface-muted: #f1f5f9;
   --color-border: #e2e8f0;
+  --color-control: #64748b;
   --color-ink: #0f172a;
   /* Muted text: darkened from slate-500 so it clears the 4.5:1 AA floor even on
      the tinted canvas background, not just on white surfaces. */
   --color-muted: #556070;
-  --color-brand: #0d9488;
-  --color-brand-strong: #0f766e;
+  --color-brand: #0f766e;
+  --color-brand-strong: #115e59;
   --color-brand-soft: #ccfbf1;
   --color-positive: #15803d;
   --color-positive-soft: #dcfce7;
