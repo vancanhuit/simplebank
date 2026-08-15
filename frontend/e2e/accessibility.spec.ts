@@ -36,6 +36,26 @@ async function mockAuthenticatedAPI(page: Page, accounts: unknown[] = []): Promi
       }),
     }),
   );
+  // Register specific account transfer route before broad account routes
+  await page.route(`**/api/v1/accounts/${account.id}/transfers?*`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          from_account_id: account.id,
+          to_account_id: "99999999-8888-7777-6666-555544443333",
+          amount: 25_00,
+          idempotency_key: "11111111-aaaa-bbbb-cccc-222222222222",
+          created_at: "2026-01-16T10:00:00Z",
+        },
+      ]),
+    }),
+  );
+  await page.route(`**/api/v1/accounts/${account.id}`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(account) }),
+  );
   await page.route("**/api/v1/accounts?*", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(accounts) }),
   );
@@ -119,4 +139,131 @@ test("validation focuses and announces the first invalid field", async ({ page }
   await expect(recipient).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toHaveText("Enter the recipient account id.");
   await expectNoAccessibilityViolations(page);
+});
+
+test("browser history restores dashboard title and focus", async ({ page }) => {
+  await mockAuthenticatedAPI(page, [account]);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  await expect(page).toHaveTitle(/Dashboard/);
+  await page.getByRole("link", { name: "Transfer", exact: true }).click();
+  await expect(page).toHaveTitle(/Send money/);
+
+  await page.goBack();
+  await expect(page).toHaveTitle(/Dashboard/);
+  await expect(page.locator("main")).toBeFocused();
+});
+
+test("account activity displays sent transfers and remains accessible at 320 and 1440", async ({
+  page,
+}) => {
+  await mockAuthenticatedAPI(page, [account]);
+
+  for (const viewport of [
+    { width: 320, height: 800 },
+    { width: 1440, height: 1000 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`/accounts/${account.id}`);
+
+    // Wait for loaded activity state before checking overflow/Axe
+    await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+    await expect(page.getByText("Sent")).toBeVisible();
+    await expect(page.getByText("−$25.00")).toBeVisible();
+
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+
+    await expectNoAccessibilityViolations(page);
+  }
+});
+
+test("local IBM Plex Sans Variable font loads successfully", async ({ page }) => {
+  await mockAuthenticatedAPI(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: /Good to see you/ })).toBeVisible();
+
+  // Wait for document.fonts.ready to ensure fonts are loaded
+  await page.evaluate(() => document.fonts.ready);
+
+  // Prove actual local .woff2 font loaded from same origin (not external CDN)
+  const localFontLoaded = await page.evaluate(() => {
+    const entries = performance.getEntriesByType("resource");
+    const pageUrl = new URL(window.location.href);
+    return entries.some((entry) => {
+      const resourceUrl = new URL(entry.name);
+      return (
+        entry.name.includes(".woff2") &&
+        entry.name.includes("plex") &&
+        resourceUrl.origin === pageUrl.origin
+      );
+    });
+  });
+  expect(localFontLoaded).toBe(true);
+
+  // Verify IBM Plex Sans Variable is available
+  const fontAvailable = await page.evaluate(() =>
+    document.fonts.check('16px "IBM Plex Sans Variable"'),
+  );
+  expect(fontAvailable).toBe(true);
+});
+
+test("no console errors or failed requests during navigation", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      consoleErrors.push(msg.text());
+    }
+  });
+  page.on("requestfailed", (request) => {
+    failedRequests.push(request.url());
+  });
+
+  await mockAuthenticatedAPI(page, [account]);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.getByRole("link", { name: "Transfer", exact: true }).click();
+  await page.goto(`/accounts/${account.id}`);
+
+  // Wait for loaded activity state before checking listener arrays
+  await expect(page.getByText("−$25.00")).toBeVisible();
+  await expect(page.getByText("Sent")).toBeVisible();
+
+  expect(consoleErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
+});
+
+test("dashboard screenshots remain stable at 320 and 1440 with populated data", async ({
+  page,
+}) => {
+  await mockAuthenticatedAPI(page, [account]);
+
+  for (const viewport of [
+    { width: 320, height: 800 },
+    { width: 1440, height: 1000 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: /Good to see you/ })).toBeVisible();
+
+    // Wait for populated account card markers (Copy/Activity) before screenshot
+    await expect(page.getByRole("button", { name: /copy account number/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /activity/i })).toBeVisible();
+
+    // Wait for fonts to be ready and stable layout signals
+    await page.evaluate(() => document.fonts.ready);
+
+    await expect(page).toHaveScreenshot(`dashboard-${viewport.width}.png`, {
+      animations: "disabled",
+      fullPage: true,
+    });
+  }
 });
