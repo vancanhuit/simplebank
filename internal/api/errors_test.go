@@ -1,9 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/labstack/echo/v5"
 
 	store "github.com/vancanhuit/simplebank/internal/db"
 	"github.com/vancanhuit/simplebank/internal/token"
@@ -36,6 +40,57 @@ func TestLookupError(t *testing.T) {
 			}
 			if message != tc.wantMessage {
 				t.Errorf("message: got %q want %q", message, tc.wantMessage)
+			}
+		})
+	}
+}
+
+func TestErrorHandlerPreservesErrorSemantics(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		err         error
+		wantStatus  int
+		wantMessage string
+	}{
+		{
+			name:        "custom HTTP error",
+			err:         echo.NewHTTPError(http.StatusTeapot, "custom message"),
+			wantStatus:  http.StatusTeapot,
+			wantMessage: "custom message",
+		},
+		{
+			name:        "Echo status error",
+			err:         echo.ErrMethodNotAllowed,
+			wantStatus:  http.StatusMethodNotAllowed,
+			wantMessage: http.StatusText(http.StatusMethodNotAllowed),
+		},
+		{
+			name:        "domain error",
+			err:         store.ErrInvalidSession,
+			wantStatus:  http.StatusUnauthorized,
+			wantMessage: "invalid session",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+			ctx := echo.New().NewContext(req, rec)
+
+			errorHandler(ctx, tt.err)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+			var body map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body["error"] != tt.wantMessage {
+				t.Fatalf("message = %q, want %q", body["error"], tt.wantMessage)
 			}
 		})
 	}

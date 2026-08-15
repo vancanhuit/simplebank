@@ -53,6 +53,10 @@ func errorHandler(c *echo.Context, err error) {
 		_ = c.JSON(he.StatusCode(), map[string]string{"error": he.Message})
 		return
 	}
+	if status := echo.StatusCode(err); status != 0 {
+		_ = c.JSON(status, map[string]string{"error": http.StatusText(status)})
+		return
+	}
 
 	status, message := lookupError(err)
 	if status == http.StatusInternalServerError {

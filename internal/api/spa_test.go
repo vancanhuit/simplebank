@@ -32,6 +32,20 @@ func TestRegisterSPAServesIndexAtRoot(t *testing.T) {
 	}
 }
 
+func TestRegisterSPAHeadReturnsMethodNotAllowed(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	s.RegisterSPA(spaTestFS())
+
+	req := httptest.NewRequest(http.MethodHead, "/", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("want 405 for HEAD, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRegisterSPAFallsBackToIndexForClientRoute(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
