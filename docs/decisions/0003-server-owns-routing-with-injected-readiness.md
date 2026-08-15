@@ -3,6 +3,9 @@
 ## Status
 Accepted
 
+**Partially superseded by:** ADR-0006 for the separate `serve` and `worker`
+entrypoints. The routing and readiness decisions remain current.
+
 ## Date
 2026-07-15
 

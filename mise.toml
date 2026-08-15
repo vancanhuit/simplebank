@@ -113,7 +113,7 @@ run = [
   'mkdir -pv tls',
   'mkcert -cert-file tls/cert.pem -key-file tls/key.pem localhost 127.0.0.1 ::1',
   # Mailpit serves SMTP over TLS, so its certificate must be valid for the
-  # compose service names the app/worker dial across the dev profiles.
+  # compose service names the app dials across the dev profiles.
   'mkcert -cert-file tls/mailpit-cert.pem -key-file tls/mailpit-key.pem mailpit-dev mailpit-dev-https mailpit-dev-proxy localhost',
   # Export the mkcert root so the app container (which lacks the host trust
   # store) can verify Mailpit's certificate via SMTP_TLS_CA_FILE.

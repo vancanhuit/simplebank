@@ -39,14 +39,25 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	cmd := &cli.Command{
+	cmd := newCommand()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := cmd.Run(ctx, os.Args); err != nil {
+		logger.Error("command failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func newCommand() *cli.Command {
+	return &cli.Command{
 		Name:    "simplebank",
 		Usage:   "SimpleBank cloud-native service",
 		Version: version,
 		Flags:   config.Flags(),
 		Commands: []*cli.Command{
-			{Name: "serve", Usage: "Run the HTTP API server", Action: runServe},
-			{Name: "worker", Usage: "Run the background worker", Action: runWorker},
+			{Name: "serve", Usage: "Run the HTTP API server and background worker", Action: runServe},
 			{Name: "healthcheck", Usage: "Probe the local liveness endpoint (for container HEALTHCHECK)", Action: runHealthcheck},
 			{
 				Name:  "version",
@@ -57,14 +68,6 @@ func main() {
 				},
 			},
 		},
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	if err := cmd.Run(ctx, os.Args); err != nil {
-		logger.Error("command failed", "error", err)
-		os.Exit(1)
 	}
 }
 
@@ -110,8 +113,7 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// appDeps holds the shared dependencies both entrypoints need. The caller owns
-// closing the pool.
+// appDeps holds the service dependencies. The caller owns closing the pool.
 type appDeps struct {
 	cfg         config.Config
 	pool        *pgxpool.Pool
@@ -182,7 +184,31 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	}
 	server.RegisterSPA(dist)
 
-	return startServer(ctx, app.cfg, server.Handler())
+	return runServices(ctx, app.riverClient, func(ctx context.Context) error {
+		return startServer(ctx, app.cfg, server.Handler())
+	})
+}
+
+type workerLifecycle interface {
+	Start(context.Context) error
+	Stop(context.Context) error
+}
+
+func runServices(
+	ctx context.Context,
+	worker workerLifecycle,
+	serve func(context.Context) error,
+) error {
+	if err := worker.Start(context.Background()); err != nil {
+		return fmt.Errorf("starting worker: %w", err)
+	}
+	slog.Info("worker started")
+
+	serverErr := serve(ctx)
+	slog.Info("worker shutting down", "cause", context.Cause(ctx))
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return errors.Join(serverErr, worker.Stop(shutdownCtx))
 }
 
 // startServer runs the HTTP server with hardened timeouts and graceful
@@ -220,25 +246,6 @@ func startServer(ctx context.Context, cfg config.Config, handler http.Handler) e
 		return err
 	}
 	return nil
-}
-
-func runWorker(ctx context.Context, cmd *cli.Command) error {
-	app, err := buildApp(ctx, cmd)
-	if err != nil {
-		return err
-	}
-	defer app.pool.Close()
-
-	if err := app.riverClient.Start(context.Background()); err != nil {
-		return err
-	}
-	slog.Info("worker started")
-
-	<-ctx.Done()
-	slog.Info("worker shutting down", "cause", context.Cause(ctx))
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return app.riverClient.Stop(shutdownCtx)
 }
 
 // runHealthcheck probes the local /livez endpoint so a container HEALTHCHECK can

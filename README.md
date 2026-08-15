@@ -26,7 +26,7 @@ cocogitto toolchain) and Docker (for PostgreSQL and Mailpit).
 
 ```sh
 mise install              # install pinned tools (Go 1.26.5, etc.)
-mise run compose:dev:up   # start PostgreSQL + Mailpit + pgAdmin + app + worker (profile: dev)
+mise run compose:dev:up   # start PostgreSQL + Mailpit + pgAdmin + app (profile: dev)
 ```
 
 The API and web UI are served at http://localhost:8080. Mailpit's web UI (sent
@@ -45,8 +45,7 @@ To run the server directly against your own database instead of the dev stack:
 export DB_SOURCE="postgres://user:pass@localhost:5432/simplebank?sslmode=disable"
 export JWT_SECRET="a-secret-at-least-32-characters-long"
 export SMTP_FROM="no-reply@simplebank.local"
-mise run app -- serve     # HTTP API
-mise run app -- worker    # background worker
+mise run app -- serve     # HTTP API and background worker
 ```
 
 Migrations (schema + River) run automatically on startup.
@@ -55,7 +54,7 @@ Migrations (schema + River) run automatically on startup.
 
 | Command | Description |
 |---------|-------------|
-| `mise run app` | Run the CLI (`serve` or `worker` subcommand) |
+| `mise run app` | Run the CLI (`serve`, `healthcheck`, or `version` subcommand) |
 | `mise run app:build` | Build the single binary to `dist/simplebank`, with the SPA embedded |
 | `mise run frontend:dev` | Run the Vite dev server (proxies `/api` to `:8080`) |
 | `mise run frontend:build` | Build the SPA into `frontend/dist` |
@@ -92,7 +91,7 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 | `SMTP_INSECURE` | `--smtp-insecure` | `false` | Disable TLS (plaintext SMTP) |
 | `SMTP_SSL` | `--smtp-ssl` | `false` | Use implicit TLS (SSL, e.g. port 465) instead of STARTTLS |
 | `SMTP_TLS_CA_FILE` | `--smtp-tls-ca-file` | — | PEM CA bundle to verify the mail server cert (e.g. a mkcert root) |
-| `RIVER_MAX_WORKERS` | `--river-max-workers` | `10` | Background worker concurrency |
+| `RIVER_MAX_WORKERS` | `--river-max-workers` | `10` | Background worker concurrency per API replica |
 | `TLS_CERT_FILE` | `--tls-cert-file` | — | Serve HTTPS with this cert (must be set with the key) |
 | `TLS_KEY_FILE` | `--tls-key-file` | — | Private key for `TLS_CERT_FILE` |
 | `TRUSTED_PROXIES` | `--trusted-proxies` | — | CIDRs/IPs whose forwarded headers are trusted (repeatable) |
