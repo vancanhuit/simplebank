@@ -61,9 +61,15 @@ class AuthStore {
   async tryRefresh(): Promise<boolean> {
     const gen = this.#generation;
     try {
-      const res = await request<RenewResponse>("/tokens/renew", {
+      const res = await request<RenewResponse | undefined>("/tokens/renew", {
         method: "POST",
       });
+      if (!res) {
+        if (this.#generation === gen) {
+          this.clear();
+        }
+        return false;
+      }
       // Only apply response if no logout or newer login occurred during request.
       if (this.#generation === gen) {
         this.accessToken = res.access_token;

@@ -242,6 +242,9 @@ type renewTokenResponse struct {
 func (s *Server) renewToken(c *echo.Context) error {
 	refreshCookie, err := c.Cookie(refreshCookieName)
 	if err != nil {
+		if errors.Is(err, http.ErrNoCookie) {
+			return c.NoContent(http.StatusNoContent)
+		}
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
 	}
 

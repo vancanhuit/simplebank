@@ -43,6 +43,19 @@ describe("AuthStore", () => {
     expect(store.user).toEqual(verifiedUser);
   });
 
+  it("treats an absent refresh cookie as signed out", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(204, undefined)));
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+
+    const refreshed = await store.tryRefresh();
+
+    expect(refreshed).toBe(false);
+    expect(store.accessToken).toBeNull();
+    expect(store.user).toBeNull();
+  });
+
   it("clears local state and navigates immediately before server logout", async () => {
     let resolveLogout: (value: Response) => void;
     const logoutPromise = new Promise<Response>((resolve) => {

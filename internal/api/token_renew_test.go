@@ -186,8 +186,8 @@ func TestRenewTokenInvalidToken(t *testing.T) {
 func TestRenewTokenMissingCookie(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	if rec := postRenew(t, s, ""); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("want 401 for missing refresh cookie, got %d", rec.Code)
+	if rec := postRenew(t, s, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204 for missing refresh cookie, got %d", rec.Code)
 	}
 }
 
