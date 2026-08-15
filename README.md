@@ -25,7 +25,7 @@ Prerequisites: [mise](https://mise.jdx.dev/) (manages the Go, golangci-lint, and
 cocogitto toolchain) and Docker (for PostgreSQL and Mailpit).
 
 ```sh
-mise install              # install pinned tools (Go 1.26.5, etc.)
+mise install              # install pinned tools (Go 1.26.6, Bun 1.3.14, etc.)
 mise run compose:dev:up   # start PostgreSQL + Mailpit + pgAdmin + app (profile: dev)
 ```
 
@@ -38,6 +38,15 @@ port 465 with username/password auth. The `compose:dev:up` task generates the
 mkcert certificates it needs (`dev:tls:certs`); the app trusts the mkcert root
 via `SMTP_TLS_CA_FILE` and authenticates with the throwaway credentials in
 `mailpit/smtp-auth.txt`.
+
+Two additional Compose profiles exercise production-style TLS topologies:
+
+```sh
+mise run compose:dev-https:up  # app terminates HTTPS directly at https://localhost:8443
+mise run compose:dev-proxy:up  # Caddy terminates HTTPS and forwards trusted headers
+```
+
+Use the matching `:down` task to stop either profile and remove its volumes.
 
 To run the server directly against your own database instead of the dev stack:
 
@@ -57,11 +66,17 @@ Migrations (schema + River) run automatically on startup.
 | `mise run app` | Run the CLI (`serve`, `healthcheck`, or `version` subcommand) |
 | `mise run app:build` | Build the single binary to `dist/simplebank`, with the SPA embedded |
 | `mise run frontend:dev` | Run the Vite dev server (proxies `/api` to `:8080`) |
+| `mise run frontend:preview` | Preview the production frontend build |
 | `mise run frontend:build` | Build the SPA into `frontend/dist` |
+| `mise run frontend:check` | Type-check the frontend with `svelte-check` and TypeScript |
+| `mise run frontend:lint` | Lint the frontend with ESLint |
+| `mise run frontend:format:check` | Check frontend formatting with Prettier |
 | `mise run frontend:test` | Frontend unit tests (Vitest) |
 | `mise run frontend:test:e2e` | Frontend responsive accessibility tests (Playwright + axe) |
 | `mise run frontend:test:e2e:install` | Install Chromium required by frontend browser tests |
 | `mise run compose:dev:up` / `:down` | Start / stop the dev stack (DB, Mailpit, app) |
+| `mise run compose:dev-https:up` / `:down` | Start / stop the direct-HTTPS dev stack |
+| `mise run compose:dev-proxy:up` / `:down` | Start / stop the Caddy reverse-proxy dev stack |
 | `mise run compose:test:up` / `:down` | Start / stop the test stack |
 | `mise run test:unit` | Unit tests (`-race -cover`) |
 | `mise run test:integration` | Integration tests against a real PostgreSQL (`-tags=integration`) |
@@ -160,8 +175,13 @@ authoritative and enforces the same cap before account creation.
 
 ## Architecture
 
+See the [documentation index](docs/README.md) for architecture decisions,
+feature designs, and implementation-plan history.
+
 ```
+caddy/            reverse-proxy configuration for the proxy-aware dev profile
 cmd/app/          CLI entrypoint; buildApp assembles shared dependencies
+frontend/         Svelte 5 SPA, tests, and Vite build embedded by the Go binary
 internal/
   api/            echo HTTP server, handlers, middleware, error mapping
   config/         flag/env configuration and validation
@@ -175,7 +195,7 @@ internal/
   random/         non-crypto random strings (test fixtures, display names)
   secret/         crypto-secure token generation
   token/          JWT Maker interface + HS256 implementation
-  worker/         River job definitions (async verification email)
+  worker/         River client and async verification-email jobs
 ```
 
 Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/README.md):
@@ -185,6 +205,7 @@ Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/RE
 - [ADR-0003](docs/decisions/0003-server-owns-routing-with-injected-readiness.md) — the Server owns routing with an injected readiness probe.
 - [ADR-0004](docs/decisions/0004-split-util-into-domain-packages.md) — splitting `util` into domain packages, separating crypto from non-crypto randomness.
 - [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with in-transaction re-validation and per-currency limits.
+- [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md) — running the River worker in the HTTP server process with ordered startup and shutdown.
 
 Money transfers run in a single database transaction that locks both accounts in
 a deterministic order (avoiding deadlocks), re-validates currency against the
@@ -194,11 +215,20 @@ client-supplied idempotency key collapses retries onto a single transfer. See
 `TransferTx` in `internal/db/transfer_tx.go` and
 [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md).
 
+The `serve` command starts River before accepting HTTP traffic and shuts HTTP
+down before giving in-progress jobs a bounded grace period. Each API replica
+runs its own River client, so `RIVER_MAX_WORKERS` is a per-replica concurrency
+limit. See [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md).
+
 ## Testing
 
 Unit tests run without external services. Integration tests are gated behind the
 `integration` build tag and run against a real PostgreSQL brought up by the test
 compose stack — `mise run test:integration` handles the lifecycle automatically.
+The frontend has Vitest unit coverage plus Playwright checks across responsive
+viewports with axe accessibility assertions. Run `mise run frontend:check`,
+`mise run frontend:lint`, `mise run frontend:test`, and
+`mise run frontend:test:e2e` before shipping UI changes.
 
 ## Contributing
 
