@@ -6,6 +6,8 @@
   import AccountCard from "../components/AccountCard.svelte";
   import Alert from "../components/Alert.svelte";
   import Link from "../components/Link.svelte";
+  import Send from "@lucide/svelte/icons/send";
+  import Plus from "@lucide/svelte/icons/plus";
 
   onMount(() => {
     if (!accounts.loaded) {
@@ -44,17 +46,19 @@
         {accounts.items.length === 1 ? "account" : "accounts"}
       </p>
     </div>
-    <div class="flex gap-3">
+    <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
       <Link
         href="/transfer"
-        class="inline-flex min-h-11 items-center rounded-md bg-surface px-4 py-2.5 text-sm font-semibold text-brand-strong transition-colors hover:bg-brand-soft"
+        class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-surface px-4 py-2.5 text-sm font-semibold text-brand-strong transition-colors hover:bg-brand-soft"
       >
+        <Send size={16} aria-hidden="true" />
         Send money
       </Link>
       <Link
         href="/accounts/new"
-        class="inline-flex min-h-11 items-center rounded-md border border-brand-soft/40 px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand"
+        class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md border border-brand-soft/40 px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand"
       >
+        <Plus size={16} aria-hidden="true" />
         New account
       </Link>
     </div>

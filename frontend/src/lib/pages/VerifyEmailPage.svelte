@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import CircleAlert from "@lucide/svelte/icons/circle-alert";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import { request, toMessage } from "../api/client";
   import { auth } from "../stores/auth.svelte";
   import AuthLayout from "./AuthLayout.svelte";
@@ -43,10 +46,10 @@
 <AuthLayout title="Email verification" subtitle="Confirming your SimpleBank email address.">
   {#if status === "pending"}
     <div class="flex flex-col items-center gap-4 py-4 text-center" role="status" aria-busy="true">
-      <span
-        class="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent"
+      <LoaderCircle
+        class="h-8 w-8 animate-spin motion-reduce:animate-none text-brand"
         aria-hidden="true"
-      ></span>
+      />
       <p class="text-sm text-muted">Verifying your email…</p>
     </div>
   {:else if status === "success"}
@@ -55,9 +58,7 @@
         class="grid h-12 w-12 place-items-center rounded-full bg-positive-soft text-positive"
         aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="m5 13 4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <CircleCheck class="h-6 w-6" aria-hidden="true" />
       </span>
       <div>
         <h2 class="text-base font-semibold text-ink">Email verified</h2>
@@ -78,11 +79,7 @@
         class="grid h-12 w-12 place-items-center rounded-full bg-negative-soft text-negative"
         aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 8v5" stroke-linecap="round" />
-          <path d="M12 16h.01" stroke-linecap="round" />
-          <circle cx="12" cy="12" r="9" />
-        </svg>
+        <CircleAlert class="h-6 w-6" aria-hidden="true" />
       </span>
       <div>
         <h2 class="text-base font-semibold text-ink">Verification failed</h2>

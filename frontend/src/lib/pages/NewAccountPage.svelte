@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import { request, toMessage } from "../api/client";
   import type { AccountOpeningLimits } from "../api/types";
   import { accounts } from "../stores/accounts.svelte";
@@ -27,11 +28,21 @@
   let policyError = $state<string | null>(null);
 
   onMount(() => {
-    if (!accounts.loaded) {
-      void accounts.load();
-    }
-    void loadOpeningLimits();
+    void initialize();
   });
+
+  async function initialize(): Promise<void> {
+    void loadOpeningLimits();
+    if (!accounts.loaded) {
+      await accounts.load();
+    }
+    const firstAvailable = CURRENCIES.find(
+      (code) => !accounts.items.some((account) => account.currency === code),
+    );
+    if (firstAvailable && !available.includes(currency)) {
+      currency = firstAvailable;
+    }
+  }
 
   // The API rejects a second account in a currency the user already holds, so
   // hide currencies already taken to prevent a guaranteed error.
@@ -47,12 +58,6 @@
   const depositHint = $derived(
     `Optional. Maximum ${formatMoney(openingLimit, currency)}. Leave blank to open at zero.`,
   );
-
-  $effect(() => {
-    if (available.length > 0 && !available.includes(currency)) {
-      currency = available[0];
-    }
-  });
 
   async function loadOpeningLimits(): Promise<void> {
     policyLoading = true;
@@ -110,9 +115,11 @@
 <div class="mx-auto max-w-lg">
   <Link
     href="/"
-    class="inline-flex min-h-11 items-center text-sm font-medium text-brand hover:text-brand-strong"
-    >← Back</Link
+    class="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-brand hover:text-brand-strong"
   >
+    <ArrowLeft class="h-4 w-4" aria-hidden="true" />
+    Back
+  </Link>
   <h1 class="mt-4 text-2xl font-semibold text-ink">Open a new account</h1>
   <p class="mt-1 text-sm text-muted">Choose a currency for your new account.</p>
 
@@ -171,7 +178,12 @@
         disabled={formDisabled}
       />
 
-      <Button type="submit" loading={submitting} disabled={!policyReady || available.length === 0}>
+      <Button
+        type="submit"
+        loading={submitting}
+        disabled={!policyReady || available.length === 0}
+        class="w-full sm:w-auto"
+      >
         Create account
       </Button>
     {/if}

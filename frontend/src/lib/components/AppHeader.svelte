@@ -3,6 +3,9 @@
   import { accounts } from "../stores/accounts.svelte";
   import { router } from "../router.svelte";
   import Link from "./Link.svelte";
+  import Menu from "@lucide/svelte/icons/menu";
+  import X from "@lucide/svelte/icons/x";
+  import LogOut from "@lucide/svelte/icons/log-out";
 
   const userName = $derived(auth.user?.full_name ?? "");
 
@@ -79,7 +82,7 @@
           <li>
             <Link
               href={item.href}
-              class="flex min-h-11 items-center rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-strong"
+              class="flex min-h-11 items-center rounded-md border-l-2 border-transparent px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-strong aria-[current=page]:border-brand forced-colors:aria-[current=page]:border-[Highlight]"
             >
               {item.label}
             </Link>
@@ -110,26 +113,18 @@
         aria-expanded={menuOpen}
         onclick={toggleMenu}
       >
-        <svg
-          viewBox="0 0 24 24"
-          class="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
-        >
-          {#if menuOpen}
-            <path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" />
-          {:else}
-            <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round" />
-          {/if}
-        </svg>
+        {#if menuOpen}
+          <X aria-hidden="true" size={20} />
+        {:else}
+          <Menu aria-hidden="true" size={20} />
+        {/if}
       </button>
       <button
         type="button"
-        class="min-h-11 whitespace-nowrap rounded-md border border-control px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
+        class="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md border border-control px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
         onclick={logout}
       >
+        <LogOut aria-hidden="true" size={16} />
         Sign out
       </button>
     </div>
@@ -146,7 +141,7 @@
           <li>
             <Link
               href={item.href}
-              class="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-muted hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-strong"
+              class="flex min-h-11 items-center rounded-md border-l-2 border-transparent px-3 text-sm font-medium text-muted hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-brand-soft aria-[current=page]:text-brand-strong aria-[current=page]:border-brand forced-colors:aria-[current=page]:border-[Highlight]"
               onclick={closeMenuAndRestoreFocus}
             >
               {item.label}

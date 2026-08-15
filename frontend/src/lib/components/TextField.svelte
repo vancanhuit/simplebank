@@ -55,7 +55,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5">
-  <label for={id} class="text-sm font-medium text-ink">{label}</label>
+  <label for={id} class="text-sm font-medium text-ink contrast-more:font-bold">{label}</label>
   <input
     {id}
     {type}
@@ -71,12 +71,14 @@
     bind:this={inputElement}
     aria-describedby={describedBy}
     aria-invalid={error ? true : undefined}
-    class="min-h-11 rounded-md border bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted focus-visible:border-brand disabled:bg-surface-muted {error
-      ? 'border-negative'
+    class="min-h-11 rounded-md border bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted focus-visible:border-brand disabled:bg-surface-muted disabled:cursor-not-allowed contrast-more:border-2 forced-colors:border-[ButtonBorder] {error
+      ? 'border-negative contrast-more:border-[Mark] forced-colors:aria-invalid:border-[Mark]'
       : 'border-control'}"
   />
   {#if error}
-    <p id={errorId} role="alert" class="text-xs font-medium text-negative">{error}</p>
+    <p id={errorId} role="alert" class="text-xs font-medium text-negative contrast-more:font-bold">
+      {error}
+    </p>
   {/if}
   {#if hint}
     <p id={hintId} class="text-xs text-muted">{hint}</p>

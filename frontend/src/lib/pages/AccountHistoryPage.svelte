@@ -7,6 +7,8 @@
   import { formatMoney, formatSignedMoney } from "../money";
   import Alert from "../components/Alert.svelte";
   import Link from "../components/Link.svelte";
+  import ArrowUpRight from "@lucide/svelte/icons/arrow-up-right";
+  import ArrowDownLeft from "@lucide/svelte/icons/arrow-down-left";
 
   // The account id is the second path segment of /accounts/:id.
   const accountId = $derived(router.path.split("/")[2] ?? "");
@@ -120,13 +122,20 @@
         <li
           class="flex items-center justify-between gap-4 rounded-card border border-border bg-surface p-4"
         >
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-ink">
-              {r.outgoing ? "Sent" : "Received"}
-            </p>
-            <p class="mt-0.5 truncate text-xs text-muted">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              {#if r.outgoing}
+                <ArrowUpRight size={16} class="shrink-0 text-negative" aria-hidden="true" />
+              {:else}
+                <ArrowDownLeft size={16} class="shrink-0 text-positive" aria-hidden="true" />
+              {/if}
+              <p class="text-sm font-semibold text-ink">
+                {r.outgoing ? "Sent" : "Received"}
+              </p>
+            </div>
+            <p class="mt-0.5 text-xs text-muted">
               {r.outgoing ? "To" : "From"}
-              <code class="font-mono break-all">{r.counterparty}</code>
+              <code class="font-mono break-words">{r.counterparty}</code>
             </p>
             <p class="mt-0.5 text-xs text-muted">{r.when}</p>
           </div>

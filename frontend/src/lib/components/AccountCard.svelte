@@ -5,6 +5,10 @@
   import { accounts } from "../stores/accounts.svelte";
   import { navigate } from "../router.svelte";
   import Link from "./Link.svelte";
+  import Copy from "@lucide/svelte/icons/copy";
+  import Check from "@lucide/svelte/icons/check";
+  import Send from "@lucide/svelte/icons/send";
+  import History from "@lucide/svelte/icons/history";
   interface Props {
     account: Account;
   }
@@ -60,31 +64,36 @@
 
   <div>
     <p class="text-xs font-medium text-muted">Account number</p>
-    <div class="mt-1 flex items-start gap-2">
-      <code class="min-w-0 flex-1 font-mono text-xs break-all text-ink">{account.id}</code>
-      <button
-        type="button"
-        onclick={copyId}
-        class="min-h-11 shrink-0 rounded-md border border-control px-3 py-2 text-xs font-medium text-brand transition-colors hover:bg-brand-soft"
-        aria-label={copied ? "Account number copied" : "Copy account number"}
-      >
-        {copied ? "Copied" : "Copy"}
-      </button>
-    </div>
-  </div>
-
-  <div class="flex items-center justify-between gap-3">
+    <code class="mt-1 block font-mono text-xs break-all text-ink">{account.id}</code>
     <button
       type="button"
-      class="inline-flex min-h-11 items-center text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
+      onclick={copyId}
+      class="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-control px-3 py-2 text-xs font-medium text-brand transition-colors hover:bg-brand-soft"
+      aria-label={copied ? "Account number copied" : "Copy account number"}
+    >
+      {#if copied}
+        <Check size={14} aria-hidden="true" />
+      {:else}
+        <Copy size={14} aria-hidden="true" />
+      {/if}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  </div>
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <button
+      type="button"
+      class="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
       onclick={sendFromHere}
     >
-      Send money →
+      <Send size={16} aria-hidden="true" />
+      Send money
     </button>
     <Link
       href={`/accounts/${account.id}`}
-      class="inline-flex min-h-11 items-center text-sm font-medium text-muted transition-colors hover:text-ink"
+      class="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink"
     >
+      <History size={16} aria-hidden="true" />
       Activity
     </Link>
   </div>

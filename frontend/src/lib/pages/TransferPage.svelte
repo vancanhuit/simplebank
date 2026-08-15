@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import { request, toMessage } from "../api/client";
   import type { TransferLimits, TransferResult } from "../api/types";
   import { accounts } from "../stores/accounts.svelte";
@@ -112,32 +113,32 @@
 <div class="mx-auto max-w-lg">
   <Link
     href="/"
-    class="inline-flex min-h-11 items-center text-sm font-medium text-brand hover:text-brand-strong"
-    >← Back</Link
+    class="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-brand hover:text-brand-strong"
   >
+    <ArrowLeft class="h-4 w-4" aria-hidden="true" />
+    Back
+  </Link>
   <h1 class="mt-4 text-2xl font-semibold text-ink">Send money</h1>
   <p class="mt-1 text-sm text-muted">Transfer funds to another SimpleBank account.</p>
 
   {#if receipt}
-    <div class="mt-6">
-      <Alert variant="success">
+    <div role="status" class="mt-6 rounded-card border border-border bg-surface p-5 text-sm">
+      <p class="mb-4 text-sm font-medium text-positive">
         Sent {formatMoney(receipt.transfer.amount, receipt.from_account.currency)} successfully.
-      </Alert>
+      </p>
+      <dl class="grid grid-cols-2 gap-4">
+        <div>
+          <dt class="text-muted">From</dt>
+          <dd class="mt-0.5 font-medium text-ink">
+            {formatMoney(receipt.from_account.balance, receipt.from_account.currency)} left
+          </dd>
+        </div>
+        <div>
+          <dt class="text-muted">Reference</dt>
+          <dd class="mt-0.5 font-mono text-xs break-all text-ink">{receipt.transfer.id}</dd>
+        </div>
+      </dl>
     </div>
-    <dl
-      class="mt-4 grid grid-cols-2 gap-4 rounded-card border border-border bg-surface p-5 text-sm"
-    >
-      <div>
-        <dt class="text-muted">From</dt>
-        <dd class="mt-0.5 font-medium text-ink">
-          {formatMoney(receipt.from_account.balance, receipt.from_account.currency)} left
-        </dd>
-      </div>
-      <div>
-        <dt class="text-muted">Reference</dt>
-        <dd class="mt-0.5 font-mono text-xs break-all text-ink">{receipt.transfer.id}</dd>
-      </div>
-    </dl>
   {/if}
 
   {#if accounts.items.length === 0 && accounts.loaded}
@@ -189,7 +190,7 @@
         required
       />
 
-      <Button type="submit" loading={submitting}>Send transfer</Button>
+      <Button type="submit" loading={submitting} class="w-full sm:w-auto">Send transfer</Button>
     </form>
   {/if}
 </div>

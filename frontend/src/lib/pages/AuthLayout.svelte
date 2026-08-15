@@ -26,7 +26,7 @@
     SimpleBank
   </div>
 
-  <div class="rounded-card border border-border bg-surface p-6 sm:p-8">
+  <div class="rounded-card border border-border bg-surface-raised p-6 shadow-raised sm:p-8">
     <h1 class="text-xl font-semibold text-ink">{title}</h1>
     <p class="mt-1 text-sm text-muted">{subtitle}</p>
 

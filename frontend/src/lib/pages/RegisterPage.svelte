@@ -61,7 +61,7 @@
       required
     />
 
-    <Button type="submit" loading={submitting} class="mt-2">Create account</Button>
+    <Button type="submit" loading={submitting} class="mt-2 w-full sm:w-auto">Create account</Button>
   </form>
 
   {#snippet footer()}

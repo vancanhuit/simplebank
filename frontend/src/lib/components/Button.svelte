@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
   interface Props {
     type?: "button" | "submit";
@@ -39,10 +40,7 @@
   {onclick}
 >
   {#if loading}
-    <span
-      class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-      aria-hidden="true"
-    ></span>
+    <LoaderCircle aria-hidden="true" size={16} class="animate-spin motion-reduce:animate-none" />
   {/if}
   {@render children()}
 </button>

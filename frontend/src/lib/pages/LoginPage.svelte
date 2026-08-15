@@ -54,7 +54,7 @@
       required
     />
 
-    <Button type="submit" loading={submitting} class="mt-2">Sign in</Button>
+    <Button type="submit" loading={submitting} class="mt-2 w-full sm:w-auto">Sign in</Button>
   </form>
 
   {#snippet footer()}
