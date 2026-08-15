@@ -22,5 +22,6 @@ LIMIT $2 OFFSET $3;
 -- name: AddAccountBalance :one
 UPDATE accounts
 SET balance = balance + sqlc.arg(amount)
-WHERE id = sqlc.arg(id) AND balance + sqlc.arg(amount) >= 0
+WHERE id = sqlc.arg(id)
+  AND balance + sqlc.arg(amount) BETWEEN 0 AND 9007199254740991
 RETURNING *;

@@ -28,6 +28,10 @@ func TestClassifyError(t *testing.T) {
 	if !errors.Is(ClassifyError(fk), ErrForeignKeyViolation) {
 		t.Error("23503 should map to ErrForeignKeyViolation")
 	}
+	balanceCheck := &pgconn.PgError{Code: "23514", ConstraintName: "accounts_balance_javascript_safe"}
+	if !errors.Is(ClassifyError(balanceCheck), ErrBalanceLimitExceeded) {
+		t.Error("23514 accounts_balance_javascript_safe should map to ErrBalanceLimitExceeded")
+	}
 	other := errors.New("boom")
 	if ClassifyError(other) != other {
 		t.Error("unknown error should pass through unchanged")

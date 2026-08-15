@@ -13,3 +13,10 @@ func TestIsSupported(t *testing.T) {
 		t.Error("XYZ should not be supported")
 	}
 }
+
+func TestMaxSafeMinorUnitsMatchesJavaScript(t *testing.T) {
+	t.Parallel()
+	if MaxSafeMinorUnits != 9_007_199_254_740_991 {
+		t.Fatalf("MaxSafeMinorUnits = %d", MaxSafeMinorUnits)
+	}
+}

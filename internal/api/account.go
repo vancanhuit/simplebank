@@ -29,6 +29,13 @@ func (s *Server) createAccount(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "unsupported currency")
 	}
 
+	if req.Balance > currency.MaxSafeMinorUnits {
+		return echo.NewHTTPError(
+			http.StatusUnprocessableEntity,
+			"opening balance exceeds the supported limit",
+		)
+	}
+
 	if req.Balance > s.config.OpeningBalanceLimitFor(req.Currency) {
 		return echo.NewHTTPError(
 			http.StatusUnprocessableEntity,

@@ -133,6 +133,43 @@ func TestCreateTransferExceedsMaxAmount(t *testing.T) {
 	}
 }
 
+func TestCreateTransferUnsafeAmount(t *testing.T) {
+	t.Parallel()
+	fromID := uuid.New()
+	toID := uuid.New()
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			owner := "bob"
+			if id == fromID {
+				owner = "alice"
+			}
+			return sqlcdb.Account{ID: id, Owner: owner, Currency: "USD"}, nil
+		},
+		transferTx: func(context.Context, store.TransferTxParams) (store.TransferTxResult, error) {
+			t.Fatal("TransferTx must not run when the amount is unsafe for JavaScript")
+			return store.TransferTxResult{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := `{"from_account_id":"` + fromID.String() +
+		`","to_account_id":"` + toID.String() +
+		`","amount":9007199254740992,"currency":"USD","idempotency_key":"` +
+		uuid.NewString() + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", bearer(t, "alice"))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for unsafe transfer amount, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "amount exceeds the supported limit") {
+		t.Errorf("want 'amount exceeds the supported limit', got %s", rec.Body.String())
+	}
+}
+
 func TestCreateTransferCurrencyMismatch(t *testing.T) {
 	t.Parallel()
 	fromID := uuid.New()

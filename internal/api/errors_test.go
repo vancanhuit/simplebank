@@ -20,6 +20,7 @@ func TestLookupError(t *testing.T) {
 		{store.ErrUniqueViolation, http.StatusConflict, "resource already exists"},
 		{store.ErrForeignKeyViolation, http.StatusConflict, "related resource not found"},
 		{store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient balance"},
+		{store.ErrBalanceLimitExceeded, http.StatusUnprocessableEntity, "destination balance exceeds the supported limit"},
 		{store.ErrIdempotencyConflict, http.StatusConflict, "idempotency key conflicts with an existing transfer"},
 		{store.ErrInvalidSession, http.StatusUnauthorized, "invalid session"},
 		{token.ErrExpiredToken, http.StatusUnauthorized, "token has expired"},

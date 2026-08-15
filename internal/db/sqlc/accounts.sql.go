@@ -14,7 +14,8 @@ import (
 const addAccountBalance = `-- name: AddAccountBalance :one
 UPDATE accounts
 SET balance = balance + $1
-WHERE id = $2 AND balance + $1 >= 0
+WHERE id = $2
+  AND balance + $1 BETWEEN 0 AND 9007199254740991
 RETURNING id, owner, balance, currency, created_at
 `
 

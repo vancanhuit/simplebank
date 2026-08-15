@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v3"
+	"github.com/vancanhuit/simplebank/internal/currency"
 )
 
 // CurrencyLimit holds the transfer ceilings for one currency, expressed in that
@@ -118,6 +119,14 @@ func parseTransferLimits(raw string) (map[string]CurrencyLimit, error) {
 	if err := json.Unmarshal([]byte(raw), &limits); err != nil {
 		return nil, err
 	}
+	for code, limit := range limits {
+		if limit.MaxPerTransfer > currency.MaxSafeMinorUnits {
+			return nil, fmt.Errorf("max per-transfer limit for %s exceeds JavaScript safe integer", code)
+		}
+		if limit.Daily > currency.MaxSafeMinorUnits {
+			return nil, fmt.Errorf("daily limit for %s exceeds JavaScript safe integer", code)
+		}
+	}
 	return limits, nil
 }
 
@@ -133,9 +142,12 @@ func parseAccountOpeningLimits(raw string) (map[string]int64, error) {
 		return nil, err
 	}
 	// Reject any negative cap.
-	for currency, cap := range limits {
+	for currencyCode, cap := range limits {
 		if cap < 0 {
-			return nil, fmt.Errorf("negative opening balance cap for %s: %d", currency, cap)
+			return nil, fmt.Errorf("negative opening balance cap for %s: %d", currencyCode, cap)
+		}
+		if cap > currency.MaxSafeMinorUnits {
+			return nil, fmt.Errorf("opening balance cap for %s exceeds JavaScript safe integer", currencyCode)
 		}
 	}
 	return limits, nil

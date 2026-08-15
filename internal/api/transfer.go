@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/vancanhuit/simplebank/internal/currency"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
@@ -24,6 +25,13 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	req, err := bindValidate[transferRequest](c)
 	if err != nil {
 		return err
+	}
+
+	if req.Amount > currency.MaxSafeMinorUnits {
+		return echo.NewHTTPError(
+			http.StatusUnprocessableEntity,
+			"amount exceeds the supported limit",
+		)
 	}
 
 	// Transfer limits are per-currency: both accounts share req.Currency, so a

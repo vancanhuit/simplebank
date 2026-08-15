@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vancanhuit/simplebank/internal/currency"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
@@ -59,6 +60,11 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 		}
 		if fromAccount.Currency != arg.Currency || toAccount.Currency != arg.Currency {
 			return ErrCurrencyMismatch
+		}
+
+		if arg.Amount > currency.MaxSafeMinorUnits ||
+			toAccount.Balance > currency.MaxSafeMinorUnits-arg.Amount {
+			return ErrBalanceLimitExceeded
 		}
 
 		if arg.DailyLimit > 0 {

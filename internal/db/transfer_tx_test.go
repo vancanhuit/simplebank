@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
@@ -43,6 +44,17 @@ func createTestAccount(t *testing.T, owner string) sqlcdb.Account {
 		t.Fatal(err)
 	}
 	return acc
+}
+
+func createTestAccountWithBalance(t *testing.T, owner string, balance int64) sqlcdb.Account {
+	t.Helper()
+	account, err := testStore.CreateAccount(t.Context(), sqlcdb.CreateAccountParams{
+		Owner: owner, Balance: balance, Currency: currency.USD,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return account
 }
 
 func TestTransferTxConcurrent(t *testing.T) {
@@ -317,5 +329,174 @@ func TestTransferTxPersistsRows(t *testing.T) {
 	}
 	if entryCount != 2 {
 		t.Errorf("persisted entries = %d, want 2", entryCount)
+	}
+}
+
+func TestMonetaryRowsRejectUnsafeJavaScriptIntegers(t *testing.T) {
+	u1 := createTestUser(t)
+	u2 := createTestUser(t)
+	acc1 := createTestAccount(t, u1.Username)
+	acc2 := createTestAccount(t, u2.Username)
+	ctx := t.Context()
+
+	insertTransferAmount := func(t *testing.T, amount int64) error {
+		t.Helper()
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO transfers (from_account_id, to_account_id, amount, idempotency_key)
+			VALUES ($1, $2, $3, $4)`, acc1.ID, acc2.ID, amount, uuid.New())
+		return err
+	}
+	insertEntryAmount := func(t *testing.T, amount int64) error {
+		t.Helper()
+		tx, err := testPool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO entries (account_id, amount)
+			VALUES ($1, $2)`, acc1.ID, amount)
+		return err
+	}
+	requireCheckViolation := func(t *testing.T, err error, constraint string) {
+		t.Helper()
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) {
+			t.Fatalf("want PostgreSQL check violation %s, got %v", constraint, err)
+		}
+		if pgErr.Code != "23514" || pgErr.ConstraintName != constraint {
+			t.Fatalf("want check violation %s, got code=%s constraint=%s", constraint, pgErr.Code, pgErr.ConstraintName)
+		}
+	}
+
+	if err := insertTransferAmount(t, currency.MaxSafeMinorUnits); err != nil {
+		t.Fatalf("transfer amount at JavaScript-safe boundary should insert, got %v", err)
+	}
+	requireCheckViolation(t,
+		insertTransferAmount(t, currency.MaxSafeMinorUnits+1),
+		"transfers_amount_javascript_safe")
+
+	if err := insertEntryAmount(t, currency.MaxSafeMinorUnits); err != nil {
+		t.Fatalf("positive entry at JavaScript-safe boundary should insert, got %v", err)
+	}
+	if err := insertEntryAmount(t, -currency.MaxSafeMinorUnits); err != nil {
+		t.Fatalf("negative entry at JavaScript-safe boundary should insert, got %v", err)
+	}
+	requireCheckViolation(t,
+		insertEntryAmount(t, currency.MaxSafeMinorUnits+1),
+		"entries_amount_javascript_safe")
+	requireCheckViolation(t,
+		insertEntryAmount(t, -currency.MaxSafeMinorUnits-1),
+		"entries_amount_javascript_safe")
+}
+
+// TestTransferTxAllowsExactSafeDestinationBalance confirms that a transfer
+// bringing the destination to exactly MaxSafeMinorUnits succeeds.
+func TestTransferTxAllowsExactSafeDestinationBalance(t *testing.T) {
+	u1 := createTestUser(t)
+	u2 := createTestUser(t)
+	acc1 := createTestAccount(t, u1.Username)
+	acc2 := createTestAccountWithBalance(t, u2.Username, currency.MaxSafeMinorUnits-10)
+
+	res, err := testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  acc1.ID,
+		ToAccountID:    acc2.ID,
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
+	})
+	if err != nil {
+		t.Fatalf("transfer to exactly MaxSafeMinorUnits should succeed, got %v", err)
+	}
+	if res.ToAccount.Balance != currency.MaxSafeMinorUnits {
+		t.Errorf("to account balance = %d, want %d", res.ToAccount.Balance, currency.MaxSafeMinorUnits)
+	}
+}
+
+// TestTransferTxRejectsUnsafeDestinationBalance confirms that a transfer
+// exceeding MaxSafeMinorUnits is rejected and both balances remain unchanged.
+func TestTransferTxRejectsUnsafeDestinationBalance(t *testing.T) {
+	u1 := createTestUser(t)
+	u2 := createTestUser(t)
+	acc1 := createTestAccount(t, u1.Username)
+	acc2 := createTestAccountWithBalance(t, u2.Username, currency.MaxSafeMinorUnits-5)
+	ctx := t.Context()
+
+	var baselineTransferCount int
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) FROM transfers WHERE from_account_id = $1 AND to_account_id = $2`,
+		acc1.ID, acc2.ID).Scan(&baselineTransferCount); err != nil {
+		t.Fatal(err)
+	}
+
+	var baselineEntryCount int
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) FROM entries WHERE account_id IN ($1, $2)`,
+		acc1.ID, acc2.ID).Scan(&baselineEntryCount); err != nil {
+		t.Fatal(err)
+	}
+
+	idempKey := uuid.New()
+	_, err := testStore.TransferTx(ctx, TransferTxParams{
+		FromAccountID:  acc1.ID,
+		ToAccountID:    acc2.ID,
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: idempKey,
+	})
+	if !errors.Is(err, ErrBalanceLimitExceeded) {
+		t.Fatalf("want ErrBalanceLimitExceeded, got %v", err)
+	}
+
+	// Both balances must remain unchanged.
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated2, err := testStore.GetAccount(t.Context(), acc2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated1.Balance != 1000 {
+		t.Errorf("acc1 balance changed after rejected transfer: %d, want 1000", updated1.Balance)
+	}
+	if updated2.Balance != currency.MaxSafeMinorUnits-5 {
+		t.Errorf("acc2 balance changed after rejected transfer: %d, want %d", updated2.Balance, currency.MaxSafeMinorUnits-5)
+	}
+
+	// No transfer row should have been created for the attempted idempotency key.
+	_, err = testStore.GetTransferBySourceAndIdempotencyKey(ctx, sqlcdb.GetTransferBySourceAndIdempotencyKeyParams{
+		FromAccountID:  acc1.ID,
+		IdempotencyKey: idempKey,
+	})
+	if !errors.Is(ClassifyError(err), ErrRecordNotFound) {
+		t.Errorf("transfer row should not exist for rejected transfer, got err: %v", err)
+	}
+
+	var transferCount int
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) FROM transfers WHERE from_account_id = $1 AND to_account_id = $2`,
+		acc1.ID, acc2.ID).Scan(&transferCount); err != nil {
+		t.Fatal(err)
+	}
+	if transferCount != baselineTransferCount {
+		t.Errorf("persisted transfer rows = %d, want %d", transferCount, baselineTransferCount)
+	}
+
+	var entryCount int
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) FROM entries WHERE account_id IN ($1, $2)`,
+		acc1.ID, acc2.ID).Scan(&entryCount); err != nil {
+		t.Fatal(err)
+	}
+	if entryCount != baselineEntryCount {
+		t.Errorf("persisted entry rows = %d, want %d", entryCount, baselineEntryCount)
 	}
 }

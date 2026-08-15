@@ -183,3 +183,28 @@ func TestCreateAccountMissingCurrencyLimitPermitsZeroRejectsPositive(t *testing.
 		t.Errorf("positive balance for missing currency: want 422, got %d (%s)", recPos.Code, recPos.Body.String())
 	}
 }
+
+func TestCreateAccountUnsafeOpeningBalance(t *testing.T) {
+	t.Parallel()
+
+	fake := fakeStore{createAccountTx: func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+		t.Fatal("store must not be reached for an unsafe opening balance")
+		return sqlcdb.Account{}, nil
+	}}
+	s := newTestServerWithStore(t, fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts",
+		strings.NewReader(`{"currency":"USD","balance":9007199254740992}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", bearer(t, "alice"))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for unsafe opening balance, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	want := `{"error":"opening balance exceeds the supported limit"}` + "\n"
+	if got := rec.Body.String(); got != want {
+		t.Errorf("want exact JSON %q, got %q", want, got)
+	}
+}

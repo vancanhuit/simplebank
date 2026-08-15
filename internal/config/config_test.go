@@ -28,6 +28,17 @@ func TestParseTransferLimits(t *testing.T) {
 	if _, err := parseTransferLimits("not json"); err == nil {
 		t.Error("malformed JSON should error")
 	}
+
+	if _, err := parseTransferLimits(
+		`{"USD":{"max_per_transfer":9007199254740992}}`,
+	); err == nil {
+		t.Error("unsafe max_per_transfer should error")
+	}
+	if _, err := parseTransferLimits(
+		`{"USD":{"daily":9007199254740992}}`,
+	); err == nil {
+		t.Error("unsafe daily limit should error")
+	}
 }
 
 func TestValidateRejectsBadTransferLimits(t *testing.T) {
@@ -184,6 +195,12 @@ func TestParseAccountOpeningLimits(t *testing.T) {
 
 	if _, err := parseAccountOpeningLimits(`{"USD":-100}`); err == nil {
 		t.Error("negative cap should error")
+	}
+
+	if _, err := parseAccountOpeningLimits(
+		`{"USD":9007199254740992}`,
+	); err == nil {
+		t.Error("unsafe opening cap should error")
 	}
 }
 

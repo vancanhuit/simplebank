@@ -8,18 +8,19 @@ import (
 )
 
 var (
-	ErrRecordNotFound      = errors.New("record not found")
-	ErrUsernameExists      = errors.New("username already exists")
-	ErrEmailExists         = errors.New("email already exists")
-	ErrUniqueViolation     = errors.New("unique constraint violation")
-	ErrForeignKeyViolation = errors.New("foreign key violation")
-	ErrInsufficientBalance = errors.New("insufficient balance")
-	ErrCurrencyMismatch    = errors.New("currency mismatch")
-	ErrNumericOutOfRange   = errors.New("numeric value out of range")
-	ErrDailyLimitExceeded  = errors.New("daily transfer limit exceeded")
-	ErrIdempotencyConflict = errors.New("idempotency key reused with different transfer parameters")
-	ErrInvalidSession      = errors.New("invalid session")
-	ErrSessionIDMismatch   = errors.New("session replacement id mismatch")
+	ErrRecordNotFound       = errors.New("record not found")
+	ErrUsernameExists       = errors.New("username already exists")
+	ErrEmailExists          = errors.New("email already exists")
+	ErrUniqueViolation      = errors.New("unique constraint violation")
+	ErrForeignKeyViolation  = errors.New("foreign key violation")
+	ErrInsufficientBalance  = errors.New("insufficient balance")
+	ErrBalanceLimitExceeded = errors.New("destination balance exceeds supported limit")
+	ErrCurrencyMismatch     = errors.New("currency mismatch")
+	ErrNumericOutOfRange    = errors.New("numeric value out of range")
+	ErrDailyLimitExceeded   = errors.New("daily transfer limit exceeded")
+	ErrIdempotencyConflict  = errors.New("idempotency key reused with different transfer parameters")
+	ErrInvalidSession       = errors.New("invalid session")
+	ErrSessionIDMismatch    = errors.New("session replacement id mismatch")
 )
 
 func ClassifyError(err error) error {
@@ -42,6 +43,10 @@ func ClassifyError(err error) error {
 			}
 		case "23503":
 			return ErrForeignKeyViolation
+		case "23514":
+			if pgErr.ConstraintName == "accounts_balance_javascript_safe" {
+				return ErrBalanceLimitExceeded
+			}
 		case "22003":
 			return ErrNumericOutOfRange
 		}
