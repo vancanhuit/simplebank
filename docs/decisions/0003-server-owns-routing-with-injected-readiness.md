@@ -3,8 +3,9 @@
 ## Status
 Accepted
 
-**Partially superseded by:** ADR-0006 for the separate `serve` and `worker`
-entrypoints. The routing and readiness decisions remain current.
+**Partially superseded by:** [ADR-0006](0006-run-worker-with-http-server.md)
+removed the standalone `worker` entrypoint and made `serve` run HTTP and River
+together. The routing, readiness, and shared `buildApp` decisions remain current.
 
 ## Date
 2026-07-15
@@ -58,6 +59,6 @@ Server, `/readyz` outside it. It also duplicated dependency wiring across the
   the framework (they get an `http.Handler`).
 - Readiness is unit-testable by supplying a fake probe — see
   `TestReadyzReady` / `TestReadyzUnavailable` — instead of needing a live pool.
-- `buildApp` gives the two entrypoints one ordered assembly path; adding a new
-  entrypoint reuses it instead of duplicating the wiring and its ordering
-  invariants (migrate before serve).
+- `buildApp` gives `serve` one ordered assembly path; adding a new entrypoint can
+  reuse it instead of duplicating the wiring and its ordering invariant
+  (migrate before serve).

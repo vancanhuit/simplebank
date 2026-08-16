@@ -97,6 +97,8 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 | `DB_SOURCE` | `--db-source` | — | PostgreSQL DSN (required) |
 | `DB_MAX_CONNS` | `--db-max-conns` | — | Max pool connections (0 = pgxpool/DSN default) |
 | `DB_MIN_CONNS` | `--db-min-conns` | — | Min idle pool connections (0 = pgxpool/DSN default) |
+| `DB_MAX_CONN_LIFETIME` | `--db-max-conn-lifetime` | — | Max connection lifetime (0 = pgxpool/DSN default) |
+| `DB_MAX_CONN_IDLE_TIME` | `--db-max-conn-idle-time` | — | Max connection idle time (0 = pgxpool/DSN default) |
 | `JWT_SECRET` | `--jwt-secret` | — | HS256 signing key, ≥32 chars (required) |
 | `ACCESS_TTL` | `--access-ttl` | `15m` | Access-token lifetime |
 | `REFRESH_TTL` | `--refresh-ttl` | `24h` | Refresh-token lifetime |
@@ -137,7 +139,7 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 | `GET` | `/api/v1/accounts/:id` | Bearer | Get an owned account |
 | `GET` | `/api/v1/accounts` | Bearer | List owned accounts (paginated) |
 | `GET` | `/api/v1/accounts/:id/transfers` | Bearer | List an owned account's transfer history (paginated) |
-| `POST` | `/api/v1/transfers` | Bearer | Transfer between accounts you own (requires an `idempotency_key`) |
+| `POST` | `/api/v1/transfers` | Bearer | Transfer from an account you own to another same-currency account (requires an `idempotency_key`) |
 
 Protected routes accept only `Authorization: Bearer <access-token>` credentials. Refresh tokens are never returned in JSON responses; the server stores them in the `simplebank_refresh` HttpOnly same-site cookie on `/api/v1`, and only the renew/logout endpoints consume that cookie.
 
@@ -204,15 +206,16 @@ Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/RE
 - [ADR-0002](docs/decisions/0002-hash-refresh-tokens-at-rest.md) — hashing refresh tokens at rest.
 - [ADR-0003](docs/decisions/0003-server-owns-routing-with-injected-readiness.md) — the Server owns routing with an injected readiness probe.
 - [ADR-0004](docs/decisions/0004-split-util-into-domain-packages.md) — splitting `util` into domain packages, separating crypto from non-crypto randomness.
-- [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with in-transaction re-validation and per-currency limits.
+- [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with in-transaction re-validation and daily limits, plus API-edge per-transfer caps.
 - [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md) — running the River worker in the HTTP server process with ordered startup and shutdown.
 
 Money transfers run in a single database transaction that locks both accounts in
 a deterministic order (avoiding deadlocks), re-validates currency against the
-locked rows (closing the TOCTOU gap), enforces per-currency and rolling daily
-limits, and moves balances under a guarded `UPDATE` that rejects overdrafts. A
-client-supplied idempotency key collapses retries onto a single transfer. See
-`TransferTx` in `internal/db/transfer_tx.go` and
+locked rows (closing the TOCTOU gap), enforces rolling daily limits, and moves
+balances under a guarded `UPDATE` that rejects overdrafts. The API enforces the
+configured per-transfer cap before opening the transaction. A client-supplied
+idempotency key collapses retries onto a single transfer. See `TransferTx` in
+`internal/db/transfer_tx.go` and
 [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md).
 
 The `serve` command starts River before accepting HTTP traffic and shuts HTTP

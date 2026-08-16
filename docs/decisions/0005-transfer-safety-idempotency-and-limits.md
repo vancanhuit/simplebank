@@ -1,4 +1,4 @@
-# ADR-0005: Make transfers idempotent and enforce limits inside the transaction
+# ADR-0005: Make transfers idempotent and enforce limits at safe boundaries
 
 ## Status
 Accepted
@@ -30,8 +30,9 @@ comparable, so one global ceiling is meaningless across currencies.
 ## Decision
 Every transfer carries a **client-generated idempotency key** (a required UUID
 in the request body), scoped to the **source account** via the composite unique
-constraint `(from_account_id, idempotency_key)`, and all safety checks run
-**inside the money-moving transaction** against locked rows.
+constraint `(from_account_id, idempotency_key)`. Checks that depend on database
+state run **inside the money-moving transaction** against locked rows; the
+request-only per-transfer cap runs at the API edge before the transaction.
 
 - **Idempotency.** The key is stored on the transfer row under the composite
   unique constraint `(from_account_id, idempotency_key)`. `TransferTx` takes a
