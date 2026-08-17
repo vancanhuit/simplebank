@@ -216,6 +216,35 @@ func TestCreateTransferToAccountNotFound(t *testing.T) {
 	}
 }
 
+func TestCreateTransferAuthorizesSourceBeforeDestinationLookup(t *testing.T) {
+	t.Parallel()
+	fromID := uuid.New()
+	toID := uuid.New()
+	destinationLookedUp := false
+	fake := fakeStore{
+		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
+			if id == fromID {
+				return sqlcdb.Account{ID: id, Owner: "bob", Currency: "USD"}, nil
+			}
+			destinationLookedUp = true
+			return sqlcdb.Account{ID: id, Owner: "carol", Currency: "USD"}, nil
+		},
+		transferTx: func(context.Context, store.TransferTxParams) (store.TransferTxResult, error) {
+			t.Fatal("TransferTx must not run for an unauthorized source account")
+			return store.TransferTxResult{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := postTransfer(t, s, fromID, toID, "USD", "alice")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for unauthorized source account, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if destinationLookedUp {
+		t.Fatal("destination account must not be disclosed through lookup before source authorization")
+	}
+}
+
 func getTransfers(t *testing.T, s *Server, account uuid.UUID, query, username string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+account.String()+"/transfers"+query, nil)

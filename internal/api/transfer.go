@@ -53,15 +53,15 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.validAccount(ctx, toID, req.Currency); err != nil {
-		return err
-	}
 
 	payload, err := authPayload(c)
 	if err != nil {
 		return err
 	}
 	if err := authorizeOwner(payload, fromAccount.Owner); err != nil {
+		return err
+	}
+	if _, err := s.validAccount(ctx, toID, req.Currency); err != nil {
 		return err
 	}
 

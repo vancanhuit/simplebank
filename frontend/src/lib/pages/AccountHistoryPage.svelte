@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { request, toMessage } from "../api/client";
   import type { Account, Transfer } from "../api/types";
   import { accounts } from "../stores/accounts.svelte";
@@ -17,25 +16,38 @@
   let transfers = $state<Transfer[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let loadGeneration = 0;
 
-  onMount(load);
+  $effect(() => {
+    void load(accountId, ++loadGeneration);
+  });
 
-  async function load(): Promise<void> {
+  async function load(id = accountId, generation = ++loadGeneration): Promise<void> {
     loading = true;
     error = null;
+    account = null;
+    transfers = [];
     try {
-      const id = accountId;
       // Reuse the cached account when available (arriving from the dashboard),
       // otherwise fetch it so deep links and refreshes still resolve.
-      account =
+      const nextAccount =
         accounts.get(id) ?? (await request<Account>(`/accounts/${id}`, { authenticated: true }));
-      transfers = await request<Transfer[]>(`/accounts/${id}/transfers?page=1&size=50`, {
+      const nextTransfers = await request<Transfer[]>(`/accounts/${id}/transfers?page=1&size=50`, {
         authenticated: true,
       });
+      if (loadGeneration !== generation) {
+        return;
+      }
+      account = nextAccount;
+      transfers = nextTransfers;
     } catch (err) {
-      error = toMessage(err);
+      if (loadGeneration === generation) {
+        error = toMessage(err);
+      }
     } finally {
-      loading = false;
+      if (loadGeneration === generation) {
+        loading = false;
+      }
     }
   }
 
@@ -88,7 +100,7 @@
         <button
           type="button"
           class="ml-2 inline-flex min-h-11 items-center underline"
-          onclick={load}>Retry</button
+          onclick={() => void load()}>Retry</button
         >
       </Alert>
     </div>

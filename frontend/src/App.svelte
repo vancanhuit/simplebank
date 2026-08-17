@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { auth } from "./lib/stores/auth.svelte";
+  import { accounts } from "./lib/stores/accounts.svelte";
   import { navigate, router } from "./lib/router.svelte";
   import AppHeader from "./lib/components/AppHeader.svelte";
   import AppFooter from "./lib/components/AppFooter.svelte";
@@ -14,6 +15,12 @@
   import AccountHistoryPage from "./lib/pages/AccountHistoryPage.svelte";
 
   onMount(() => auth.init());
+
+  $effect(() => {
+    if (!auth.initializing && !auth.isAuthenticated) {
+      accounts.reset();
+    }
+  });
 
   // Resolve the view from the path and auth state. Folding the auth guard into
   // resolution means protected pages never render for a signed-out visitor,

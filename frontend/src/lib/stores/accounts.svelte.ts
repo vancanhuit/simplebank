@@ -12,34 +12,47 @@ class AccountsStore {
   loading = $state(false);
   error = $state<string | null>(null);
   loaded = $state(false);
+  #generation = 0;
 
   /** Account id to preselect on the transfer form (set from an account card). */
   transferFromId = $state<string | null>(null);
 
   async load(): Promise<void> {
+    const generation = this.#generation;
     this.loading = true;
     this.error = null;
     try {
       // size=100 is the API's per-page maximum; it comfortably covers a
       // personal set of accounts without pagination UI.
-      this.items = await request<Account[]>("/accounts?page=1&size=100", {
+      const items = await request<Account[]>("/accounts?page=1&size=100", {
         authenticated: true,
       });
+      if (this.#generation !== generation) {
+        return;
+      }
+      this.items = items;
       this.loaded = true;
     } catch (err) {
-      this.error = toMessage(err);
+      if (this.#generation === generation) {
+        this.error = toMessage(err);
+      }
     } finally {
-      this.loading = false;
+      if (this.#generation === generation) {
+        this.loading = false;
+      }
     }
   }
 
   async create(currency: Currency, balance = 0): Promise<Account> {
+    const generation = this.#generation;
     const account = await request<Account>("/accounts", {
       method: "POST",
       authenticated: true,
       body: { currency, balance },
     });
-    this.items = [...this.items, account];
+    if (this.#generation === generation) {
+      this.items = [...this.items, account];
+    }
     return account;
   }
 
@@ -48,7 +61,9 @@ class AccountsStore {
   }
 
   reset(): void {
+    this.#generation += 1;
     this.items = [];
+    this.loading = false;
     this.loaded = false;
     this.error = null;
     this.transferFromId = null;
