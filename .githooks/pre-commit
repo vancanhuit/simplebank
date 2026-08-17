@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+mapfile -d '' -t staged_files < <(
+  git diff --cached --name-only --diff-filter=ACMR -z
+)
+
+if ((${#staged_files[@]} == 0)); then
+  exit 0
+fi
+
+format_failed=false
+for file in "${staged_files[@]}"; do
+  if [[ $file != *.go ]]; then
+    continue
+  fi
+
+  staged_file=$(mktemp)
+  formatted_file=$(mktemp)
+  trap 'rm -f "$staged_file" "$formatted_file"' RETURN
+
+  git show ":$file" >"$staged_file"
+  golangci-lint fmt --stdin <"$staged_file" >"$formatted_file"
+  if ! cmp -s "$staged_file" "$formatted_file"; then
+    printf 'Staged Go file is not formatted: %s\n' "$file" >&2
+    diff -u --label "a/$file (staged)" --label "b/$file (formatted)" \
+      "$staged_file" "$formatted_file" >&2 || true
+    format_failed=true
+  fi
+
+  rm -f "$staged_file" "$formatted_file"
+  trap - RETURN
+done
+
+if [[ $format_failed == true ]]; then
+  printf 'Run mise run golangci-lint:fmt and stage the result.\n' >&2
+  exit 1
+fi
+
+sqlc_changed=false
+for file in "${staged_files[@]}"; do
+  case "$file" in
+    sqlc.yaml | internal/db/query/* | internal/db/migrations/* | internal/db/sqlc/*)
+      sqlc_changed=true
+      break
+      ;;
+  esac
+done
+
+if [[ $sqlc_changed == false ]]; then
+  exit 0
+fi
+
+if ! git diff --quiet -- sqlc.yaml internal/db/query internal/db/migrations; then
+  printf 'SQLC inputs have unstaged changes; stage or revert them before committing.\n' >&2
+  exit 1
+fi
+
+mise run sqlc:generate
+if ! git diff --quiet -- internal/db/sqlc; then
+  printf 'SQLC generated files are stale or unstaged. Stage the regenerated files.\n' >&2
+  exit 1
+fi

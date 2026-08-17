@@ -8,3 +8,6 @@ repository = "simplebank"
 
 [git_hooks.commit-msg]
 script = "cog verify --file $1"
+
+[git_hooks.pre-commit]
+path = ".githooks/pre-commit"

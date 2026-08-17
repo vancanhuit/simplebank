@@ -237,4 +237,6 @@ viewports with axe accessibility assertions. Run `mise run frontend:check`,
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/),
 enforced by cocogitto. Install the git hooks with `mise run hooks:install`.
+The pre-commit hook rejects unformatted staged Go files and stale or unstaged
+sqlc output when database sources change.
 Run `mise run golangci-lint` and `mise run test:unit` before opening a PR.

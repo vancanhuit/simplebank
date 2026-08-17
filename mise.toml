@@ -94,7 +94,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --lo
 
 [tasks."hooks:install"]
 description = "Install git hooks"
-run = 'cog install-hook --all'
+run = 'cog install-hook --all --overwrite'
 
 [tasks."sqlc:generate"]
 description = "Generate Go code from SQL with sqlc"

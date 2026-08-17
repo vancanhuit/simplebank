@@ -43,12 +43,14 @@
 !.golangci.yml
 !.editorconfig
 !sqlc.yaml
+!.githooks/pre-commit
 
 # CI
 !.github/workflows/*.yml
 !.github/*.yml
 !.github/actions/**/*.yml
 !.github/changelog.tera
+!.github/instructions/*
 
 # Agent skills
 !.agents/**
