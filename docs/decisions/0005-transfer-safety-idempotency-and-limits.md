@@ -7,18 +7,21 @@ Accepted
 2026-07-19
 
 ## Context
-A transfer moves money between two accounts. Three failure modes make the naive
+A transfer moves money between two accounts. Four failure modes make the naive
 "validate then move" path unsafe:
 
 - **Retries double-spend.** A client that resends a transfer after a lost
-  response — a dropped connection, a impatient user clicking twice, a proxy
+  response — a dropped connection, an impatient user clicking twice, a proxy
   retry — has no way to tell "the first one never landed" from "the first one
   landed but the reply was lost". Without a dedup key, the second request debits
   the account again.
-- **Checks race the move (TOCTOU).** Validating currency, ownership, and balance
-  against un-locked rows leaves a window where another transaction changes those
-  rows before the money moves. The values the API checked are not the values the
-  move runs against.
+- **Checks race the move (TOCTOU).** Validating currency and balance against
+  unlocked rows leaves a window where another transaction changes those rows
+  before the money moves. The values the API checked are not the values the move
+  runs against.
+- **Lookup order can disclose accounts.** Looking up the destination before
+  authorizing the source lets an unauthorized caller distinguish a missing
+  destination from an existing one it is not entitled to transfer from.
 - **Limits need a consistent view.** A per-transfer cap can be checked from the
   request alone, but a rolling daily cap depends on the account's recent history,
   which must be read against the same locked rows the move updates or two
@@ -37,14 +40,19 @@ request-only per-transfer cap runs at the API edge before the transaction.
 - **Idempotency.** The key is stored on the transfer row under the composite
   unique constraint `(from_account_id, idempotency_key)`. `TransferTx` takes a
   fast path: if a transfer already exists for the same source account and key,
-  it replays the original result without touching balances. A concurrent request
-  that wins the `CreateTransfer` race makes the loser hit the unique-constraint
-  violation, which is resolved by replaying the winner. If a caller reuses the
-  same source-scoped key with different immutable parameters (destination,
-  amount, or asserted currency), the replay path returns `409 Conflict` instead
-  of silently returning the wrong transfer. The key is the client's to own —
-  the SPA holds one key stable across retries and rotates it only after a
-  confirmed receipt (see the frontend transfer flow).
+  it returns the existing transfer without touching balances. The response is
+  reconstructed with the accounts' current balances, so replay guarantees the
+  same transfer identity and immutable parameters rather than a byte-identical
+  response. A concurrent request that wins the `CreateTransfer` race makes the
+  loser hit the unique-constraint violation, which is resolved by replaying the
+  winner. If a caller reuses the same source-scoped key with different immutable
+  parameters (destination, amount, or asserted currency), the replay path
+  returns `409 Conflict` instead of silently returning the wrong transfer. The
+  key is the client's to own — the SPA holds one key stable across retries and
+  rotates it only after a confirmed receipt (see the frontend transfer flow).
+- **Authorization before destination lookup.** The API validates and authorizes
+  the source account before loading the destination. Unauthorized callers get a
+  source authorization failure without learning whether the destination exists.
 - **In-transaction re-validation.** Both accounts are locked with
   `SELECT … FOR UPDATE` in a deterministic order (smaller UUID first) to avoid
   deadlocks between opposing transfers. Currency is re-checked against the locked
@@ -96,14 +104,17 @@ request-only per-transfer cap runs at the API edge before the transaction.
 - Rejected: a single guarded `UPDATE` makes the check and the write atomic.
 
 ## Consequences
-- A transfer is safe to retry: the same source-scoped key always yields the
-  same result, and balances move at most once per `(from_account_id,
-  idempotency_key)` pair.
+- A transfer is safe to retry: the same source-scoped key resolves to the same
+  transfer, and balances move at most once per `(from_account_id,
+  idempotency_key)` pair. Account snapshots in a replay response may reflect
+  later activity.
+- An unauthorized source-account request cannot probe destination-account
+  existence through transfer validation order.
 - Concurrent transfers between the same two accounts cannot deadlock (fixed lock
   order) and cannot overdraw or jointly bust a daily cap (locked-row checks).
 - Limits are configuration, not code: operators tune ceilings per currency via
   `TRANSFER_LIMITS` with no rebuild, and the SPA reads the live policy from
-  `/transfer-limits`. A currency with no entry is unlimited by design.
+  `/api/v1/transfer-limits`. A currency with no entry is unlimited by design.
 - The transfer request contract gains a required `idempotency_key`; clients that
   omit it are rejected at validation. This is a deliberate, breaking change to
   the endpoint in exchange for retry safety.

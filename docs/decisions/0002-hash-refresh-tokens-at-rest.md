@@ -19,10 +19,15 @@ we only need to check that a presented token matches the stored one.
 
 ## Decision
 Store a SHA-256 hash (hex-encoded) of the refresh token in
-`sessions.refresh_token`, not the raw token. The raw token is returned to the
-client once at login; the server keeps only the hash. On renew, hash the
-presented token and compare it against the stored hash using
-`subtle.ConstantTimeCompare`. See `hashRefreshToken` in `internal/api/user.go`.
+`sessions.refresh_token`, not the raw token. The raw token is delivered only in
+the `simplebank_refresh` HttpOnly, `SameSite=Strict` cookie scoped to `/api/v1`;
+it is never returned in a JSON response. The server keeps only the hash.
+
+On renew, the API hashes the presented cookie value and passes that hash to
+`RotateSessionTx`. The transaction locks the session row, compares the hashes
+with `subtle.ConstantTimeCompare`, and atomically replaces the stored hash and
+expiry. See `hashRefreshToken` in `internal/api/user.go` and `RotateSessionTx`
+in `internal/db/session_tx.go`.
 
 ## Alternatives Considered
 
@@ -46,9 +51,11 @@ presented token and compare it against the stored hash using
 
 ## Consequences
 - A read-only leak of `sessions` no longer yields usable refresh tokens.
+- Frontend JavaScript cannot read the refresh credential; only the renew and
+  logout endpoints receive its path-scoped cookie.
 - The column type is unchanged (still stores a string); no migration needed.
 - Sessions created before this change hold raw tokens and will no longer match
   the hash of a presented token, so those sessions are effectively invalidated.
   Affected users simply log in again. This one-time cost was accepted.
-- Renew comparison is constant-time to avoid leaking match information via
-  timing, consistent with the login enumeration mitigation.
+- Rotation serializes concurrent reuse on the locked session row and compares
+  the token hash in constant time before issuing replacement credentials.

@@ -141,7 +141,11 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 | `GET` | `/api/v1/accounts/:id/transfers` | Bearer | List an owned account's transfer history (paginated) |
 | `POST` | `/api/v1/transfers` | Bearer | Transfer from an account you own to another same-currency account (requires an `idempotency_key`) |
 
-Protected routes accept only `Authorization: Bearer <access-token>` credentials. Refresh tokens are never returned in JSON responses; the server stores them in the `simplebank_refresh` HttpOnly same-site cookie on `/api/v1`, and only the renew/logout endpoints consume that cookie.
+Protected routes accept only `Authorization: Bearer <access-token>` credentials.
+Refresh tokens are never returned in JSON responses; the browser receives them
+in the `simplebank_refresh` HttpOnly, `SameSite=Strict` cookie scoped to
+`/api/v1`, with `Secure` enabled by default. Only the renew/logout endpoints
+consume that cookie.
 
 ### Transfer limits
 
@@ -159,6 +163,11 @@ Each transfer request carries a client-generated `idempotency_key` (a UUID) so a
 retry after a lost response replays the original transfer instead of moving
 money twice. See [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md)
 for the full rationale.
+
+The API authorizes the source account before looking up the destination, so an
+unauthorized caller cannot use transfer validation to probe whether another
+account exists. A replay returns the same transfer but reconstructs account
+snapshots from current balances, which may include later activity.
 
 ### Account opening limits
 
@@ -206,7 +215,7 @@ Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/RE
 - [ADR-0002](docs/decisions/0002-hash-refresh-tokens-at-rest.md) — hashing refresh tokens at rest.
 - [ADR-0003](docs/decisions/0003-server-owns-routing-with-injected-readiness.md) — the Server owns routing with an injected readiness probe.
 - [ADR-0004](docs/decisions/0004-split-util-into-domain-packages.md) — splitting `util` into domain packages, separating crypto from non-crypto randomness.
-- [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with in-transaction re-validation and daily limits, plus API-edge per-transfer caps.
+- [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with source-first authorization, in-transaction re-validation and daily limits, plus API-edge per-transfer caps.
 - [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md) — running the River worker in the HTTP server process with ordered startup and shutdown.
 
 Money transfers run in a single database transaction that locks both accounts in
@@ -222,6 +231,10 @@ The `serve` command starts River before accepting HTTP traffic and shuts HTTP
 down before giving in-progress jobs a bounded grace period. Each API replica
 runs its own River client, so `RIVER_MAX_WORKERS` is a per-replica concurrency
 limit. See [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md).
+
+The SPA treats account data as session-scoped. Losing authentication clears the
+account store, and generation checks discard load or create responses that were
+started before the reset so stale data cannot cross sessions.
 
 ## Testing
 
