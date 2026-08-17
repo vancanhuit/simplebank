@@ -59,8 +59,9 @@
 !frontend/e2e/**
 !frontend/src/**
 !frontend/public/**
-
+!.serena/*
+!.serena/.gitignore
+!.serena/project.yml
+!.serena/memories/**/*
 .vscode/
-
 .codegraph/
-.serena/
