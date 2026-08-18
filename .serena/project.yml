@@ -38,6 +38,8 @@ project_name: "simplebank"
 language_servers:
 - go
 - svelte
+- html
+- scss
 - yaml
 - toml
 
