@@ -39,6 +39,16 @@ func TestParseTransferLimits(t *testing.T) {
 	); err == nil {
 		t.Error("unsafe daily limit should error")
 	}
+	if _, err := parseTransferLimits(
+		`{"USD":{"max_per_transfer":-1}}`,
+	); err == nil {
+		t.Error("negative max_per_transfer should error")
+	}
+	if _, err := parseTransferLimits(
+		`{"USD":{"daily":-1}}`,
+	); err == nil {
+		t.Error("negative daily limit should error")
+	}
 }
 
 func TestValidateRejectsBadTransferLimits(t *testing.T) {

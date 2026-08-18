@@ -38,6 +38,11 @@ describe("TransferPage", () => {
   });
 
   it("consolidates success message and details into one role=status receipt", async () => {
+    const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce(idempotencyKey)
+      .mockReturnValue("22222222-2222-4222-8222-222222222222");
+
     // Mock transfer limits
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
@@ -107,9 +112,58 @@ describe("TransferPage", () => {
       expect(definitionList).toBeInTheDocument();
     });
 
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/transfers");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      from_account_id: "acct-1",
+      to_account_id: "acct-2",
+      amount: 5000,
+      currency: "USD",
+      idempotency_key: idempotencyKey,
+    });
+
     // Verify no separate success Alert exists
     const alerts = screen.queryAllByRole("alert");
     expect(alerts).toHaveLength(0);
+  });
+
+  it("reuses the idempotency key when a failed transfer is retried", async () => {
+    const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce(idempotencyKey)
+      .mockReturnValue("22222222-2222-4222-8222-222222222222");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(503, { error: "temporary failure" }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          transfer: { id: "tx-retry", amount: 5000 },
+          from_account: { currency: "USD", balance: 95000 },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, accounts.items));
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+      target: { value: "acct-2" },
+    });
+    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+      target: { value: "50.00" },
+    });
+    const submitButton = screen.getByRole("button", { name: /send transfer/i });
+    await fireEvent.click(submitButton);
+    await screen.findByText("temporary failure");
+
+    await fireEvent.click(submitButton);
+    expect(await screen.findByRole("status")).toHaveTextContent("Sent $50.00 successfully");
+
+    const firstBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    const retryBody = JSON.parse(fetchMock.mock.calls[2][1].body);
+    expect(firstBody.idempotency_key).toBe(idempotencyKey);
+    expect(retryBody).toEqual(firstBody);
   });
 
   it("clears recipient validation when the user edits the field", async () => {

@@ -48,13 +48,23 @@ describe("request", () => {
       .mockResolvedValueOnce(jsonResponse(401, { error: "token has expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+    auth.accessToken = "expired-token";
+    const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(async () => {
+      auth.accessToken = "refreshed-token";
+      return true;
+    });
 
     const data = await request<{ ok: boolean }>("/accounts", { authenticated: true });
 
     expect(data).toEqual({ ok: true });
     expect(refresh).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      headers: { Authorization: "Bearer expired-token" },
+    });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      headers: { Authorization: "Bearer refreshed-token" },
+    });
   });
 
   it("does not retry when the refresh fails", async () => {

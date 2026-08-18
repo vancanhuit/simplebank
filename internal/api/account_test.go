@@ -17,14 +17,17 @@ import (
 
 func TestCreateAccountOK(t *testing.T) {
 	t.Parallel()
+	var gotArg sqlcdb.CreateAccountParams
 	fake := fakeStore{
 		createAccountTx: func(_ context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error) {
+			gotArg = arg
 			return sqlcdb.Account{ID: uuid.New(), Owner: arg.Owner, Currency: arg.Currency}, nil
 		},
 	}
 	s := newTestServerWithStore(t, fake)
+	s.config.AccountOpeningLimits = map[string]int64{"USD": 1000}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(`{"currency":"USD"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(`{"currency":"USD","balance":500}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, "alice"))
 	rec := httptest.NewRecorder()
@@ -32,6 +35,9 @@ func TestCreateAccountOK(t *testing.T) {
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("want 201, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if gotArg.Owner != "alice" || gotArg.Currency != "USD" || gotArg.Balance != 500 {
+		t.Fatalf("CreateAccountTx params = %+v, want owner alice, currency USD, balance 500", gotArg)
 	}
 }
 

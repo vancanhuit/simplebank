@@ -55,6 +55,9 @@ func TestCreateTransferOK(t *testing.T) {
 		},
 	}
 	s := newTestServerWithStore(t, fake)
+	s.config.TransferLimits = map[string]config.CurrencyLimit{
+		"USD": {Daily: 500},
+	}
 
 	key := uuid.NewString()
 	rec := postTransferWithKey(t, s, fromID, toID, "USD", "alice", key)
@@ -64,8 +67,11 @@ func TestCreateTransferOK(t *testing.T) {
 	if !transferred {
 		t.Fatal("TransferTx should run for an authorized, valid transfer")
 	}
-	if gotArg.Currency != "USD" {
-		t.Errorf("currency not forwarded to store: got %q", gotArg.Currency)
+	if gotArg.FromAccountID != fromID || gotArg.ToAccountID != toID || gotArg.Amount != 10 {
+		t.Errorf("transfer details not forwarded to store: got %+v", gotArg)
+	}
+	if gotArg.Currency != "USD" || gotArg.DailyLimit != 500 {
+		t.Errorf("transfer policy not forwarded to store: got %+v", gotArg)
 	}
 	if gotArg.IdempotencyKey.String() != key {
 		t.Errorf("idempotency key not forwarded: got %q, want %q", gotArg.IdempotencyKey, key)

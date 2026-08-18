@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -42,12 +43,14 @@ func (m *mockMailer) Send(_ context.Context, to, subject, htmlBody string) error
 }
 
 func TestSendVerifyEmailWorker(t *testing.T) {
+	var verification sqlcdb.VerifyEmail
 	st := fakeStore{
 		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
 			return sqlcdb.User{Username: username, Email: "alice@example.com", FullName: "<b>Bob</b>"}, nil
 		},
 		createVerifyEmail: func(_ context.Context, arg sqlcdb.CreateVerifyEmailParams) (sqlcdb.VerifyEmail, error) {
-			return sqlcdb.VerifyEmail{ID: uuid.New(), SecretCode: arg.SecretCode}, nil
+			verification = sqlcdb.VerifyEmail{ID: uuid.New(), SecretCode: arg.SecretCode}
+			return verification, nil
 		},
 	}
 	mailer := &mockMailer{}
@@ -71,8 +74,24 @@ func TestSendVerifyEmailWorker(t *testing.T) {
 	if strings.Contains(mailer.msg, "<b>Bob</b>") {
 		t.Errorf("raw HTML from full name leaked into body: %q", mailer.msg)
 	}
-	if !strings.Contains(mailer.msg, "/verify-email?id=") {
-		t.Errorf("verification link missing from body: %q", mailer.msg)
+	_, hrefAndRest, ok := strings.Cut(mailer.msg, `href="`)
+	if !ok {
+		t.Fatalf("verification link missing from body: %q", mailer.msg)
+	}
+	href, _, ok := strings.Cut(hrefAndRest, `"`)
+	if !ok {
+		t.Fatalf("verification link is not terminated: %q", mailer.msg)
+	}
+	verificationURL, err := url.Parse(href)
+	if err != nil {
+		t.Fatalf("parse verification link: %v", err)
+	}
+	if verificationURL.Scheme != "https" || verificationURL.Host != "bank.example.com" || verificationURL.Path != "/verify-email" {
+		t.Errorf("verification link target = %q, want https://bank.example.com/verify-email", verificationURL)
+	}
+	query := verificationURL.Query()
+	if query.Get("id") != verification.ID.String() || query.Get("code") != verification.SecretCode {
+		t.Errorf("verification link credentials = %v, want id=%s and code=%s", query, verification.ID, verification.SecretCode)
 	}
 }
 

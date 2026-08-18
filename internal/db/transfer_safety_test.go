@@ -3,8 +3,10 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -72,24 +74,67 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 
 	key := uuid.New()
 	amount := int64(100)
-	n := 8
-	errs := make(chan error, n)
+	n := min(8, int(testPool.Config().MaxConns)-2)
+	if n < 2 {
+		t.Fatalf("database pool needs at least 4 connections, got %d", testPool.Config().MaxConns)
+	}
+	type outcome struct {
+		result TransferTxResult
+		err    error
+	}
+	outcomes := make(chan outcome, n)
+	start := make(chan struct{})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	blockerPID, releaseAccountLock := holdAccountLock(t, firstLockedAccountID(acc1.ID, acc2.ID))
 	for range n {
 		go func() {
-			_, err := testStore.TransferTx(t.Context(), TransferTxParams{
+			<-start
+			result, err := testStore.TransferTx(ctx, TransferTxParams{
 				FromAccountID:  acc1.ID,
 				ToAccountID:    acc2.ID,
 				Amount:         amount,
 				Currency:       currency.USD,
 				IdempotencyKey: key,
 			})
-			errs <- err
+			outcomes <- outcome{result: result, err: err}
 		}()
 	}
+	close(start)
+	waitForBlockedWorkers(t, blockerPID, n)
+	releaseAccountLock()
+
+	var transferID uuid.UUID
 	for range n {
-		if err := <-errs; err != nil {
-			t.Fatalf("concurrent replay failed: %v", err)
+		outcome := <-outcomes
+		if outcome.err != nil {
+			t.Fatalf("concurrent replay failed: %v", outcome.err)
 		}
+		if outcome.result.Transfer.ID == uuid.Nil {
+			t.Fatal("concurrent replay returned an empty transfer")
+		}
+		if transferID == uuid.Nil {
+			transferID = outcome.result.Transfer.ID
+		} else if outcome.result.Transfer.ID != transferID {
+			t.Fatalf("concurrent replay returned transfer %s, want %s", outcome.result.Transfer.ID, transferID)
+		}
+	}
+
+	var transferCount, entryCount int
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM transfers WHERE from_account_id = $1 AND idempotency_key = $2`,
+		acc1.ID, key,
+	).Scan(&transferCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM entries WHERE account_id = $1 OR account_id = $2`,
+		acc1.ID, acc2.ID,
+	).Scan(&entryCount); err != nil {
+		t.Fatal(err)
+	}
+	if transferCount != 1 || entryCount != 2 {
+		t.Fatalf("persisted rows = %d transfers and %d entries, want 1 and 2", transferCount, entryCount)
 	}
 
 	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
@@ -98,6 +143,13 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 	}
 	if updated1.Balance != 1000-amount {
 		t.Errorf("balance moved more than once: %d, want %d", updated1.Balance, 1000-amount)
+	}
+	updated2, err := testStore.GetAccount(t.Context(), acc2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated2.Balance != 1000+amount {
+		t.Errorf("destination balance = %d, want %d", updated2.Balance, 1000+amount)
 	}
 }
 
@@ -132,34 +184,85 @@ func TestTransferTxCurrencyMismatch(t *testing.T) {
 // TestTransferTxDailyLimit rejects a transfer once the trailing-window total
 // would exceed the configured cap.
 func TestTransferTxDailyLimit(t *testing.T) {
+	if testPool.Config().MaxConns < 4 {
+		t.Fatalf("database pool needs at least 4 connections, got %d", testPool.Config().MaxConns)
+	}
 	u1 := createTestUser(t)
 	u2 := createTestUser(t)
 	acc1 := createTestAccount(t, u1.Username)
 	acc2 := createTestAccount(t, u2.Username)
 
-	// First transfer of 60 is under the 100 cap and succeeds.
-	if _, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID:  acc1.ID,
-		ToAccountID:    acc2.ID,
-		Amount:         60,
-		Currency:       currency.USD,
-		IdempotencyKey: uuid.New(),
-		DailyLimit:     100,
-	}); err != nil {
-		t.Fatalf("first transfer under the cap failed: %v", err)
+	type outcome struct {
+		result TransferTxResult
+		err    error
+	}
+	outcomes := make(chan outcome, 2)
+	start := make(chan struct{})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	blockerPID, releaseAccountLock := holdAccountLock(t, firstLockedAccountID(acc1.ID, acc2.ID))
+	for range 2 {
+		go func() {
+			<-start
+			result, err := testStore.TransferTx(ctx, TransferTxParams{
+				FromAccountID:  acc1.ID,
+				ToAccountID:    acc2.ID,
+				Amount:         60,
+				Currency:       currency.USD,
+				IdempotencyKey: uuid.New(),
+				DailyLimit:     100,
+			})
+			outcomes <- outcome{result: result, err: err}
+		}()
+	}
+	close(start)
+	waitForBlockedWorkers(t, blockerPID, 2)
+	releaseAccountLock()
+
+	var succeeded, rejected int
+	for range 2 {
+		outcome := <-outcomes
+		switch {
+		case outcome.err == nil:
+			succeeded++
+			if outcome.result.Transfer.ID == uuid.Nil {
+				t.Fatal("successful transfer returned an empty result")
+			}
+		case errors.Is(outcome.err, ErrDailyLimitExceeded):
+			rejected++
+		default:
+			t.Fatalf("unexpected concurrent transfer error: %v", outcome.err)
+		}
+	}
+	if succeeded != 1 || rejected != 1 {
+		t.Fatalf("concurrent outcomes = %d succeeded and %d rejected, want 1 and 1", succeeded, rejected)
 	}
 
-	// Second transfer of 60 would push the daily total to 120, over the cap.
-	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID:  acc1.ID,
-		ToAccountID:    acc2.ID,
-		Amount:         60,
-		Currency:       currency.USD,
-		IdempotencyKey: uuid.New(),
-		DailyLimit:     100,
-	})
-	if !errors.Is(err, ErrDailyLimitExceeded) {
-		t.Fatalf("want ErrDailyLimitExceeded, got %v", err)
+	var transferCount, entryCount int
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM transfers WHERE from_account_id = $1`, acc1.ID,
+	).Scan(&transferCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM entries WHERE account_id = $1 OR account_id = $2`, acc1.ID, acc2.ID,
+	).Scan(&entryCount); err != nil {
+		t.Fatal(err)
+	}
+	if transferCount != 1 || entryCount != 2 {
+		t.Fatalf("persisted rows = %d transfers and %d entries, want 1 and 2", transferCount, entryCount)
+	}
+
+	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated2, err := testStore.GetAccount(t.Context(), acc2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated1.Balance != 940 || updated2.Balance != 1060 {
+		t.Fatalf("balances = %d and %d, want 940 and 1060", updated1.Balance, updated2.Balance)
 	}
 }
 

@@ -156,17 +156,18 @@ func TestRotateSessionTx_BlockedSession(t *testing.T) {
 }
 
 func TestRotateSessionTx_ExpiredSession(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	testCases := []struct {
 		name      string
 		expiresAt time.Time
 	}{
 		{
 			name:      "already expired",
-			expiresAt: time.Now().Add(-time.Hour),
+			expiresAt: now.Add(-time.Hour),
 		},
 		{
 			name:      "expires exactly now (boundary)",
-			expiresAt: time.Now(),
+			expiresAt: now,
 		},
 	}
 
@@ -193,7 +194,7 @@ func TestRotateSessionTx_ExpiredSession(t *testing.T) {
 				ID:               oldID,
 				Username:         user.Username,
 				RefreshTokenHash: oldHash,
-				Now:              time.Now(),
+				Now:              now,
 				NewSession: func() (SessionReplacement, error) {
 					return SessionReplacement{
 						ID:               oldID,

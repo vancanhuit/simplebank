@@ -36,20 +36,27 @@ func postResendVerifyEmail(t *testing.T, s *Server, body string) *httptest.Respo
 func TestVerifyEmailOK(t *testing.T) {
 	t.Parallel()
 	var called bool
+	var gotArg store.VerifyEmailTxParams
 	fake := fakeStore{
-		verifyEmailTx: func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
+		verifyEmailTx: func(_ context.Context, arg store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error) {
 			called = true
+			gotArg = arg
 			return store.VerifyEmailTxResult{}, nil
 		},
 	}
 	s := newTestServerWithStore(t, fake)
 
-	rec := getVerifyEmail(t, s, uuid.NewString(), "a-secret-code")
+	id := uuid.New()
+	const code = "a-secret-code"
+	rec := getVerifyEmail(t, s, id.String(), code)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if !called {
 		t.Fatal("VerifyEmailTx should run")
+	}
+	if gotArg.ID != id || gotArg.SecretCode != code {
+		t.Fatalf("VerifyEmailTx params = %+v, want ID %s and code %q", gotArg, id, code)
 	}
 }
 

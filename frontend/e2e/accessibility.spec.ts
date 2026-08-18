@@ -91,6 +91,7 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
       await menu.click();
       await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Transfer", exact: true }).last()).toBeVisible();
+      await expectNoAccessibilityViolations(page);
       await page.getByRole("link", { name: "Overview", exact: true }).last().click();
       await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeHidden();
       await expect(page.getByRole("button", { name: "Open navigation" })).toBeFocused();

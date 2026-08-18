@@ -120,6 +120,12 @@ func parseTransferLimits(raw string) (map[string]CurrencyLimit, error) {
 		return nil, err
 	}
 	for code, limit := range limits {
+		if limit.MaxPerTransfer < 0 {
+			return nil, fmt.Errorf("max per-transfer limit for %s must not be negative", code)
+		}
+		if limit.Daily < 0 {
+			return nil, fmt.Errorf("daily limit for %s must not be negative", code)
+		}
 		if limit.MaxPerTransfer > currency.MaxSafeMinorUnits {
 			return nil, fmt.Errorf("max per-transfer limit for %s exceeds JavaScript safe integer", code)
 		}

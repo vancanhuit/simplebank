@@ -3,10 +3,14 @@
 package store
 
 import (
+	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
@@ -55,6 +59,83 @@ func createTestAccountWithBalance(t *testing.T, owner string, balance int64) sql
 		t.Fatal(err)
 	}
 	return account
+}
+
+func firstLockedAccountID(left, right uuid.UUID) uuid.UUID {
+	if left.String() < right.String() {
+		return left
+	}
+	return right
+}
+
+func holdAccountLock(t *testing.T, accountID uuid.UUID) (int32, func()) {
+	t.Helper()
+	conn, err := testPool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := conn.Begin(t.Context())
+	if err != nil {
+		conn.Release()
+		t.Fatal(err)
+	}
+
+	var backendPID int32
+	if err := tx.QueryRow(t.Context(), `SELECT pg_backend_pid()`).Scan(&backendPID); err != nil {
+		_ = tx.Rollback(t.Context())
+		conn.Release()
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(t.Context(), `SELECT id FROM accounts WHERE id = $1 FOR UPDATE`, accountID); err != nil {
+		_ = tx.Rollback(t.Context())
+		conn.Release()
+		t.Fatal(err)
+	}
+
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				t.Errorf("release account lock: %v", err)
+			}
+			conn.Release()
+		})
+	}
+	t.Cleanup(release)
+	return backendPID, release
+}
+
+func waitForBlockedWorkers(t *testing.T, blockerPID int32, want int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	for {
+		var blocked int
+		if err := testPool.QueryRow(ctx, `
+			WITH RECURSIVE blocked(pid) AS (
+				SELECT pid
+				FROM pg_stat_activity
+				WHERE $1 = ANY(pg_blocking_pids(pid))
+				UNION
+				SELECT activity.pid
+				FROM pg_stat_activity AS activity
+				JOIN blocked AS blocker ON blocker.pid = ANY(pg_blocking_pids(activity.pid))
+			)
+			SELECT count(*) FROM blocked
+		`, blockerPID).Scan(&blocked); err != nil {
+			t.Fatalf("observe blocked workers: %v", err)
+		}
+		if blocked >= want {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("got %d workers blocked behind account lock, want %d: %v", blocked, want, ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 }
 
 func TestTransferTxConcurrent(t *testing.T) {
@@ -147,9 +228,19 @@ func TestTransferTxDeadlockPrevention(t *testing.T) {
 	acc1 := createTestAccount(t, u1.Username)
 	acc2 := createTestAccount(t, u2.Username)
 
-	n := 10 // even: half each direction, net zero
+	n := min(10, int(testPool.Config().MaxConns)-2)
+	if n%2 != 0 {
+		n--
+	}
+	if n < 2 {
+		t.Fatalf("database pool needs at least 4 connections, got %d", testPool.Config().MaxConns)
+	}
 	amount := int64(10)
 	errs := make(chan error, n)
+	start := make(chan struct{})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	blockerPID, releaseAccountLock := holdAccountLock(t, firstLockedAccountID(acc1.ID, acc2.ID))
 
 	for i := range n {
 		from, to := acc1.ID, acc2.ID
@@ -157,7 +248,8 @@ func TestTransferTxDeadlockPrevention(t *testing.T) {
 			from, to = acc2.ID, acc1.ID
 		}
 		go func() {
-			_, err := testStore.TransferTx(t.Context(), TransferTxParams{
+			<-start
+			_, err := testStore.TransferTx(ctx, TransferTxParams{
 				FromAccountID:  from,
 				ToAccountID:    to,
 				Amount:         amount,
@@ -167,6 +259,9 @@ func TestTransferTxDeadlockPrevention(t *testing.T) {
 			errs <- err
 		}()
 	}
+	close(start)
+	waitForBlockedWorkers(t, blockerPID, n)
+	releaseAccountLock()
 	for range n {
 		if err := <-errs; err != nil {
 			t.Fatalf("transfer failed: %v", err)
