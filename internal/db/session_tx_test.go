@@ -459,3 +459,105 @@ func TestRotateSessionTx_LogoutInterleavingsStableID(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateAccessSession_Valid(t *testing.T) {
+	user := createTestUser(t)
+	sessionID := uuid.New()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := testStore.CreateSession(t.Context(), sqlcdb.CreateSessionParams{
+		ID:           sessionID,
+		Username:     user.Username,
+		RefreshToken: "refresh-hash",
+		UserAgent:    "test-agent",
+		ClientIp:     "127.0.0.1",
+		IsBlocked:    false,
+		ExpiresAt:    now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := testStore.ValidateAccessSession(t.Context(), sessionID, user.Username, now); err != nil {
+		t.Fatalf("ValidateAccessSession failed: %v", err)
+	}
+}
+
+func TestValidateAccessSession_Missing(t *testing.T) {
+	err := testStore.ValidateAccessSession(t.Context(), uuid.New(), "alice", time.Now())
+	if !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("want ErrInvalidSession, got %v", err)
+	}
+}
+
+func TestValidateAccessSession_Blocked(t *testing.T) {
+	user := createTestUser(t)
+	sessionID := uuid.New()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := testStore.CreateSession(t.Context(), sqlcdb.CreateSessionParams{
+		ID:           sessionID,
+		Username:     user.Username,
+		RefreshToken: "refresh-hash",
+		UserAgent:    "test-agent",
+		ClientIp:     "127.0.0.1",
+		IsBlocked:    true,
+		ExpiresAt:    now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = testStore.ValidateAccessSession(t.Context(), sessionID, user.Username, now)
+	if !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("want ErrInvalidSession, got %v", err)
+	}
+}
+
+func TestValidateAccessSession_Expired(t *testing.T) {
+	user := createTestUser(t)
+	sessionID := uuid.New()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := testStore.CreateSession(t.Context(), sqlcdb.CreateSessionParams{
+		ID:           sessionID,
+		Username:     user.Username,
+		RefreshToken: "refresh-hash",
+		UserAgent:    "test-agent",
+		ClientIp:     "127.0.0.1",
+		IsBlocked:    false,
+		ExpiresAt:    now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = testStore.ValidateAccessSession(t.Context(), sessionID, user.Username, now)
+	if !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("want ErrInvalidSession, got %v", err)
+	}
+}
+
+func TestValidateAccessSession_UsernameMismatch(t *testing.T) {
+	user := createTestUser(t)
+	sessionID := uuid.New()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := testStore.CreateSession(t.Context(), sqlcdb.CreateSessionParams{
+		ID:           sessionID,
+		Username:     user.Username,
+		RefreshToken: "refresh-hash",
+		UserAgent:    "test-agent",
+		ClientIp:     "127.0.0.1",
+		IsBlocked:    false,
+		ExpiresAt:    now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = testStore.ValidateAccessSession(t.Context(), sessionID, "bob", now)
+	if !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("want ErrInvalidSession, got %v", err)
+	}
+}

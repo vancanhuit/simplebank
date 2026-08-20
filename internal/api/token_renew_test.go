@@ -90,8 +90,13 @@ func TestRenewTokenOK(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body["access_token"] == "" {
+	accessToken, ok := body["access_token"].(string)
+	if !ok || accessToken == "" {
 		t.Fatalf("renew response missing access token: %+v", body)
+	}
+	accessPayload, err := s.tokenMaker.VerifyToken(accessToken, token.Access)
+	if err != nil {
+		t.Fatalf("verify renewed access token: %v", err)
 	}
 	if _, ok := body["user"]; !ok {
 		t.Fatalf("renew response missing user: %+v", body)
@@ -112,6 +117,12 @@ func TestRenewTokenOK(t *testing.T) {
 	}
 	if newRefreshPayload.ID != session.ID {
 		t.Fatalf("rotated refresh token ID = %s, want stable %s", newRefreshPayload.ID, session.ID)
+	}
+	if accessPayload.ID != session.ID {
+		t.Fatalf("renewed access token ID = %s, want stable %s", accessPayload.ID, session.ID)
+	}
+	if accessPayload.ID != newRefreshPayload.ID {
+		t.Fatalf("renewed access token ID = %s, want refresh ID %s", accessPayload.ID, newRefreshPayload.ID)
 	}
 }
 

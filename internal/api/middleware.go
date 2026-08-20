@@ -1,12 +1,15 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
 	echojwt "github.com/labstack/echo-jwt/v5"
 	"github.com/labstack/echo/v5"
 
+	store "github.com/vancanhuit/simplebank/internal/db"
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
@@ -21,6 +24,22 @@ func (s *Server) authMiddleware() echo.MiddlewareFunc {
 		ContextKey: authContextKey,
 		NewClaimsFunc: func(c *echo.Context) jwt.Claims {
 			return token.NewExpectedPayload(token.Access)
+		},
+		SuccessHandler: func(c *echo.Context) error {
+			payload, err := authPayload(c)
+			if err != nil {
+				return err
+			}
+			err = s.store.ValidateAccessSession(
+				c.Request().Context(),
+				payload.ID,
+				payload.Username,
+				time.Now(),
+			)
+			if errors.Is(err, store.ErrInvalidSession) {
+				return echo.ErrUnauthorized
+			}
+			return err
 		},
 	})
 }

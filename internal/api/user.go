@@ -242,23 +242,40 @@ type tokenPair struct {
 // issueTokenPair mints an access and a refresh token for the given identity,
 // each with its configured TTL.
 func (s *Server) issueTokenPair(username, role string) (tokenPair, error) {
-	return s.issueTokenPairWithRefreshID(uuid.Nil, username, role)
+	return s.issueTokenPairWithSessionID(uuid.Nil, username, role)
 }
 
-func (s *Server) issueTokenPairWithRefreshID(refreshID uuid.UUID, username, role string) (tokenPair, error) {
-	access, accessPayload, err := s.tokenMaker.CreateToken(username, role, token.Access, s.config.AccessTTL)
+func (s *Server) issueTokenPairWithSessionID(sessionID uuid.UUID, username, role string) (tokenPair, error) {
+	if sessionID == uuid.Nil {
+		var err error
+		sessionID, err = uuid.NewV7()
+		if err != nil {
+			return tokenPair{}, err
+		}
+	}
+
+	access, accessPayload, err := s.tokenMaker.CreateTokenWithID(
+		sessionID,
+		username,
+		role,
+		token.Access,
+		s.config.AccessTTL,
+	)
 	if err != nil {
 		return tokenPair{}, err
 	}
-	var refresh string
-	var refreshPayload *token.Payload
-	if refreshID == uuid.Nil {
-		refresh, refreshPayload, err = s.tokenMaker.CreateToken(username, role, token.Refresh, s.config.RefreshTTL)
-	} else {
-		refresh, refreshPayload, err = s.tokenMaker.CreateTokenWithID(refreshID, username, role, token.Refresh, s.config.RefreshTTL)
-	}
+	refresh, refreshPayload, err := s.tokenMaker.CreateTokenWithID(
+		sessionID,
+		username,
+		role,
+		token.Refresh,
+		s.config.RefreshTTL,
+	)
 	if err != nil {
 		return tokenPair{}, err
+	}
+	if accessPayload.ID != refreshPayload.ID {
+		return tokenPair{}, errors.New("access and refresh token IDs must match")
 	}
 	return tokenPair{
 		access:         access,
@@ -297,7 +314,7 @@ func (s *Server) renewToken(c *echo.Context) error {
 		Now:              time.Now(),
 		NewSession: func() (store.SessionReplacement, error) {
 			var issueErr error
-			tokens, issueErr = s.issueTokenPairWithRefreshID(refreshPayload.ID, refreshPayload.Username, refreshPayload.Role)
+			tokens, issueErr = s.issueTokenPairWithSessionID(refreshPayload.ID, refreshPayload.Username, refreshPayload.Role)
 			if issueErr != nil {
 				return store.SessionReplacement{}, issueErr
 			}

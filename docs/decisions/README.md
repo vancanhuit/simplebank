@@ -16,3 +16,4 @@ the old. See [ADR-0000](0000-record-architecture-decisions.md) for the process.
 | [0004](0004-split-util-into-domain-packages.md) | Split `util` into domain packages, separating crypto from non-crypto randomness | Accepted |
 | [0005](0005-transfer-safety-idempotency-and-limits.md) | Make transfers idempotent and enforce limits at safe boundaries | Accepted |
 | [0006](0006-run-worker-with-http-server.md) | Run the River worker with the HTTP server | Accepted |
+| [0007](0007-use-postgresql-for-revocable-access-and-login-throttling.md) | Use PostgreSQL for revocable access and login throttling | Accepted |

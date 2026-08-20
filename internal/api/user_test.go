@@ -43,6 +43,7 @@ type fakeStore struct {
 	listTransfers             func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
 	checkLoginThrottle        func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error)
 	recordLoginFailure        func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error)
+	validateAccessSession     func(context.Context, uuid.UUID, string, time.Time) error
 	clearLoginAccountThrottle func(context.Context, string) error
 }
 
@@ -127,6 +128,18 @@ func (f fakeStore) ClearLoginAccountThrottle(ctx context.Context, username strin
 		return nil
 	}
 	return f.clearLoginAccountThrottle(ctx, username)
+}
+
+func (f fakeStore) ValidateAccessSession(
+	ctx context.Context,
+	id uuid.UUID,
+	username string,
+	now time.Time,
+) error {
+	if f.validateAccessSession == nil {
+		return nil
+	}
+	return f.validateAccessSession(ctx, id, username, now)
 }
 
 func newTestServer(t *testing.T) *Server {
@@ -424,6 +437,67 @@ func TestLogoutUserOK(t *testing.T) {
 	}
 }
 
+func TestLogoutImmediatelyRevokesAccessToken(t *testing.T) {
+	t.Parallel()
+	tokens := mustIssueTokenPair(t, "alice")
+	protectedCalls := 0
+	blocked := false
+	fake := fakeStore{
+		validateAccessSession: func(_ context.Context, id uuid.UUID, username string, now time.Time) error {
+			if id != tokens.refreshPayload.ID {
+				return store.ErrInvalidSession
+			}
+			if username != "alice" {
+				t.Fatalf("username = %q, want alice", username)
+			}
+			if now.IsZero() {
+				t.Fatal("ValidateAccessSession must receive current time")
+			}
+			if blocked {
+				return store.ErrInvalidSession
+			}
+			return nil
+		},
+		listAccounts: func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
+			protectedCalls++
+			return []sqlcdb.Account{}, nil
+		},
+		blockSession: func(_ context.Context, id uuid.UUID) (sqlcdb.Session, error) {
+			if id != tokens.refreshPayload.ID {
+				t.Fatalf("blocked session ID = %s, want %s", id, tokens.refreshPayload.ID)
+			}
+			blocked = true
+			return sqlcdb.Session{ID: id, Username: "alice", IsBlocked: true}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	protectedReq := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
+	protectedReq.Header.Set("Authorization", "Bearer "+tokens.access)
+	protectedRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(protectedRec, protectedReq)
+	if protectedRec.Code != http.StatusOK {
+		t.Fatalf("want 200 before logout, got %d (%s)", protectedRec.Code, protectedRec.Body.String())
+	}
+
+	logoutReq := httptest.NewRequest(http.MethodPost, "/api/v1/users/logout", nil)
+	logoutReq.AddCookie(&http.Cookie{Name: refreshCookieName, Value: tokens.refresh, Path: "/api/v1"})
+	logoutRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Code != http.StatusNoContent {
+		t.Fatalf("want 204 logout, got %d (%s)", logoutRec.Code, logoutRec.Body.String())
+	}
+
+	protectedRec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(protectedRec, protectedReq)
+	if protectedRec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 after logout, got %d (%s)", protectedRec.Code, protectedRec.Body.String())
+	}
+	if protectedCalls != 1 {
+		t.Fatalf("protected handler calls = %d, want 1 before revocation only", protectedCalls)
+	}
+}
+
 func TestLogoutUserWithoutCookie(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
@@ -458,6 +532,29 @@ func mustIssueTokenPair(t *testing.T, username string) tokenPair {
 		t.Fatal(err)
 	}
 	return tokens
+}
+
+func TestIssueTokenPairUsesOneSessionID(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	tokens, err := s.issueTokenPair("alice", roleDepositor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokens.accessPayload.ID != tokens.refreshPayload.ID {
+		t.Fatalf("payload IDs differ: access %s refresh %s", tokens.accessPayload.ID, tokens.refreshPayload.ID)
+	}
+	accessPayload, err := s.tokenMaker.VerifyToken(tokens.access, token.Access)
+	if err != nil {
+		t.Fatalf("verify access token: %v", err)
+	}
+	refreshPayload, err := s.tokenMaker.VerifyToken(tokens.refresh, token.Refresh)
+	if err != nil {
+		t.Fatalf("verify refresh token: %v", err)
+	}
+	if accessPayload.ID != refreshPayload.ID {
+		t.Fatalf("token IDs differ: access %s refresh %s", accessPayload.ID, refreshPayload.ID)
+	}
 }
 
 func TestLoginUserWrongPassword(t *testing.T) {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,15 +20,69 @@ import (
 // with the same secret the test server's auth middleware verifies against.
 func bearer(t *testing.T, username string) string {
 	t.Helper()
+	return bearerWithID(t, username, uuid.New())
+}
+
+func bearerWithID(t *testing.T, username string, id uuid.UUID) string {
+	t.Helper()
 	maker, err := token.NewJWTMaker(testSecret)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, _, err := maker.CreateToken(username, roleDepositor, token.Access, time.Minute)
+	tok, _, err := maker.CreateTokenWithID(id, username, roleDepositor, token.Access, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return "Bearer " + tok
+}
+
+func protectedAccountsRequest(t *testing.T, s *Server, auth string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func assertProtectedRouteSessionResult(
+	t *testing.T,
+	username string,
+	sessionID uuid.UUID,
+	validate func(context.Context, uuid.UUID, string, time.Time) error,
+	wantStatus int,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	validateCalled := false
+	fake := fakeStore{
+		validateAccessSession: func(ctx context.Context, id uuid.UUID, gotUsername string, now time.Time) error {
+			validateCalled = true
+			if id != sessionID {
+				t.Fatalf("session ID = %s, want %s", id, sessionID)
+			}
+			if gotUsername != username {
+				t.Fatalf("username = %q, want %q", gotUsername, username)
+			}
+			if now.IsZero() {
+				t.Fatal("ValidateAccessSession must receive current time")
+			}
+			return validate(ctx, id, gotUsername, now)
+		},
+		listAccounts: func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
+			t.Fatal("handler must not run when session validation fails")
+			return nil, nil
+		},
+	}
+	rec := protectedAccountsRequest(t, newTestServerWithStore(t, fake), bearerWithID(t, username, sessionID))
+	if !validateCalled {
+		t.Fatal("protected routes must validate access sessions")
+	}
+	if rec.Code != wantStatus {
+		t.Fatalf("want %d, got %d (%s)", wantStatus, rec.Code, rec.Body.String())
+	}
+	return rec
 }
 
 func TestProtectedRouteRequiresAuth(t *testing.T) {
@@ -76,6 +131,74 @@ func TestProtectedRouteRejectsRefreshToken(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for refresh bearer, got %d", rec.Code)
+	}
+}
+
+func TestProtectedRouteRejectsMissingSession(t *testing.T) {
+	t.Parallel()
+	assertProtectedRouteSessionResult(
+		t,
+		"alice",
+		uuid.New(),
+		func(context.Context, uuid.UUID, string, time.Time) error {
+			return store.ErrInvalidSession
+		},
+		http.StatusUnauthorized,
+	)
+}
+
+func TestProtectedRouteRejectsBlockedSession(t *testing.T) {
+	t.Parallel()
+	assertProtectedRouteSessionResult(
+		t,
+		"alice",
+		uuid.New(),
+		func(context.Context, uuid.UUID, string, time.Time) error {
+			return store.ErrInvalidSession
+		},
+		http.StatusUnauthorized,
+	)
+}
+
+func TestProtectedRouteRejectsExpiredSession(t *testing.T) {
+	t.Parallel()
+	assertProtectedRouteSessionResult(
+		t,
+		"alice",
+		uuid.New(),
+		func(context.Context, uuid.UUID, string, time.Time) error {
+			return store.ErrInvalidSession
+		},
+		http.StatusUnauthorized,
+	)
+}
+
+func TestProtectedRouteRejectsSessionUsernameMismatch(t *testing.T) {
+	t.Parallel()
+	assertProtectedRouteSessionResult(
+		t,
+		"alice",
+		uuid.New(),
+		func(context.Context, uuid.UUID, string, time.Time) error {
+			return store.ErrInvalidSession
+		},
+		http.StatusUnauthorized,
+	)
+}
+
+func TestProtectedRoutePropagatesSessionStoreError(t *testing.T) {
+	t.Parallel()
+	rec := assertProtectedRouteSessionResult(
+		t,
+		"alice",
+		uuid.New(),
+		func(context.Context, uuid.UUID, string, time.Time) error {
+			return errors.New("session store down")
+		},
+		http.StatusInternalServerError,
+	)
+	if !strings.Contains(rec.Body.String(), "internal server error") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
 }
 
