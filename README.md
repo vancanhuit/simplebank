@@ -127,7 +127,7 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 |--------|------|------|-------------|
 | `GET` | `/livez` | — | Liveness (process up) |
 | `GET` | `/readyz` | — | Readiness (database reachable) |
-| `POST` | `/api/v1/users` | — | Register a user, return `202 Accepted`, and queue verification mail |
+| `POST` | `/api/v1/users` | — | Register a user, require a 15–72 byte password, and return generic `202 Accepted` for accepted and colliding submissions |
 | `POST` | `/api/v1/users/login` | — | Log in, receive an access token, and set the refresh token as an HttpOnly cookie |
 | `POST` | `/api/v1/users/logout` | Refresh cookie | Block the current session and clear the refresh cookie (`204 No Content`) |
 | `POST` | `/api/v1/tokens/renew` | Refresh cookie | Rotate the refresh cookie and return a fresh access token |

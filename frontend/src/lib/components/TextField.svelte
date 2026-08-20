@@ -13,6 +13,8 @@
     step?: string;
     min?: string;
     max?: string;
+    minlength?: number;
+    maxlength?: number;
     hint?: string;
     error?: string;
     disabled?: boolean;
@@ -33,6 +35,8 @@
     step,
     min,
     max,
+    minlength,
+    maxlength,
     hint,
     error,
     disabled = false,
@@ -68,6 +72,8 @@
     {step}
     {min}
     {max}
+    {minlength}
+    {maxlength}
     {disabled}
     {oninput}
     bind:value

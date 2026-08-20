@@ -54,6 +54,24 @@ describe("TextField", () => {
     expect(field).toBeDisabled();
   });
 
+  it("forwards string length constraints", () => {
+    render(TextField, {
+      props: {
+        id: "password",
+        label: "Password",
+        type: "password",
+        value: "",
+        minlength: 15,
+        maxlength: 72,
+      },
+    });
+
+    const field = screen.getByLabelText("Password");
+
+    expect(field).toHaveAttribute("minlength", "15");
+    expect(field).toHaveAttribute("maxlength", "72");
+  });
+
   it("applies forced-colors invalid mapping with aria-invalid", () => {
     render(TextField, {
       props: {

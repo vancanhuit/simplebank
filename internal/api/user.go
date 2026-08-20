@@ -47,7 +47,7 @@ func hashRefreshToken(token string) string {
 
 type createUserRequest struct {
 	Username string `json:"username" validate:"required,alphanum"`
-	Password string `json:"password" validate:"required,min=6,maxbytes=72"`
+	Password string `json:"password" validate:"required,min=15,maxbytes=72"`
 	FullName string `json:"full_name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 }
@@ -141,12 +141,11 @@ func (s *Server) createUser(c *echo.Context) error {
 	})
 	if err != nil {
 		classified := store.ClassifyError(err)
-		if errors.Is(classified, store.ErrUsernameExists) {
-			return classified
-		}
-		if errors.Is(classified, store.ErrEmailExists) {
-			if enqueueErr := s.queueRegistrationNotice(ctx, req.Email); enqueueErr != nil {
-				c.Logger().Error("enqueue registration notice", "error", enqueueErr)
+		if errors.Is(classified, store.ErrUsernameExists) || errors.Is(classified, store.ErrEmailExists) {
+			if errors.Is(classified, store.ErrEmailExists) {
+				if enqueueErr := s.queueRegistrationNotice(ctx, req.Email); enqueueErr != nil {
+					c.Logger().Error("enqueue registration notice", "error", enqueueErr)
+				}
 			}
 			return c.JSON(http.StatusAccepted, verificationAccepted)
 		}

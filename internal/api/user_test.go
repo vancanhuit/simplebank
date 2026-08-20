@@ -22,6 +22,15 @@ import (
 )
 
 const testSecret = "01234567890123456789012345678901"
+const testPassword = "correct horse battery staple"
+
+func createUserBody(username, password, fullName, email string) string {
+	return `{"username":"` + username + `","password":"` + password + `","full_name":"` + fullName + `","email":"` + email + `"}`
+}
+
+func loginBody(username, password string) string {
+	return `{"username":"` + username + `","password":"` + password + `"}`
+}
 
 // fakeStore satisfies store.Store by embedding the interface (nil underlying).
 // Only the methods a test actually exercises are overridden; calling any other
@@ -215,7 +224,7 @@ func TestCreateUserOK(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := createUserBody("alice", testPassword, "Alice", "alice@example.com")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -242,7 +251,7 @@ func TestCreateUserEmailExistsReturnsGenericAccepted(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := createUserBody("alice", testPassword, "Alice", "alice@example.com")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -272,7 +281,7 @@ func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
 	var logBuf bytes.Buffer
 	s.router.Logger = slog.New(slog.NewTextHandler(&logBuf, nil))
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := createUserBody("alice", testPassword, "Alice", "alice@example.com")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -294,7 +303,60 @@ func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
 	}
 }
 
-func TestCreateUserUsernameExistsReturnsConflict(t *testing.T) {
+func TestCreateUserPasswordFourteenBytesRejected(t *testing.T) {
+	t.Parallel()
+	fake := fakeStore{
+		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
+			t.Fatal("user must not be created for a 14-byte password")
+			return sqlcdb.User{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := createUserBody("alice", strings.Repeat("a", 14), "Alice", "alice@example.com")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for 14-byte password, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateUserPasswordFifteenBytesAccepted(t *testing.T) {
+	t.Parallel()
+	fake := fakeStore{
+		createUserTx: func(_ context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
+			return sqlcdb.User{
+				Username:  arg.Username,
+				FullName:  arg.FullName,
+				Email:     arg.Email,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := createUserBody("alice", strings.Repeat("a", 15), "Alice", "alice@example.com")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for 15-byte password, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got["message"] != "check your email for verification instructions" {
+		t.Fatalf("unexpected response: %+v", got)
+	}
+}
+
+func TestCreateUserUsernameExistsReturnsGenericAccepted(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
 		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
@@ -303,14 +365,57 @@ func TestCreateUserUsernameExistsReturnsConflict(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := createUserBody("alice", testPassword, "Alice", "alice@example.com")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("want 409 for duplicate username, got %d (%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for duplicate username, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got["message"] != "check your email for verification instructions" {
+		t.Fatalf("unexpected response: %+v", got)
+	}
+}
+
+func TestCreateUserUsernameAndEmailResponsesMatch(t *testing.T) {
+	t.Parallel()
+	call := func(err error) (int, string) {
+		t.Helper()
+		fake := fakeStore{
+			createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
+				return sqlcdb.User{}, err
+			},
+		}
+		s := newTestServerWithStore(t, fake)
+		body := createUserBody("alice", testPassword, "Alice", "alice@example.com")
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+
+	usernameCode, usernameBody := call(store.ErrUsernameExists)
+	emailCode, emailBody := call(store.ErrEmailExists)
+
+	if usernameCode != http.StatusAccepted || emailCode != http.StatusAccepted {
+		t.Fatalf("want 202/202, got %d/%d", usernameCode, emailCode)
+	}
+	if usernameBody != emailBody {
+		t.Fatalf("responses differ:\nusername=%s\nemail=%s", usernameBody, emailBody)
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(usernameBody), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got["message"] != "check your email for verification instructions" {
+		t.Fatalf("unexpected response body: %s", usernameBody)
 	}
 }
 
@@ -327,7 +432,7 @@ func TestCreateUserPasswordTooLong(t *testing.T) {
 	// 73 bytes exceeds bcrypt's 72-byte cap and must be rejected at validation
 	// (400), not surfaced as a 500 from the hashing layer.
 	longPassword := strings.Repeat("a", 73)
-	body := `{"username":"alice","password":"` + longPassword + `","full_name":"Alice","email":"alice@example.com"}`
+	body := createUserBody("alice", longPassword, "Alice", "alice@example.com")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -340,7 +445,7 @@ func TestCreateUserPasswordTooLong(t *testing.T) {
 
 func TestLoginUserOK(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +461,7 @@ func TestLoginUserOK(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123"}`
+	body := loginBody("alice", testPassword)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -559,7 +664,7 @@ func TestIssueTokenPairUsesOneSessionID(t *testing.T) {
 
 func TestLoginUserWrongPassword(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,7 +714,7 @@ func TestLoginUserRejectsActiveAccountThrottle(t *testing.T) {
 	s := newTestServerWithStore(t, fake)
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, clientIP))
+	s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("alice", testPassword), clientIP))
 
 	assertLoginThrottleResponse(t, rec)
 }
@@ -635,7 +740,7 @@ func TestLoginUserRejectsActiveClientThrottle(t *testing.T) {
 	s := newTestServerWithStore(t, fake)
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, clientIP))
+	s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("alice", testPassword), clientIP))
 
 	assertLoginThrottleResponse(t, rec)
 }
@@ -669,7 +774,7 @@ func TestLoginUserRecordsUnknownUserFailure(t *testing.T) {
 	s := newTestServerWithStore(t, fake)
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"ghost","password":"secret123"}`, clientIP))
+	s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("ghost", testPassword), clientIP))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for unknown user, got %d (%s)", rec.Code, rec.Body.String())
@@ -681,7 +786,7 @@ func TestLoginUserRecordsUnknownUserFailure(t *testing.T) {
 
 func TestLoginUserRecordsWrongPasswordFailure(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +833,7 @@ func TestLoginUserRecordsWrongPasswordFailure(t *testing.T) {
 
 func TestLoginUserReturns429WhenFailureStartsCooldown(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +877,7 @@ func TestLoginUserUnknown(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"ghost","password":"secret123"}`
+	body := loginBody("ghost", testPassword)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -786,7 +891,7 @@ func TestLoginUserUnknown(t *testing.T) {
 
 func TestLoginUserUnverified(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -801,7 +906,7 @@ func TestLoginUserUnverified(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123"}`
+	body := loginBody("alice", testPassword)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -817,7 +922,7 @@ func TestLoginUserUnverified(t *testing.T) {
 
 func TestLoginUserClearsAccountThrottleAfterValidCredentials(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -860,7 +965,7 @@ func TestLoginUserClearsAccountThrottleAfterValidCredentials(t *testing.T) {
 			s := newTestServerWithStore(t, fake)
 
 			rec := httptest.NewRecorder()
-			s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, "198.51.100.15"))
+			s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("alice", testPassword), "198.51.100.15"))
 
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("want %d, got %d (%s)", tt.wantStatus, rec.Code, rec.Body.String())
@@ -874,7 +979,7 @@ func TestLoginUserClearsAccountThrottleAfterValidCredentials(t *testing.T) {
 
 func TestLoginUserDoesNotClearClientThrottle(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -899,7 +1004,7 @@ func TestLoginUserDoesNotClearClientThrottle(t *testing.T) {
 	s := newTestServerWithStore(t, fake)
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, clientIP))
+	s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("alice", testPassword), clientIP))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
@@ -914,7 +1019,7 @@ func TestLoginUserDoesNotClearClientThrottle(t *testing.T) {
 
 func TestLoginUserThrottleStoreErrorReturns500(t *testing.T) {
 	t.Parallel()
-	hashed, err := password.Hash("secret123")
+	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -934,7 +1039,7 @@ func TestLoginUserThrottleStoreErrorReturns500(t *testing.T) {
 					return sqlcdb.User{}, nil
 				},
 			},
-			body: `{"username":"alice","password":"secret123"}`,
+			body: loginBody("alice", testPassword),
 		},
 		{
 			name: "record login failure",
@@ -970,7 +1075,7 @@ func TestLoginUserThrottleStoreErrorReturns500(t *testing.T) {
 					return sqlcdb.Session{}, nil
 				},
 			},
-			body: `{"username":"alice","password":"secret123"}`,
+			body: loginBody("alice", testPassword),
 		},
 	}
 
