@@ -100,6 +100,9 @@ func assertSecurityHeaders(t *testing.T, rec *httptest.ResponseRecorder) {
 	if got := rec.Header().Get(echo.HeaderXFrameOptions); got != "DENY" {
 		t.Fatalf("want X-Frame-Options DENY, got %q", got)
 	}
+	if got := rec.Header().Get(echo.HeaderXXSSProtection); got != "0" {
+		t.Fatalf("want X-XSS-Protection 0, got %q", got)
+	}
 	if got := rec.Header().Get(echo.HeaderXContentTypeOptions); got != "nosniff" {
 		t.Fatalf("want X-Content-Type-Options nosniff, got %q", got)
 	}
