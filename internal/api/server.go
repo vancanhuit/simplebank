@@ -24,6 +24,8 @@ import (
 // address. Echo has no constant for it (unlike X-Forwarded-For/-Proto).
 const headerXForwardedHost = "X-Forwarded-Host"
 
+const contentSecurityPolicy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'"
+
 type Server struct {
 	config      config.Config
 	store       store.Store
@@ -57,7 +59,14 @@ func NewServer(
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(requestLogger())
-	e.Use(middleware.Secure())
+	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+		XSSProtection:         "0",
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "DENY",
+		HSTSMaxAge:            31536000,
+		ContentSecurityPolicy: contentSecurityPolicy,
+		ReferrerPolicy:        "no-referrer",
+	}))
 	e.Use(middleware.BodyLimit(1 << 20))
 	e.Use(middleware.ContextTimeout(30 * time.Second))
 

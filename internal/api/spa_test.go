@@ -30,6 +30,7 @@ func TestRegisterSPAServesIndexAtRoot(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
 		t.Fatalf("want html content type, got %q", ct)
 	}
+	assertSecurityHeadersWithoutHSTS(t, rec)
 }
 
 func TestRegisterSPAHeadReturnsMethodNotAllowed(t *testing.T) {
