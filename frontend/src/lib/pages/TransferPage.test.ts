@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TransferPage from "./TransferPage.svelte";
+import type { TransferResult } from "../api/types";
 import { accounts } from "../stores/accounts.svelte";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -57,25 +58,25 @@ describe("TransferPage", () => {
     });
 
     // Mock transfer success response
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, {
-        transfer: {
-          id: "tx-abc123",
-          from_account_id: "acct-1",
-          to_account_id: "acct-2",
-          amount: 5000,
-          currency: "USD",
-          created_at: "2026-08-15T12:00:00Z",
-        },
-        from_account: {
-          id: "acct-1",
-          owner: "alice",
-          currency: "USD",
-          balance: 95000,
-          created_at: "2026-01-01T00:00:00Z",
-        },
-      }),
-    );
+    const successResponse = {
+      transfer: {
+        id: "tx-abc123",
+        from_account_id: "acct-1",
+        to_account_id: "acct-2",
+        amount: 5000,
+        idempotency_key: idempotencyKey,
+        created_at: "2026-08-15T12:00:00Z",
+      },
+      from_account: {
+        id: "acct-1",
+        owner: "alice",
+        currency: "USD",
+        balance: 95000,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+    } satisfies TransferResult;
+    expect(successResponse).not.toHaveProperty("to_account");
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, successResponse));
 
     // Mock accounts reload after transfer
     fetchMock.mockResolvedValueOnce(
@@ -135,10 +136,26 @@ describe("TransferPage", () => {
       .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
       .mockResolvedValueOnce(jsonResponse(503, { error: "temporary failure" }))
       .mockResolvedValueOnce(
-        jsonResponse(200, {
-          transfer: { id: "tx-retry", amount: 5000 },
-          from_account: { currency: "USD", balance: 95000 },
-        }),
+        jsonResponse(
+          200,
+          ({
+            transfer: {
+              id: "tx-retry",
+              from_account_id: "acct-1",
+              to_account_id: "acct-2",
+              amount: 5000,
+              idempotency_key: idempotencyKey,
+              created_at: "2026-08-15T12:00:00Z",
+            },
+            from_account: {
+              id: "acct-1",
+              owner: "alice",
+              currency: "USD",
+              balance: 95000,
+              created_at: "2026-01-01T00:00:00Z",
+            },
+          }) satisfies TransferResult,
+        ),
       )
       .mockResolvedValueOnce(jsonResponse(200, accounts.items));
 

@@ -21,6 +21,11 @@ type transferRequest struct {
 	IdempotencyKey string `json:"idempotency_key" validate:"required,uuid"`
 }
 
+type transferResponse struct {
+	Transfer    sqlcdb.Transfer `json:"transfer"`
+	FromAccount sqlcdb.Account  `json:"from_account"`
+}
+
 func (s *Server) createTransfer(c *echo.Context) error {
 	req, err := bindValidate[transferRequest](c)
 	if err != nil {
@@ -76,7 +81,10 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, transferResponse{
+		Transfer:    result.Transfer,
+		FromAccount: result.FromAccount,
+	})
 }
 
 // listTransfers returns the transfer history for an account the caller owns,

@@ -60,11 +60,10 @@ export interface Transfer {
   created_at: string;
 }
 
-/** Response from `POST /transfers`, mirroring `TransferTxResult`. */
+/** Response from `POST /transfers`: transfer plus caller-owned source account. */
 export interface TransferResult {
   transfer: Transfer;
   from_account: Account;
-  to_account: Account;
 }
 
 /** Per-currency transfer ceilings, mirroring the backend `config.CurrencyLimit`.

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,21 +37,28 @@ func TestCreateTransferOK(t *testing.T) {
 	t.Parallel()
 	fromID := uuid.New()
 	toID := uuid.New()
+	transferID := uuid.New()
 	var transferred bool
 	var gotArg store.TransferTxParams
 	fake := fakeStore{
 		getAccount: func(_ context.Context, id uuid.UUID) (sqlcdb.Account, error) {
 			owner := "bob"
+			balance := int64(80000)
 			if id == fromID {
 				owner = "alice"
+				balance = 100000
 			}
-			return sqlcdb.Account{ID: id, Owner: owner, Currency: "USD"}, nil
+			return sqlcdb.Account{ID: id, Owner: owner, Currency: "USD", Balance: balance}, nil
 		},
 		transferTx: func(_ context.Context, arg store.TransferTxParams) (store.TransferTxResult, error) {
 			transferred = true
 			gotArg = arg
 			return store.TransferTxResult{
-				Transfer: sqlcdb.Transfer{ID: uuid.New(), FromAccountID: arg.FromAccountID, ToAccountID: arg.ToAccountID, Amount: arg.Amount},
+				Transfer:    sqlcdb.Transfer{ID: transferID, FromAccountID: arg.FromAccountID, ToAccountID: arg.ToAccountID, Amount: arg.Amount},
+				FromAccount: sqlcdb.Account{ID: fromID, Owner: "alice", Currency: "USD", Balance: 95000},
+				ToAccount:   sqlcdb.Account{ID: toID, Owner: "bob", Currency: "USD", Balance: 85000},
+				FromEntry:   sqlcdb.Entry{ID: uuid.New(), AccountID: fromID, Amount: -arg.Amount},
+				ToEntry:     sqlcdb.Entry{ID: uuid.New(), AccountID: toID, Amount: arg.Amount},
 			}, nil
 		},
 	}
@@ -75,6 +83,26 @@ func TestCreateTransferOK(t *testing.T) {
 	}
 	if gotArg.IdempotencyKey.String() != key {
 		t.Errorf("idempotency key not forwarded: got %q, want %q", gotArg.IdempotencyKey, key)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, ok := body["to_account"]; ok {
+		t.Fatal("response exposed recipient account")
+	}
+	if _, ok := body["from_entry"]; ok {
+		t.Fatal("response exposed source ledger entry")
+	}
+	if _, ok := body["to_entry"]; ok {
+		t.Fatal("response exposed destination ledger entry")
+	}
+	if _, ok := body["transfer"]; !ok {
+		t.Fatal("response missing transfer")
+	}
+	if _, ok := body["from_account"]; !ok {
+		t.Fatal("response missing caller-owned source account")
 	}
 }
 
