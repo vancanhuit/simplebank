@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,9 @@ type Store interface {
 	CreateAccountTx(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (Reconciliation, error)
 	RotateSessionTx(ctx context.Context, arg RotateSessionTxParams) (sqlcdb.Session, error)
+	CheckLoginThrottle(ctx context.Context, username string, clientIP string, now time.Time) (LoginThrottleDecision, error)
+	RecordLoginFailure(ctx context.Context, username string, clientIP string, now time.Time) (LoginThrottleDecision, error)
+	ClearLoginAccountThrottle(ctx context.Context, username string) error
 }
 
 type SQLStore struct {

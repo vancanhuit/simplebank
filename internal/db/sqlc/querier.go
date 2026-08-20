@@ -6,6 +6,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -19,17 +20,22 @@ type Querier interface {
 	CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVerifyEmail(ctx context.Context, arg CreateVerifyEmailParams) (VerifyEmail, error)
+	DeleteExpiredLoginThrottles(ctx context.Context, expiresAt time.Time) (int64, error)
+	DeleteLoginThrottle(ctx context.Context, arg DeleteLoginThrottleParams) error
 	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountLedgerBalance(ctx context.Context, accountID uuid.UUID) (int64, error)
+	GetLoginThrottle(ctx context.Context, arg GetLoginThrottleParams) (LoginThrottle, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionForUpdate(ctx context.Context, id uuid.UUID) (Session, error)
 	GetTransferBySourceAndIdempotencyKey(ctx context.Context, arg GetTransferBySourceAndIdempotencyKeyParams) (Transfer, error)
 	GetUser(ctx context.Context, username string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	IncrementLoginThrottle(ctx context.Context, arg IncrementLoginThrottleParams) (LoginThrottle, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListTransfersByAccount(ctx context.Context, arg ListTransfersByAccountParams) ([]Transfer, error)
 	RotateSession(ctx context.Context, arg RotateSessionParams) (Session, error)
+	SetLoginThrottleBlockedUntil(ctx context.Context, arg SetLoginThrottleBlockedUntilParams) (LoginThrottle, error)
 	SumOutgoingTransfersSince(ctx context.Context, arg SumOutgoingTransfersSinceParams) (int64, error)
 	UpdateVerifyEmail(ctx context.Context, arg UpdateVerifyEmailParams) (VerifyEmail, error)
 	VerifyUserEmail(ctx context.Context, username string) (User, error)

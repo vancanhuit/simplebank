@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Account struct {
@@ -23,6 +24,15 @@ type Entry struct {
 	AccountID uuid.UUID `json:"account_id"`
 	Amount    int64     `json:"amount"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type LoginThrottle struct {
+	Scope           string             `json:"scope"`
+	KeyHash         string             `json:"key_hash"`
+	FailureCount    int32              `json:"failure_count"`
+	WindowStartedAt time.Time          `json:"window_started_at"`
+	BlockedUntil    pgtype.Timestamptz `json:"blocked_until"`
+	ExpiresAt       time.Time          `json:"expires_at"`
 }
 
 type Session struct {
