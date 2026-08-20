@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,6 +68,28 @@ func newUserResponse(u sqlcdb.User) userResponse {
 		IsEmailVerified: u.IsEmailVerified,
 		CreatedAt:       u.CreatedAt,
 	}
+}
+
+func loginThrottleError(c *echo.Context, retryAfter time.Duration) error {
+	seconds := max(int64(math.Ceil(retryAfter.Seconds())), int64(1))
+	c.Response().Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+	return echo.NewHTTPError(http.StatusTooManyRequests, "too many login attempts")
+}
+
+func (s *Server) invalidLogin(c *echo.Context, username string) error {
+	decision, err := s.store.RecordLoginFailure(
+		c.Request().Context(),
+		username,
+		c.RealIP(),
+		time.Now(),
+	)
+	if err != nil {
+		return err
+	}
+	if decision.RetryAfter > 0 {
+		return loginThrottleError(c, decision.RetryAfter)
+	}
+	return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 }
 
 func (s *Server) queueVerifyEmailTx(ctx context.Context, tx pgx.Tx, username string) error {
@@ -152,18 +176,29 @@ func (s *Server) loginUser(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
+	decision, err := s.store.CheckLoginThrottle(ctx, req.Username, c.RealIP(), time.Now())
+	if err != nil {
+		return err
+	}
+	if decision.RetryAfter > 0 {
+		return loginThrottleError(c, decision.RetryAfter)
+	}
+
 	user, err := s.store.GetUser(ctx, req.Username)
 	if err != nil {
 		if errors.Is(store.ClassifyError(err), store.ErrRecordNotFound) {
 			// Run a comparison against a dummy hash so an unknown username takes
 			// the same time as a wrong password (no enumeration via timing).
 			_ = password.Check(req.Password, dummyPasswordHash)
-			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
+			return s.invalidLogin(c, req.Username)
 		}
 		return err
 	}
 	if err := password.Check(req.Password, user.HashedPassword); err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
+		return s.invalidLogin(c, req.Username)
+	}
+	if err := s.store.ClearLoginAccountThrottle(ctx, user.Username); err != nil {
+		return err
 	}
 	if !user.IsEmailVerified {
 		return echo.NewHTTPError(http.StatusForbidden, "email verification required")

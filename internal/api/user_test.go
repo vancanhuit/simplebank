@@ -28,19 +28,22 @@ const testSecret = "01234567890123456789012345678901"
 // method panics, which is the desired signal for an unexpected store access.
 type fakeStore struct {
 	store.Store
-	createUserTx    func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
-	getAccount      func(context.Context, uuid.UUID) (sqlcdb.Account, error)
-	transferTx      func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
-	getUser         func(context.Context, string) (sqlcdb.User, error)
-	getUserByEmail  func(context.Context, string) (sqlcdb.User, error)
-	createSession   func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
-	getSession      func(context.Context, uuid.UUID) (sqlcdb.Session, error)
-	rotateSessionTx func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error)
-	blockSession    func(context.Context, uuid.UUID) (sqlcdb.Session, error)
-	verifyEmailTx   func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
-	listAccounts    func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
-	createAccountTx func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
-	listTransfers   func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
+	createUserTx              func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
+	getAccount                func(context.Context, uuid.UUID) (sqlcdb.Account, error)
+	transferTx                func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
+	getUser                   func(context.Context, string) (sqlcdb.User, error)
+	getUserByEmail            func(context.Context, string) (sqlcdb.User, error)
+	createSession             func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
+	getSession                func(context.Context, uuid.UUID) (sqlcdb.Session, error)
+	rotateSessionTx           func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error)
+	blockSession              func(context.Context, uuid.UUID) (sqlcdb.Session, error)
+	verifyEmailTx             func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
+	listAccounts              func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
+	createAccountTx           func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
+	listTransfers             func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
+	checkLoginThrottle        func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error)
+	recordLoginFailure        func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error)
+	clearLoginAccountThrottle func(context.Context, string) error
 }
 
 func (f fakeStore) CreateUserTx(ctx context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
@@ -95,6 +98,37 @@ func (f fakeStore) ListTransfersByAccount(ctx context.Context, arg sqlcdb.ListTr
 	return f.listTransfers(ctx, arg)
 }
 
+func (f fakeStore) CheckLoginThrottle(
+	ctx context.Context,
+	username string,
+	clientIP string,
+	now time.Time,
+) (store.LoginThrottleDecision, error) {
+	if f.checkLoginThrottle == nil {
+		return store.LoginThrottleDecision{}, nil
+	}
+	return f.checkLoginThrottle(ctx, username, clientIP, now)
+}
+
+func (f fakeStore) RecordLoginFailure(
+	ctx context.Context,
+	username string,
+	clientIP string,
+	now time.Time,
+) (store.LoginThrottleDecision, error) {
+	if f.recordLoginFailure == nil {
+		return store.LoginThrottleDecision{}, nil
+	}
+	return f.recordLoginFailure(ctx, username, clientIP, now)
+}
+
+func (f fakeStore) ClearLoginAccountThrottle(ctx context.Context, username string) error {
+	if f.clearLoginAccountThrottle == nil {
+		return nil
+	}
+	return f.clearLoginAccountThrottle(ctx, username)
+}
+
 func newTestServer(t *testing.T) *Server {
 	return newTestServerWithStore(t, nil)
 }
@@ -120,6 +154,26 @@ func newTestServerWithConfig(t *testing.T, st store.Store, cfg config.Config) *S
 		t.Fatal(err)
 	}
 	return s
+}
+
+func newLoginRequest(body string, clientIP string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = clientIP + ":1234"
+	return req
+}
+
+func assertLoginThrottleResponse(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("want 429, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Retry-After"); got != "30" {
+		t.Fatalf("Retry-After = %q, want 30", got)
+	}
+	if !strings.Contains(rec.Body.String(), "too many login attempts") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
 }
 
 func TestCreateUserBadRequest(t *testing.T) {
@@ -434,6 +488,184 @@ func TestLoginUserWrongPassword(t *testing.T) {
 	}
 }
 
+func TestLoginUserRejectsActiveAccountThrottle(t *testing.T) {
+	t.Parallel()
+	const clientIP = "198.51.100.10"
+	fake := fakeStore{
+		checkLoginThrottle: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginThrottleDecision, error) {
+			if username != "alice" {
+				t.Fatalf("username = %q, want alice", username)
+			}
+			if gotClientIP != clientIP {
+				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
+			}
+			if now.IsZero() {
+				t.Fatal("throttle check must receive current time")
+			}
+			return store.LoginThrottleDecision{RetryAfter: 30 * time.Second}, nil
+		},
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			t.Fatal("active account throttle must reject before user lookup")
+			return sqlcdb.User{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, clientIP))
+
+	assertLoginThrottleResponse(t, rec)
+}
+
+func TestLoginUserRejectsActiveClientThrottle(t *testing.T) {
+	t.Parallel()
+	const clientIP = "198.51.100.11"
+	fake := fakeStore{
+		checkLoginThrottle: func(_ context.Context, username string, gotClientIP string, _ time.Time) (store.LoginThrottleDecision, error) {
+			if username != "alice" {
+				t.Fatalf("username = %q, want alice", username)
+			}
+			if gotClientIP != clientIP {
+				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
+			}
+			return store.LoginThrottleDecision{RetryAfter: 30 * time.Second}, nil
+		},
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			t.Fatal("active client throttle must reject before user lookup")
+			return sqlcdb.User{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, clientIP))
+
+	assertLoginThrottleResponse(t, rec)
+}
+
+func TestLoginUserRecordsUnknownUserFailure(t *testing.T) {
+	t.Parallel()
+	const clientIP = "198.51.100.12"
+	recorded := false
+	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{}, store.ErrRecordNotFound
+		},
+		recordLoginFailure: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginThrottleDecision, error) {
+			recorded = true
+			if username != "ghost" {
+				t.Fatalf("username = %q, want ghost", username)
+			}
+			if gotClientIP != clientIP {
+				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
+			}
+			if now.IsZero() {
+				t.Fatal("record failure must receive current time")
+			}
+			return store.LoginThrottleDecision{}, nil
+		},
+		clearLoginAccountThrottle: func(context.Context, string) error {
+			t.Fatal("unknown user must not clear account throttle")
+			return nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"ghost","password":"secret123"}`, clientIP))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for unknown user, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !recorded {
+		t.Fatal("unknown user must record a login failure")
+	}
+}
+
+func TestLoginUserRecordsWrongPasswordFailure(t *testing.T) {
+	t.Parallel()
+	hashed, err := password.Hash("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const clientIP = "198.51.100.13"
+	recorded := false
+	fake := fakeStore{
+		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
+		},
+		recordLoginFailure: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginThrottleDecision, error) {
+			recorded = true
+			if username != "alice" {
+				t.Fatalf("username = %q, want alice", username)
+			}
+			if gotClientIP != clientIP {
+				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
+			}
+			if now.IsZero() {
+				t.Fatal("record failure must receive current time")
+			}
+			return store.LoginThrottleDecision{}, nil
+		},
+		createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+			t.Fatal("session must not be created on a failed login")
+			return sqlcdb.Session{}, nil
+		},
+		clearLoginAccountThrottle: func(context.Context, string) error {
+			t.Fatal("wrong password must not clear account throttle")
+			return nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"wrong-password"}`, clientIP))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for wrong password, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !recorded {
+		t.Fatal("wrong password must record a login failure")
+	}
+}
+
+func TestLoginUserReturns429WhenFailureStartsCooldown(t *testing.T) {
+	t.Parallel()
+	hashed, err := password.Hash("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const clientIP = "198.51.100.14"
+	fake := fakeStore{
+		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
+		},
+		recordLoginFailure: func(_ context.Context, username string, gotClientIP string, _ time.Time) (store.LoginThrottleDecision, error) {
+			if username != "alice" {
+				t.Fatalf("username = %q, want alice", username)
+			}
+			if gotClientIP != clientIP {
+				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
+			}
+			return store.LoginThrottleDecision{RetryAfter: 30 * time.Second}, nil
+		},
+		createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+			t.Fatal("session must not be created when cooldown starts")
+			return sqlcdb.Session{}, nil
+		},
+		clearLoginAccountThrottle: func(context.Context, string) error {
+			t.Fatal("failed login must not clear account throttle")
+			return nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"wrong-password"}`, clientIP))
+
+	assertLoginThrottleResponse(t, rec)
+}
+
 func TestLoginUserUnknown(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
@@ -483,5 +715,182 @@ func TestLoginUserUnverified(t *testing.T) {
 	}
 	if len(rec.Result().Cookies()) != 0 {
 		t.Fatalf("unverified login must not set cookies, got %d", len(rec.Result().Cookies()))
+	}
+}
+
+func TestLoginUserClearsAccountThrottleAfterValidCredentials(t *testing.T) {
+	t.Parallel()
+	hashed, err := password.Hash("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name       string
+		isVerified bool
+		wantStatus int
+	}{
+		{name: "verified user", isVerified: true, wantStatus: http.StatusOK},
+		{name: "unverified user", isVerified: false, wantStatus: http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cleared := false
+			fake := fakeStore{
+				getUser: func(context.Context, string) (sqlcdb.User, error) {
+					return sqlcdb.User{
+						Username:        "alice",
+						HashedPassword:  hashed,
+						IsEmailVerified: tt.isVerified,
+					}, nil
+				},
+				clearLoginAccountThrottle: func(_ context.Context, username string) error {
+					cleared = true
+					if username != "alice" {
+						t.Fatalf("username = %q, want alice", username)
+					}
+					return nil
+				},
+				createSession: func(_ context.Context, arg sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+					if !tt.isVerified {
+						t.Fatal("unverified login must not create a session")
+					}
+					return sqlcdb.Session{ID: arg.ID, Username: arg.Username, RefreshToken: arg.RefreshToken, ExpiresAt: arg.ExpiresAt}, nil
+				},
+			}
+			s := newTestServerWithStore(t, fake)
+
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, "198.51.100.15"))
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("want %d, got %d (%s)", tt.wantStatus, rec.Code, rec.Body.String())
+			}
+			if !cleared {
+				t.Fatal("valid credentials must clear account throttle")
+			}
+		})
+	}
+}
+
+func TestLoginUserDoesNotClearClientThrottle(t *testing.T) {
+	t.Parallel()
+	hashed, err := password.Hash("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const clientIP = "198.51.100.16"
+	var clearedUsername string
+	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{
+				Username:        "alice",
+				HashedPassword:  hashed,
+				IsEmailVerified: true,
+			}, nil
+		},
+		clearLoginAccountThrottle: func(_ context.Context, username string) error {
+			clearedUsername = username
+			return nil
+		},
+		createSession: func(_ context.Context, arg sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+			return sqlcdb.Session{ID: arg.ID, Username: arg.Username, RefreshToken: arg.RefreshToken, ExpiresAt: arg.ExpiresAt}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"secret123"}`, clientIP))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if clearedUsername != "alice" {
+		t.Fatalf("cleared username = %q, want alice", clearedUsername)
+	}
+	if clearedUsername == clientIP {
+		t.Fatalf("login must clear account throttle, not client throttle %q", clientIP)
+	}
+}
+
+func TestLoginUserThrottleStoreErrorReturns500(t *testing.T) {
+	t.Parallel()
+	hashed, err := password.Hash("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		fake fakeStore
+		body string
+	}{
+		{
+			name: "check login throttle",
+			fake: fakeStore{
+				checkLoginThrottle: func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error) {
+					return store.LoginThrottleDecision{}, errors.New("check throttle failed")
+				},
+				getUser: func(context.Context, string) (sqlcdb.User, error) {
+					t.Fatal("user lookup must not run when throttle check fails")
+					return sqlcdb.User{}, nil
+				},
+			},
+			body: `{"username":"alice","password":"secret123"}`,
+		},
+		{
+			name: "record login failure",
+			fake: fakeStore{
+				getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
+					return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
+				},
+				recordLoginFailure: func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error) {
+					return store.LoginThrottleDecision{}, errors.New("record failure failed")
+				},
+				createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+					t.Fatal("session must not be created when failure recording fails")
+					return sqlcdb.Session{}, nil
+				},
+			},
+			body: `{"username":"alice","password":"wrong-password"}`,
+		},
+		{
+			name: "clear account throttle",
+			fake: fakeStore{
+				getUser: func(context.Context, string) (sqlcdb.User, error) {
+					return sqlcdb.User{
+						Username:        "alice",
+						HashedPassword:  hashed,
+						IsEmailVerified: true,
+					}, nil
+				},
+				clearLoginAccountThrottle: func(context.Context, string) error {
+					return errors.New("clear account throttle failed")
+				},
+				createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
+					t.Fatal("session must not be created when clearing throttle fails")
+					return sqlcdb.Session{}, nil
+				},
+			},
+			body: `{"username":"alice","password":"secret123"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := newTestServerWithStore(t, tt.fake)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, newLoginRequest(tt.body, "198.51.100.17"))
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("want 500, got %d (%s)", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "internal server error") {
+				t.Fatalf("unexpected body: %s", rec.Body.String())
+			}
+		})
 	}
 }

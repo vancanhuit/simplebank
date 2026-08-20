@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
@@ -93,5 +94,29 @@ func TestErrorHandlerPreservesErrorSemantics(t *testing.T) {
 				t.Fatalf("message = %q, want %q", body["error"], tt.wantMessage)
 			}
 		})
+	}
+}
+
+func TestErrorHandlerPreservesRetryAfterHeader(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", nil)
+	rec := httptest.NewRecorder()
+	ctx := echo.New().NewContext(req, rec)
+
+	err := loginThrottleError(ctx, 1500*time.Millisecond)
+	errorHandler(ctx, err)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "2" {
+		t.Fatalf("Retry-After = %q, want 2", got)
+	}
+	var body map[string]string
+	if unmarshalErr := json.Unmarshal(rec.Body.Bytes(), &body); unmarshalErr != nil {
+		t.Fatalf("decode response: %v", unmarshalErr)
+	}
+	if body["error"] != "too many login attempts" {
+		t.Fatalf("message = %q, want %q", body["error"], "too many login attempts")
 	}
 }

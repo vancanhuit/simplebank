@@ -13,7 +13,7 @@ func (s *Server) registerRoutes() {
 	authLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5))
 
 	v1.POST("/users", s.createUser, authLimiter)
-	v1.POST("/users/login", s.loginUser, authLimiter)
+	v1.POST("/users/login", s.loginUser)
 	v1.POST("/users/logout", s.logoutUser, authLimiter)
 	v1.POST("/tokens/renew", s.renewToken, authLimiter)
 	v1.POST("/users/verify_email/resend", s.resendVerifyEmail, authLimiter)
