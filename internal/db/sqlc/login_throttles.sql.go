@@ -64,6 +64,52 @@ func (q *Queries) GetLoginThrottle(ctx context.Context, arg GetLoginThrottlePara
 	return i, err
 }
 
+const getLoginThrottleSnapshot = `-- name: GetLoginThrottleSnapshot :many
+SELECT scope, key_hash, failure_count, window_started_at, blocked_until, expires_at
+FROM login_throttles
+WHERE (scope = $1 AND key_hash = $2)
+   OR (scope = $3 AND key_hash = $4)
+`
+
+type GetLoginThrottleSnapshotParams struct {
+	AccountScope   string `json:"account_scope"`
+	AccountKeyHash string `json:"account_key_hash"`
+	ClientScope    string `json:"client_scope"`
+	ClientKeyHash  string `json:"client_key_hash"`
+}
+
+func (q *Queries) GetLoginThrottleSnapshot(ctx context.Context, arg GetLoginThrottleSnapshotParams) ([]LoginThrottle, error) {
+	rows, err := q.db.Query(ctx, getLoginThrottleSnapshot,
+		arg.AccountScope,
+		arg.AccountKeyHash,
+		arg.ClientScope,
+		arg.ClientKeyHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoginThrottle{}
+	for rows.Next() {
+		var i LoginThrottle
+		if err := rows.Scan(
+			&i.Scope,
+			&i.KeyHash,
+			&i.FailureCount,
+			&i.WindowStartedAt,
+			&i.BlockedUntil,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const incrementLoginThrottle = `-- name: IncrementLoginThrottle :one
 INSERT INTO login_throttles (
     scope,

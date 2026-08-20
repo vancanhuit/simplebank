@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"net"
 	"strings"
 	"time"
@@ -33,30 +32,24 @@ func (s *SQLStore) CheckLoginThrottle(
 	clientIP string,
 	now time.Time,
 ) (LoginThrottleDecision, error) {
-	accountRetryAfter, err := s.loginThrottleRetryAfter(
-		ctx,
-		loginThrottleScopeAccount,
-		loginThrottleHash(loginThrottleScopeAccount, normalizeLoginUsername(username)),
-		now,
-	)
+	throttles, err := s.GetLoginThrottleSnapshot(ctx, sqlcdb.GetLoginThrottleSnapshotParams{
+		AccountScope:   loginThrottleScopeAccount,
+		AccountKeyHash: loginThrottleHash(loginThrottleScopeAccount, normalizeLoginUsername(username)),
+		ClientScope:    loginThrottleScopeClient,
+		ClientKeyHash:  loginThrottleHash(loginThrottleScopeClient, normalizeClientIP(clientIP)),
+	})
 	if err != nil {
-		return LoginThrottleDecision{}, err
+		return LoginThrottleDecision{}, ClassifyError(err)
 	}
 
-	clientRetryAfter, err := s.loginThrottleRetryAfter(
-		ctx,
-		loginThrottleScopeClient,
-		loginThrottleHash(loginThrottleScopeClient, normalizeClientIP(clientIP)),
-		now,
-	)
-	if err != nil {
-		return LoginThrottleDecision{}, err
+	var retryAfter time.Duration
+	for _, throttle := range throttles {
+		currentRetryAfter := retryAfterFromThrottle(throttle, now)
+		if currentRetryAfter > retryAfter {
+			retryAfter = currentRetryAfter
+		}
 	}
-
-	if clientRetryAfter > accountRetryAfter {
-		accountRetryAfter = clientRetryAfter
-	}
-	return LoginThrottleDecision{RetryAfter: accountRetryAfter}, nil
+	return LoginThrottleDecision{RetryAfter: retryAfter}, nil
 }
 
 func (s *SQLStore) RecordLoginFailure(
@@ -152,26 +145,6 @@ func recordLoginThrottleFailure(
 		return 0, ClassifyError(err)
 	}
 	return cooldown, nil
-}
-
-func (s *SQLStore) loginThrottleRetryAfter(
-	ctx context.Context,
-	scope string,
-	keyHash string,
-	now time.Time,
-) (time.Duration, error) {
-	throttle, err := s.GetLoginThrottle(ctx, sqlcdb.GetLoginThrottleParams{
-		Scope:   scope,
-		KeyHash: keyHash,
-	})
-	if err != nil {
-		classified := ClassifyError(err)
-		if errors.Is(classified, ErrRecordNotFound) {
-			return 0, nil
-		}
-		return 0, classified
-	}
-	return retryAfterFromThrottle(throttle, now), nil
 }
 
 func retryAfterFromThrottle(throttle sqlcdb.LoginThrottle, now time.Time) time.Duration {

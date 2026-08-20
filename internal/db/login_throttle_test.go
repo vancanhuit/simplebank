@@ -3,11 +3,18 @@
 package store
 
 import (
+	"context"
 	"fmt"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
 func TestLoginThrottle_AccountBlocksAtFifthFailure(t *testing.T) {
@@ -216,6 +223,50 @@ func TestLoginThrottle_IsSharedAcrossStoreInstances(t *testing.T) {
 	}
 }
 
+func TestLoginThrottle_CheckUsesSingleSnapshot(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	username := throttleTestUsername("single-snapshot")
+	clientIP := throttleTestIP()
+	baseStore := New(testPool)
+
+	for i := range 4 {
+		decision, err := baseStore.RecordLoginFailure(t.Context(), username, clientIP, now)
+		if err != nil {
+			t.Fatalf("seed failure %d: %v", i+1, err)
+		}
+		if decision.RetryAfter != 0 {
+			t.Fatalf("seed failure %d retry_after = %s, want 0", i+1, decision.RetryAfter)
+		}
+	}
+
+	hookedStore := &SQLStore{
+		Queries: sqlcdb.New(&loginThrottleSnapshotHookDB{
+			inner: testPool,
+			runHook: func(ctx context.Context) error {
+				_, err := baseStore.RecordLoginFailure(ctx, username, clientIP, now)
+				return err
+			},
+		}),
+		connPool: testPool,
+	}
+
+	decision, err := hookedStore.CheckLoginThrottle(t.Context(), username, clientIP, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.RetryAfter != 30*time.Second {
+		t.Fatalf("check retry_after = %s, want %s", decision.RetryAfter, 30*time.Second)
+	}
+
+	observed, err := baseStore.CheckLoginThrottle(t.Context(), username, clientIP, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed.RetryAfter != 30*time.Second {
+		t.Fatalf("persisted retry_after = %s, want %s", observed.RetryAfter, 30*time.Second)
+	}
+}
+
 func TestLoginThrottle_ExpiredRowsAreDeleted(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Microsecond)
 	oldUsername := throttleTestUsername("expired-old")
@@ -284,4 +335,72 @@ func loginThrottleKeyCount(t *testing.T, keyHashes ...string) int {
 		t.Fatal(err)
 	}
 	return count
+}
+
+type loginThrottleSnapshotHookDB struct {
+	inner   sqlcdb.DBTX
+	runHook func(context.Context) error
+	fired   atomic.Bool
+}
+
+func (db *loginThrottleSnapshotHookDB) Exec(
+	ctx context.Context,
+	sql string,
+	args ...interface{},
+) (pgconn.CommandTag, error) {
+	return db.inner.Exec(ctx, sql, args...)
+}
+
+func (db *loginThrottleSnapshotHookDB) Query(
+	ctx context.Context,
+	sql string,
+	args ...interface{},
+) (pgx.Rows, error) {
+	if strings.Contains(sql, "-- name: GetLoginThrottleSnapshot :many") {
+		if err := db.fire(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return db.inner.Query(ctx, sql, args...)
+}
+
+func (db *loginThrottleSnapshotHookDB) QueryRow(
+	ctx context.Context,
+	sql string,
+	args ...interface{},
+) pgx.Row {
+	row := db.inner.QueryRow(ctx, sql, args...)
+	if strings.Contains(sql, "-- name: GetLoginThrottle :one") &&
+		len(args) > 0 &&
+		args[0] == loginThrottleScopeAccount {
+		return loginThrottleSnapshotHookRow{
+			Row: row,
+			hook: func() error {
+				return db.fire(ctx)
+			},
+		}
+	}
+	return row
+}
+
+func (db *loginThrottleSnapshotHookDB) fire(ctx context.Context) error {
+	if !db.fired.CompareAndSwap(false, true) {
+		return nil
+	}
+	return db.runHook(ctx)
+}
+
+type loginThrottleSnapshotHookRow struct {
+	pgx.Row
+	hook func() error
+}
+
+func (r loginThrottleSnapshotHookRow) Scan(dest ...interface{}) error {
+	if err := r.Row.Scan(dest...); err != nil {
+		return err
+	}
+	if r.hook != nil {
+		return r.hook()
+	}
+	return nil
 }

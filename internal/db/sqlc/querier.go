@@ -26,6 +26,7 @@ type Querier interface {
 	GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountLedgerBalance(ctx context.Context, accountID uuid.UUID) (int64, error)
 	GetLoginThrottle(ctx context.Context, arg GetLoginThrottleParams) (LoginThrottle, error)
+	GetLoginThrottleSnapshot(ctx context.Context, arg GetLoginThrottleSnapshotParams) ([]LoginThrottle, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionForUpdate(ctx context.Context, id uuid.UUID) (Session, error)
 	GetTransferBySourceAndIdempotencyKey(ctx context.Context, arg GetTransferBySourceAndIdempotencyKeyParams) (Transfer, error)

@@ -4,6 +4,12 @@ FROM login_throttles
 WHERE scope = $1 AND key_hash = $2
 LIMIT 1;
 
+-- name: GetLoginThrottleSnapshot :many
+SELECT *
+FROM login_throttles
+WHERE (scope = sqlc.arg(account_scope) AND key_hash = sqlc.arg(account_key_hash))
+   OR (scope = sqlc.arg(client_scope) AND key_hash = sqlc.arg(client_key_hash));
+
 -- name: IncrementLoginThrottle :one
 INSERT INTO login_throttles (
     scope,
