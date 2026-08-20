@@ -356,6 +356,31 @@ func TestCreateUserPasswordFifteenBytesAccepted(t *testing.T) {
 	}
 }
 
+func TestCreateUserMultibytePasswordAccepted(t *testing.T) {
+	t.Parallel()
+	fake := fakeStore{
+		createUserTx: func(_ context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
+			return sqlcdb.User{
+				Username:  arg.Username,
+				FullName:  arg.FullName,
+				Email:     arg.Email,
+				CreatedAt: time.Now(),
+			}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	body := createUserBody("alice", strings.Repeat("é", 8), "Alice", "alice@example.com")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for multibyte password, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateUserUsernameExistsReturnsGenericAccepted(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{

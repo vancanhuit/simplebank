@@ -21,6 +21,9 @@ func (cv *customValidator) Validate(i any) error {
 
 func newValidator() *customValidator {
 	v := validator.New(validator.WithRequiredStructEnabled())
+	if err := v.RegisterValidation("minbytes", validateMinBytes); err != nil {
+		panic(err)
+	}
 	if err := v.RegisterValidation("maxbytes", validateMaxBytes); err != nil {
 		panic(err)
 	}
@@ -41,13 +44,25 @@ func bindValidate[T any](c *echo.Context) (T, error) {
 	return req, nil
 }
 
-// validateMaxBytes enforces a maximum length in bytes (not runes). The builtin
-// max rule counts runes, which lets a multibyte string exceed a byte-oriented
-// limit such as bcrypt's 72-byte cap.
+// validateMinBytes and validateMaxBytes enforce byte-length bounds (not runes).
+// The builtin min/max rules count runes, which lets a multibyte string slip
+// past a byte-oriented policy such as bcrypt's 72-byte cap.
+func validateMinBytes(fl validator.FieldLevel) bool {
+	return validateBytes(fl, func(length, limit int) bool {
+		return length >= limit
+	})
+}
+
 func validateMaxBytes(fl validator.FieldLevel) bool {
+	return validateBytes(fl, func(length, limit int) bool {
+		return length <= limit
+	})
+}
+
+func validateBytes(fl validator.FieldLevel, ok func(length, limit int) bool) bool {
 	limit, err := strconv.Atoi(fl.Param())
 	if err != nil {
 		return false
 	}
-	return len(fl.Field().String()) <= limit
+	return ok(len(fl.Field().String()), limit)
 }

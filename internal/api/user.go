@@ -47,7 +47,7 @@ func hashRefreshToken(token string) string {
 
 type createUserRequest struct {
 	Username string `json:"username" validate:"required,alphanum"`
-	Password string `json:"password" validate:"required,min=15,maxbytes=72"`
+	Password string `json:"password" validate:"required,minbytes=15,maxbytes=72"`
 	FullName string `json:"full_name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 }
