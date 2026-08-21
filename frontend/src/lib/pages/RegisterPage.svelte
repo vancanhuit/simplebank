@@ -8,16 +8,27 @@
   import Alert from "../components/Alert.svelte";
   import Link from "../components/Link.svelte";
 
+  const passwordEncoder = new TextEncoder();
+  const passwordLengthError = "Password must be 15 to 72 UTF-8 bytes.";
+
   let fullName = $state("");
   let username = $state("");
   let email = $state("");
   let password = $state("");
+  let passwordError = $state<string | null>(null);
   let error = $state<string | null>(null);
   let submitting = $state(false);
 
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     error = null;
+    passwordError = null;
+    const passwordBytes = passwordEncoder.encode(password).length;
+    if (passwordBytes < 15 || passwordBytes > 72) {
+      passwordError = passwordLengthError;
+      return;
+    }
+
     submitting = true;
     try {
       await auth.register({
@@ -57,9 +68,11 @@
       type="password"
       bind:value={password}
       autocomplete="new-password"
-      minlength={15}
-      maxlength={72}
-      hint="At least 15 characters."
+      hint="15 to 72 UTF-8 bytes."
+      error={passwordError ?? undefined}
+      oninput={() => {
+        passwordError = null;
+      }}
       required
     />
 
