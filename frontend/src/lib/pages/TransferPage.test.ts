@@ -136,26 +136,23 @@ describe("TransferPage", () => {
       .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
       .mockResolvedValueOnce(jsonResponse(503, { error: "temporary failure" }))
       .mockResolvedValueOnce(
-        jsonResponse(
-          200,
-          ({
-            transfer: {
-              id: "tx-retry",
-              from_account_id: "acct-1",
-              to_account_id: "acct-2",
-              amount: 5000,
-              idempotency_key: idempotencyKey,
-              created_at: "2026-08-15T12:00:00Z",
-            },
-            from_account: {
-              id: "acct-1",
-              owner: "alice",
-              currency: "USD",
-              balance: 95000,
-              created_at: "2026-01-01T00:00:00Z",
-            },
-          }) satisfies TransferResult,
-        ),
+        jsonResponse(200, {
+          transfer: {
+            id: "tx-retry",
+            from_account_id: "acct-1",
+            to_account_id: "acct-2",
+            amount: 5000,
+            idempotency_key: idempotencyKey,
+            created_at: "2026-08-15T12:00:00Z",
+          },
+          from_account: {
+            id: "acct-1",
+            owner: "alice",
+            currency: "USD",
+            balance: 95000,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        } satisfies TransferResult),
       )
       .mockResolvedValueOnce(jsonResponse(200, accounts.items));
 
