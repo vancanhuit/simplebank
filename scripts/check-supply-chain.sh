@@ -11,7 +11,7 @@ while IFS= read -r -d '' file; do
   workflow_files+=("$file")
 done < <(
   if [[ -d .github/workflows ]]; then
-    find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 | sort -z
+    find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 | sort -z
   fi
 )
 
@@ -48,7 +48,7 @@ if [[ -n "$bad_compose_versions" ]]; then
 fi
 
 bad_mise_pipes="$(
-  grep -HnEi 'mise\.run[^|]*\|[[:space:]]*(sh|bash)\b' Dockerfile "${yaml_files[@]}" || true
+  grep -HnE 'mise\.run.*\|' Dockerfile || true
 )"
 if [[ -n "$bad_mise_pipes" ]]; then
   printf 'mutable mise installer pipe found:\n%s\nDownload a versioned mise artifact and verify its checksum before use.\n' "$bad_mise_pipes" >&2
