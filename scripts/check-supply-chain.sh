@@ -261,6 +261,14 @@ def reaches_supply_chain(job: str, needs: dict[str, list[str]], seen: set[str]) 
     )
 
 
+def directly_runs(body: str, command: str) -> bool:
+    return re.search(
+        rf"^\s*-\s+run:\s+{re.escape(command)}\s*(?:#.*)?$",
+        body,
+        re.MULTILINE,
+    ) is not None
+
+
 for workflow_name in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
     path = Path(workflow_name)
     if not path.exists():
@@ -270,10 +278,10 @@ for workflow_name in (".github/workflows/ci.yml", ".github/workflows/release.yml
         print(f"workflow must define a supply-chain job:\n{path}", file=sys.stderr)
         raise SystemExit(1)
     supply_body = bodies["supply-chain"]
-    if "scripts/check-supply-chain.sh" not in supply_body:
+    if not directly_runs(supply_body, "scripts/check-supply-chain.sh"):
         print(f"supply-chain job must run scripts/check-supply-chain.sh:\n{path}", file=sys.stderr)
         raise SystemExit(1)
-    if "scripts/check-supply-chain-regression.sh" not in supply_body:
+    if not directly_runs(supply_body, "scripts/check-supply-chain-regression.sh"):
         print(
             "supply-chain job must run scripts/check-supply-chain-regression.sh:"
             f"\n{path}",

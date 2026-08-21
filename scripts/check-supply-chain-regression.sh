@@ -237,19 +237,23 @@ run_expect_fail \
 
 missing_regression_fixture="$scratch_dir/missing-regression-step"
 write_baseline_fixture "$missing_regression_fixture"
-cat > "$missing_regression_fixture/.github/workflows/release.yml" <<'EOF'
-name: Release
-on:
-  push:
-    tags: ["v*"]
+cat > "$missing_regression_fixture/.github/workflows/ci.yml" <<'EOF'
+name: CI
+on: pull_request
 jobs:
   supply-chain:
     runs-on: ubuntu-latest
     steps:
       - run: scripts/check-supply-chain.sh
+      # scripts/check-supply-chain-regression.sh
+  unit:
+    runs-on: ubuntu-latest
+    needs: [supply-chain]
+    steps:
+      - run: go test ./...
 EOF
 run_expect_fail \
   "missing committed regression execution" \
   "$missing_regression_fixture" \
   "supply-chain job must run scripts/check-supply-chain-regression.sh:" \
-  ".github/workflows/release.yml"
+  ".github/workflows/ci.yml"
