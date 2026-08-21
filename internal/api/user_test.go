@@ -672,6 +672,13 @@ func TestIssueTokenPairUsesOneSessionID(t *testing.T) {
 	if accessPayload.ID != refreshPayload.ID {
 		t.Fatalf("token IDs differ: access %s refresh %s", accessPayload.ID, refreshPayload.ID)
 	}
+	if !accessPayload.SessionBound || !refreshPayload.SessionBound {
+		t.Fatalf(
+			"new token pair must be session-bound: access=%t refresh=%t",
+			accessPayload.SessionBound,
+			refreshPayload.SessionBound,
+		)
+	}
 }
 
 func TestLoginUserWrongPassword(t *testing.T) {

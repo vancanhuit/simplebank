@@ -24,29 +24,30 @@ type CurrencyLimit struct {
 }
 
 type Config struct {
-	HTTPAddr            string
-	DBSource            string
-	DBMaxConns          int
-	DBMinConns          int
-	DBMaxConnLifetime   time.Duration
-	DBMaxConnIdleTime   time.Duration
-	JWTSecret           string
-	AccessTTL           time.Duration
-	RefreshTTL          time.Duration
-	SMTPHost            string
-	SMTPPort            int
-	SMTPUsername        string
-	SMTPPassword        string
-	SMTPFrom            string
-	SMTPInsecure        bool
-	SMTPSSL             bool
-	SMTPTLSCAFile       string
-	RiverMaxWorkers     int
-	TLSCertFile         string
-	TLSKeyFile          string
-	TrustedProxies      []string
-	PublicBaseURL       string
-	SessionCookieSecure bool
+	HTTPAddr                string
+	DBSource                string
+	DBMaxConns              int
+	DBMinConns              int
+	DBMaxConnLifetime       time.Duration
+	DBMaxConnIdleTime       time.Duration
+	JWTSecret               string
+	AccessTTL               time.Duration
+	RefreshTTL              time.Duration
+	AllowLegacyAccessTokens bool
+	SMTPHost                string
+	SMTPPort                int
+	SMTPUsername            string
+	SMTPPassword            string
+	SMTPFrom                string
+	SMTPInsecure            bool
+	SMTPSSL                 bool
+	SMTPTLSCAFile           string
+	RiverMaxWorkers         int
+	TLSCertFile             string
+	TLSKeyFile              string
+	TrustedProxies          []string
+	PublicBaseURL           string
+	SessionCookieSecure     bool
 	// TransferLimits maps a currency code to its transfer ceilings. Because a
 	// transfer's two accounts share one currency, each request resolves to a
 	// single currency's limits. A currency absent from the map disables its
@@ -170,6 +171,7 @@ func Flags() []cli.Flag {
 		&cli.StringFlag{Name: "jwt-secret", Sources: cli.EnvVars("JWT_SECRET")},
 		&cli.DurationFlag{Name: "access-ttl", Value: 15 * time.Minute, Sources: cli.EnvVars("ACCESS_TTL")},
 		&cli.DurationFlag{Name: "refresh-ttl", Value: 24 * time.Hour, Sources: cli.EnvVars("REFRESH_TTL")},
+		&cli.BoolFlag{Name: "allow-legacy-access-tokens", Sources: cli.EnvVars("ALLOW_LEGACY_ACCESS_TOKENS")},
 		&cli.StringFlag{Name: "smtp-host", Sources: cli.EnvVars("SMTP_HOST")},
 		&cli.IntFlag{Name: "smtp-port", Value: 1025, Sources: cli.EnvVars("SMTP_PORT")},
 		&cli.StringFlag{Name: "smtp-username", Sources: cli.EnvVars("SMTP_USERNAME")},
@@ -202,6 +204,7 @@ func FromCommand(cmd *cli.Command) Config {
 		JWTSecret:               cmd.String("jwt-secret"),
 		AccessTTL:               cmd.Duration("access-ttl"),
 		RefreshTTL:              cmd.Duration("refresh-ttl"),
+		AllowLegacyAccessTokens: cmd.Bool("allow-legacy-access-tokens"),
 		SMTPHost:                cmd.String("smtp-host"),
 		SMTPPort:                cmd.Int("smtp-port"),
 		SMTPUsername:            cmd.String("smtp-username"),

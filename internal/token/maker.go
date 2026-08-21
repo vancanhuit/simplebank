@@ -21,11 +21,12 @@ const (
 )
 
 type Payload struct {
-	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username"`
-	Role      string    `json:"role"`
-	TokenType Type      `json:"token_type"`
-	Nonce     string    `json:"nonce,omitempty"`
+	ID           uuid.UUID `json:"id"`
+	Username     string    `json:"username"`
+	Role         string    `json:"role"`
+	TokenType    Type      `json:"token_type"`
+	Nonce        string    `json:"nonce,omitempty"`
+	SessionBound bool      `json:"session_bound,omitempty"`
 	jwt.RegisteredClaims
 	expectedType Type
 }
@@ -55,11 +56,12 @@ func NewPayload(username, role string, tokenType Type, duration time.Duration) (
 func NewPayloadWithID(id uuid.UUID, username, role string, tokenType Type, duration time.Duration) *Payload {
 	now := time.Now()
 	return &Payload{
-		ID:        id,
-		Username:  username,
-		Role:      role,
-		TokenType: tokenType,
-		Nonce:     uuid.NewString(),
+		ID:           id,
+		Username:     username,
+		Role:         role,
+		TokenType:    tokenType,
+		Nonce:        uuid.NewString(),
+		SessionBound: true,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        id.String(),
 			Subject:   username,

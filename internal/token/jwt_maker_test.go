@@ -30,6 +30,9 @@ func TestJWTMaker(t *testing.T) {
 	if got.Username != "alice" || got.Role != "depositor" {
 		t.Fatalf("unexpected payload: %+v", got)
 	}
+	if !got.SessionBound {
+		t.Fatal("new token must carry session_bound=true")
+	}
 }
 
 func TestJWTMakerExpired(t *testing.T) {

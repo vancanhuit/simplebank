@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 	"github.com/vancanhuit/simplebank/internal/token"
@@ -34,6 +36,17 @@ func bearerWithID(t *testing.T, username string, id uuid.UUID) string {
 		t.Fatal(err)
 	}
 	return "Bearer " + tok
+}
+
+func legacyBearerWithID(t *testing.T, username string, id uuid.UUID) string {
+	t.Helper()
+	payload := token.NewPayloadWithID(id, username, roleDepositor, token.Access, time.Minute)
+	payload.SessionBound = false
+	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, payload).SignedString([]byte(testSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "Bearer " + raw
 }
 
 func protectedAccountsRequest(t *testing.T, s *Server, auth string) *httptest.ResponseRecorder {
@@ -131,6 +144,85 @@ func TestProtectedRouteRejectsRefreshToken(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for refresh bearer, got %d", rec.Code)
+	}
+}
+
+func TestProtectedRouteRejectsLegacyAccessTokenByDefault(t *testing.T) {
+	t.Parallel()
+	sessionID := uuid.New()
+	fake := fakeStore{
+		listAccounts: func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
+			return []sqlcdb.Account{}, nil
+		},
+	}
+
+	rec := protectedAccountsRequest(
+		t,
+		newTestServerWithStore(t, fake),
+		legacyBearerWithID(t, "alice", sessionID),
+	)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for legacy token by default, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProtectedRouteAcceptsLegacyAccessTokenWhenCompatibilityEnabled(t *testing.T) {
+	t.Parallel()
+	sessionID := uuid.New()
+	fake := fakeStore{
+		validateAccessSession: func(context.Context, uuid.UUID, string, time.Time) error {
+			t.Fatal("legacy compatibility must not require a session row")
+			return nil
+		},
+		listAccounts: func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
+			return []sqlcdb.Account{}, nil
+		},
+	}
+	s := newTestServerWithConfig(t, fake, config.Config{
+		JWTSecret:               testSecret,
+		AccessTTL:               time.Minute,
+		RefreshTTL:              time.Hour,
+		SessionCookieSecure:     true,
+		AllowLegacyAccessTokens: true,
+	})
+
+	rec := protectedAccountsRequest(t, s, legacyBearerWithID(t, "alice", sessionID))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for compatible legacy token, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProtectedRouteCompatibilityStillValidatesSessionBoundToken(t *testing.T) {
+	t.Parallel()
+	sessionID := uuid.New()
+	validated := false
+	fake := fakeStore{
+		validateAccessSession: func(context.Context, uuid.UUID, string, time.Time) error {
+			validated = true
+			return store.ErrInvalidSession
+		},
+		listAccounts: func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error) {
+			t.Fatal("invalid session-bound token must not reach handler")
+			return nil, nil
+		},
+	}
+	s := newTestServerWithConfig(t, fake, config.Config{
+		JWTSecret:               testSecret,
+		AccessTTL:               time.Minute,
+		RefreshTTL:              time.Hour,
+		SessionCookieSecure:     true,
+		AllowLegacyAccessTokens: true,
+	})
+
+	rec := protectedAccountsRequest(t, s, bearerWithID(t, "alice", sessionID))
+
+	if !validated {
+		t.Fatal("session-bound token must validate its PostgreSQL session")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for invalid bound session, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
 

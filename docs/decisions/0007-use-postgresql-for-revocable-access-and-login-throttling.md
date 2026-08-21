@@ -31,9 +31,30 @@ throttling.
 - Access JWTs, refresh JWTs, and the persisted `sessions.id` now share one
   stable UUID. Login creates a new UUIDv7 when opening a session; refresh-token
   renewal reuses the existing session ID while rotating token material in place.
+- Newly issued JWTs carry a signed `session_bound=true` claim. Protected-route
+  middleware always validates access tokens with that claim against PostgreSQL.
+  Access tokens whose claim is missing or false are rejected unless the
+  explicit `ALLOW_LEGACY_ACCESS_TOKENS` compatibility flag is enabled.
 - PostgreSQL remains the source of truth for login-throttle state keyed by
-  account and client IP, so cooldowns and revocations are consistent across all
-  replicas without node-local memory.
+  account and client IP. Login atomically locks and reserves both counters
+  before user lookup or bcrypt. The threshold reservation is admitted and sets
+  cooldown for later requests; a request that finds either counter actively
+  blocked rolls back without incrementing either counter.
+
+### Rolling deployment
+
+The legacy-token flag defaults to false and exists only to bridge replicas that
+still mint access JWTs without `session_bound`:
+
+1. Enable `ALLOW_LEGACY_ACCESS_TOKENS` on new replicas while old replicas remain.
+2. Remove every old replica.
+3. Wait one full configured `ACCESS_TTL` after the last old replica is removed.
+4. Disable `ALLOW_LEGACY_ACCESS_TOKENS`.
+
+Atomic deployments can keep the flag false. While compatibility is enabled,
+legacy access tokens remain valid by signature and expiry only; they cannot be
+revoked through the session table. Session-bound tokens never bypass
+PostgreSQL validation, regardless of the flag.
 
 ## Alternatives Considered
 
@@ -65,6 +86,9 @@ throttling.
   and the session row share the same stable ID.
 - Session revocation and login-throttle decisions are shared across replicas and
   survive process restarts.
+- Rolling upgrades have an explicit, temporary compatibility escape hatch for
+  pre-claim access JWTs. Leaving it enabled extends the unrevocable legacy-token
+  window, so operators must disable it after one access-token TTL.
 - API handlers keep their existing `internal/db.Store` seam; session validation
-  and throttle checks stay centralized in backend store methods rather than
-  spreading replica-local caches through handlers or middleware.
+  and atomic throttle admission stay centralized in backend store methods
+  rather than spreading replica-local caches through handlers or middleware.

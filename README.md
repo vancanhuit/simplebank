@@ -102,6 +102,7 @@ parentheses). Required: `DB_SOURCE`, `JWT_SECRET` (≥32 chars), `SMTP_FROM`.
 | `JWT_SECRET` | `--jwt-secret` | — | HS256 signing key, ≥32 chars (required) |
 | `ACCESS_TTL` | `--access-ttl` | `15m` | Access-token lifetime |
 | `REFRESH_TTL` | `--refresh-ttl` | `24h` | Refresh-token lifetime |
+| `ALLOW_LEGACY_ACCESS_TOKENS` | `--allow-legacy-access-tokens` | `false` | Temporarily accept signed access JWTs without `session_bound`; rolling upgrades only |
 | `SMTP_HOST` | `--smtp-host` | — | Mail server host |
 | `SMTP_PORT` | `--smtp-port` | `1025` | Mail server port |
 | `SMTP_USERNAME` | `--smtp-username` | — | Mail auth (optional) |
@@ -146,6 +147,30 @@ Refresh tokens are never returned in JSON responses; the browser receives them
 in the `simplebank_refresh` HttpOnly, `SameSite=Strict` cookie scoped to
 `/api/v1`, with `Secure` enabled by default. Only the renew/logout endpoints
 consume that cookie.
+
+New access JWTs carry a signed `session_bound=true` claim. Protected requests
+with that claim always validate the matching PostgreSQL session, so logout
+immediately revokes retained access tokens. Signed legacy access JWTs whose
+claim is missing or false are rejected by default.
+
+For a rolling deployment from replicas that mint legacy tokens:
+
+1. Deploy new replicas with `ALLOW_LEGACY_ACCESS_TOKENS=true` while old replicas
+   still serve traffic.
+2. Remove every old replica.
+3. Wait one full `ACCESS_TTL` from removal of the last old replica.
+4. Deploy or reconfigure the new replicas with
+   `ALLOW_LEGACY_ACCESS_TOKENS=false`.
+
+An atomic deployment may leave the flag false throughout. Do not leave
+compatibility enabled after the wait: accepted legacy tokens cannot be revoked
+through PostgreSQL sessions.
+
+Login admission is also shared through PostgreSQL. Each request atomically
+reserves both account and client-IP capacity before user lookup or bcrypt. The
+fifth account attempt and twentieth client attempt are admitted and start a
+cooldown for later requests; successful credentials clear only the account
+counter.
 
 ### Transfer limits
 

@@ -30,6 +30,12 @@ func (s *Server) authMiddleware() echo.MiddlewareFunc {
 			if err != nil {
 				return err
 			}
+			if !payload.SessionBound {
+				if !s.config.AllowLegacyAccessTokens {
+					return echo.ErrUnauthorized
+				}
+				return nil
+			}
 			err = s.store.ValidateAccessSession(
 				c.Request().Context(),
 				payload.ID,
