@@ -92,6 +92,10 @@ docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --lo
   .
 '''
 
+[tasks."supply-chain:check"]
+description = "Verify immutable CI and container dependencies"
+run = "scripts/check-supply-chain.sh"
+
 [tasks."hooks:install"]
 description = "Install git hooks"
 run = 'cog install-hook --all --overwrite'
