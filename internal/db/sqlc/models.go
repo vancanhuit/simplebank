@@ -29,7 +29,7 @@ type Entry struct {
 type LoginThrottle struct {
 	Scope           string             `json:"scope"`
 	KeyHash         string             `json:"key_hash"`
-	FailureCount    int32              `json:"failure_count"`
+	AttemptCount    int32              `json:"attempt_count"`
 	WindowStartedAt time.Time          `json:"window_started_at"`
 	BlockedUntil    pgtype.Timestamptz `json:"blocked_until"`
 	ExpiresAt       time.Time          `json:"expires_at"`

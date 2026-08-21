@@ -10,6 +10,56 @@ import (
 	"time"
 )
 
+const advanceLoginThrottleAttempt = `-- name: AdvanceLoginThrottleAttempt :one
+UPDATE login_throttles
+SET attempt_count = CASE
+        WHEN login_throttles.window_started_at <
+             $1::timestamptz - make_interval(secs => $2::integer)
+            THEN 1
+        ELSE login_throttles.attempt_count + 1
+    END,
+    window_started_at = $1::timestamptz,
+    blocked_until = CASE
+        WHEN login_throttles.window_started_at <
+             $1::timestamptz - make_interval(secs => $2::integer)
+            THEN NULL
+        ELSE login_throttles.blocked_until
+    END,
+    expires_at = $1::timestamptz +
+        make_interval(secs => $3::integer)
+WHERE scope = $4
+  AND key_hash = $5
+RETURNING scope, key_hash, attempt_count, window_started_at, blocked_until, expires_at
+`
+
+type AdvanceLoginThrottleAttemptParams struct {
+	Now              time.Time `json:"now"`
+	WindowSeconds    int32     `json:"window_seconds"`
+	RetentionSeconds int32     `json:"retention_seconds"`
+	Scope            string    `json:"scope"`
+	KeyHash          string    `json:"key_hash"`
+}
+
+func (q *Queries) AdvanceLoginThrottleAttempt(ctx context.Context, arg AdvanceLoginThrottleAttemptParams) (LoginThrottle, error) {
+	row := q.db.QueryRow(ctx, advanceLoginThrottleAttempt,
+		arg.Now,
+		arg.WindowSeconds,
+		arg.RetentionSeconds,
+		arg.Scope,
+		arg.KeyHash,
+	)
+	var i LoginThrottle
+	err := row.Scan(
+		&i.Scope,
+		&i.KeyHash,
+		&i.AttemptCount,
+		&i.WindowStartedAt,
+		&i.BlockedUntil,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const deleteExpiredLoginThrottles = `-- name: DeleteExpiredLoginThrottles :execrows
 DELETE FROM login_throttles
 WHERE expires_at <= $1
@@ -38,48 +88,24 @@ func (q *Queries) DeleteLoginThrottle(ctx context.Context, arg DeleteLoginThrott
 	return err
 }
 
-const getLoginThrottle = `-- name: GetLoginThrottle :one
-SELECT scope, key_hash, failure_count, window_started_at, blocked_until, expires_at
-FROM login_throttles
-WHERE scope = $1 AND key_hash = $2
-LIMIT 1
-`
-
-type GetLoginThrottleParams struct {
-	Scope   string `json:"scope"`
-	KeyHash string `json:"key_hash"`
-}
-
-func (q *Queries) GetLoginThrottle(ctx context.Context, arg GetLoginThrottleParams) (LoginThrottle, error) {
-	row := q.db.QueryRow(ctx, getLoginThrottle, arg.Scope, arg.KeyHash)
-	var i LoginThrottle
-	err := row.Scan(
-		&i.Scope,
-		&i.KeyHash,
-		&i.FailureCount,
-		&i.WindowStartedAt,
-		&i.BlockedUntil,
-		&i.ExpiresAt,
-	)
-	return i, err
-}
-
-const getLoginThrottleSnapshot = `-- name: GetLoginThrottleSnapshot :many
-SELECT scope, key_hash, failure_count, window_started_at, blocked_until, expires_at
+const getLoginThrottlePairForUpdate = `-- name: GetLoginThrottlePairForUpdate :many
+SELECT scope, key_hash, attempt_count, window_started_at, blocked_until, expires_at
 FROM login_throttles
 WHERE (scope = $1 AND key_hash = $2)
    OR (scope = $3 AND key_hash = $4)
+ORDER BY scope, key_hash
+FOR UPDATE
 `
 
-type GetLoginThrottleSnapshotParams struct {
+type GetLoginThrottlePairForUpdateParams struct {
 	AccountScope   string `json:"account_scope"`
 	AccountKeyHash string `json:"account_key_hash"`
 	ClientScope    string `json:"client_scope"`
 	ClientKeyHash  string `json:"client_key_hash"`
 }
 
-func (q *Queries) GetLoginThrottleSnapshot(ctx context.Context, arg GetLoginThrottleSnapshotParams) ([]LoginThrottle, error) {
-	rows, err := q.db.Query(ctx, getLoginThrottleSnapshot,
+func (q *Queries) GetLoginThrottlePairForUpdate(ctx context.Context, arg GetLoginThrottlePairForUpdateParams) ([]LoginThrottle, error) {
+	rows, err := q.db.Query(ctx, getLoginThrottlePairForUpdate,
 		arg.AccountScope,
 		arg.AccountKeyHash,
 		arg.ClientScope,
@@ -95,7 +121,7 @@ func (q *Queries) GetLoginThrottleSnapshot(ctx context.Context, arg GetLoginThro
 		if err := rows.Scan(
 			&i.Scope,
 			&i.KeyHash,
-			&i.FailureCount,
+			&i.AttemptCount,
 			&i.WindowStartedAt,
 			&i.BlockedUntil,
 			&i.ExpiresAt,
@@ -110,11 +136,11 @@ func (q *Queries) GetLoginThrottleSnapshot(ctx context.Context, arg GetLoginThro
 	return items, nil
 }
 
-const incrementLoginThrottle = `-- name: IncrementLoginThrottle :one
+const initializeLoginThrottlePair = `-- name: InitializeLoginThrottlePair :exec
 INSERT INTO login_throttles (
     scope,
     key_hash,
-    failure_count,
+    attempt_count,
     window_started_at,
     blocked_until,
     expires_at
@@ -122,61 +148,40 @@ INSERT INTO login_throttles (
 VALUES (
     $1,
     $2,
-    1,
+    0,
+    $3::timestamptz,
+    NULL,
+    $3::timestamptz + make_interval(secs => $4::integer)
+), (
+    $5,
+    $6,
+    0,
     $3::timestamptz,
     NULL,
     $3::timestamptz + make_interval(secs => $4::integer)
 )
-ON CONFLICT (scope, key_hash) DO UPDATE
-SET failure_count = CASE
-        WHEN login_throttles.window_started_at <=
-             $3::timestamptz - make_interval(secs => $5::integer)
-            THEN 1
-        ELSE login_throttles.failure_count + 1
-    END,
-    window_started_at = CASE
-        WHEN login_throttles.window_started_at <=
-             $3::timestamptz - make_interval(secs => $5::integer)
-            THEN $3::timestamptz
-        ELSE login_throttles.window_started_at
-    END,
-    blocked_until = CASE
-        WHEN login_throttles.window_started_at <=
-             $3::timestamptz - make_interval(secs => $5::integer)
-            THEN NULL
-        ELSE login_throttles.blocked_until
-    END,
-    expires_at = $3::timestamptz +
-        make_interval(secs => $4::integer)
-RETURNING scope, key_hash, failure_count, window_started_at, blocked_until, expires_at
+ON CONFLICT (scope, key_hash) DO NOTHING
 `
 
-type IncrementLoginThrottleParams struct {
-	Scope            string    `json:"scope"`
-	KeyHash          string    `json:"key_hash"`
+type InitializeLoginThrottlePairParams struct {
+	AccountScope     string    `json:"account_scope"`
+	AccountKeyHash   string    `json:"account_key_hash"`
 	Now              time.Time `json:"now"`
 	RetentionSeconds int32     `json:"retention_seconds"`
-	WindowSeconds    int32     `json:"window_seconds"`
+	ClientScope      string    `json:"client_scope"`
+	ClientKeyHash    string    `json:"client_key_hash"`
 }
 
-func (q *Queries) IncrementLoginThrottle(ctx context.Context, arg IncrementLoginThrottleParams) (LoginThrottle, error) {
-	row := q.db.QueryRow(ctx, incrementLoginThrottle,
-		arg.Scope,
-		arg.KeyHash,
+func (q *Queries) InitializeLoginThrottlePair(ctx context.Context, arg InitializeLoginThrottlePairParams) error {
+	_, err := q.db.Exec(ctx, initializeLoginThrottlePair,
+		arg.AccountScope,
+		arg.AccountKeyHash,
 		arg.Now,
 		arg.RetentionSeconds,
-		arg.WindowSeconds,
+		arg.ClientScope,
+		arg.ClientKeyHash,
 	)
-	var i LoginThrottle
-	err := row.Scan(
-		&i.Scope,
-		&i.KeyHash,
-		&i.FailureCount,
-		&i.WindowStartedAt,
-		&i.BlockedUntil,
-		&i.ExpiresAt,
-	)
-	return i, err
+	return err
 }
 
 const setLoginThrottleBlockedUntil = `-- name: SetLoginThrottleBlockedUntil :one
@@ -188,7 +193,7 @@ SET blocked_until = GREATEST(
     expires_at = GREATEST(expires_at, $1::timestamptz)
 WHERE scope = $2
   AND key_hash = $3
-RETURNING scope, key_hash, failure_count, window_started_at, blocked_until, expires_at
+RETURNING scope, key_hash, attempt_count, window_started_at, blocked_until, expires_at
 `
 
 type SetLoginThrottleBlockedUntilParams struct {
@@ -203,7 +208,7 @@ func (q *Queries) SetLoginThrottleBlockedUntil(ctx context.Context, arg SetLogin
 	err := row.Scan(
 		&i.Scope,
 		&i.KeyHash,
-		&i.FailureCount,
+		&i.AttemptCount,
 		&i.WindowStartedAt,
 		&i.BlockedUntil,
 		&i.ExpiresAt,

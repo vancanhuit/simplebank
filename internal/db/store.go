@@ -20,8 +20,7 @@ type Store interface {
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (Reconciliation, error)
 	RotateSessionTx(ctx context.Context, arg RotateSessionTxParams) (sqlcdb.Session, error)
 	ValidateAccessSession(ctx context.Context, id uuid.UUID, username string, now time.Time) error
-	CheckLoginThrottle(ctx context.Context, username string, clientIP string, now time.Time) (LoginThrottleDecision, error)
-	RecordLoginFailure(ctx context.Context, username string, clientIP string, now time.Time) (LoginThrottleDecision, error)
+	ReserveLoginAttempt(ctx context.Context, username string, clientIP string, now time.Time) (LoginAttemptAdmission, error)
 	ClearLoginAccountThrottle(ctx context.Context, username string) error
 }
 

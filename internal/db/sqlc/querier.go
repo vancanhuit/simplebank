@@ -13,6 +13,7 @@ import (
 
 type Querier interface {
 	AddAccountBalance(ctx context.Context, arg AddAccountBalanceParams) (Account, error)
+	AdvanceLoginThrottleAttempt(ctx context.Context, arg AdvanceLoginThrottleAttemptParams) (LoginThrottle, error)
 	BlockSession(ctx context.Context, id uuid.UUID) (Session, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateEntry(ctx context.Context, arg CreateEntryParams) (Entry, error)
@@ -25,14 +26,13 @@ type Querier interface {
 	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountLedgerBalance(ctx context.Context, accountID uuid.UUID) (int64, error)
-	GetLoginThrottle(ctx context.Context, arg GetLoginThrottleParams) (LoginThrottle, error)
-	GetLoginThrottleSnapshot(ctx context.Context, arg GetLoginThrottleSnapshotParams) ([]LoginThrottle, error)
+	GetLoginThrottlePairForUpdate(ctx context.Context, arg GetLoginThrottlePairForUpdateParams) ([]LoginThrottle, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionForUpdate(ctx context.Context, id uuid.UUID) (Session, error)
 	GetTransferBySourceAndIdempotencyKey(ctx context.Context, arg GetTransferBySourceAndIdempotencyKeyParams) (Transfer, error)
 	GetUser(ctx context.Context, username string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
-	IncrementLoginThrottle(ctx context.Context, arg IncrementLoginThrottleParams) (LoginThrottle, error)
+	InitializeLoginThrottlePair(ctx context.Context, arg InitializeLoginThrottlePairParams) error
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListTransfersByAccount(ctx context.Context, arg ListTransfersByAccountParams) ([]Transfer, error)
 	RotateSession(ctx context.Context, arg RotateSessionParams) (Session, error)

@@ -2,7 +2,7 @@
 CREATE TABLE login_throttles (
     scope             text NOT NULL CHECK (scope IN ('account', 'client')),
     key_hash          text NOT NULL,
-    failure_count     integer NOT NULL CHECK (failure_count > 0),
+    attempt_count     integer NOT NULL CHECK (attempt_count >= 0),
     window_started_at timestamptz NOT NULL,
     blocked_until     timestamptz,
     expires_at        timestamptz NOT NULL,

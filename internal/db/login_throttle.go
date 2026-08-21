@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -16,90 +18,98 @@ const (
 	loginThrottleBaseCooldown = 30 * time.Second
 	loginThrottleMaxCooldown  = 15 * time.Minute
 	loginThrottleRetention    = 30 * time.Minute
-	accountFailureThreshold   = int32(5)
-	clientFailureThreshold    = int32(20)
+	accountAttemptThreshold   = int32(5)
+	clientAttemptThreshold    = int32(20)
 	loginThrottleScopeAccount = "account"
 	loginThrottleScopeClient  = "client"
 )
 
-type LoginThrottleDecision struct {
+var errLoginAttemptBlocked = errors.New("login attempt blocked")
+
+type LoginAttemptAdmission struct {
 	RetryAfter time.Duration
 }
 
-func (s *SQLStore) CheckLoginThrottle(
+func (s *SQLStore) ReserveLoginAttempt(
 	ctx context.Context,
 	username string,
 	clientIP string,
 	now time.Time,
-) (LoginThrottleDecision, error) {
-	throttles, err := s.GetLoginThrottleSnapshot(ctx, sqlcdb.GetLoginThrottleSnapshotParams{
-		AccountScope:   loginThrottleScopeAccount,
-		AccountKeyHash: loginThrottleHash(loginThrottleScopeAccount, normalizeLoginUsername(username)),
-		ClientScope:    loginThrottleScopeClient,
-		ClientKeyHash:  loginThrottleHash(loginThrottleScopeClient, normalizeClientIP(clientIP)),
-	})
-	if err != nil {
-		return LoginThrottleDecision{}, ClassifyError(err)
-	}
+) (LoginAttemptAdmission, error) {
+	accountKeyHash := loginThrottleHash(
+		loginThrottleScopeAccount,
+		normalizeLoginUsername(username),
+	)
+	clientKeyHash := loginThrottleHash(
+		loginThrottleScopeClient,
+		normalizeClientIP(clientIP),
+	)
 
-	var retryAfter time.Duration
-	for _, throttle := range throttles {
-		currentRetryAfter := retryAfterFromThrottle(throttle, now)
-		if currentRetryAfter > retryAfter {
-			retryAfter = currentRetryAfter
-		}
-	}
-	return LoginThrottleDecision{RetryAfter: retryAfter}, nil
-}
-
-func (s *SQLStore) RecordLoginFailure(
-	ctx context.Context,
-	username string,
-	clientIP string,
-	now time.Time,
-) (LoginThrottleDecision, error) {
-	normalizedUsername := normalizeLoginUsername(username)
-	normalizedClientIP := normalizeClientIP(clientIP)
-	accountKeyHash := loginThrottleHash(loginThrottleScopeAccount, normalizedUsername)
-	clientKeyHash := loginThrottleHash(loginThrottleScopeClient, normalizedClientIP)
-
-	var decision LoginThrottleDecision
+	var admission LoginAttemptAdmission
 	err := s.execTx(ctx, func(q *sqlcdb.Queries) error {
 		if _, err := q.DeleteExpiredLoginThrottles(ctx, now); err != nil {
 			return ClassifyError(err)
 		}
+		if err := q.InitializeLoginThrottlePair(ctx, sqlcdb.InitializeLoginThrottlePairParams{
+			AccountScope:     loginThrottleScopeAccount,
+			AccountKeyHash:   accountKeyHash,
+			Now:              now,
+			RetentionSeconds: int32(loginThrottleRetention / time.Second),
+			ClientScope:      loginThrottleScopeClient,
+			ClientKeyHash:    clientKeyHash,
+		}); err != nil {
+			return ClassifyError(err)
+		}
 
-		accountRetryAfter, err := recordLoginThrottleFailure(
+		throttles, err := q.GetLoginThrottlePairForUpdate(
+			ctx,
+			sqlcdb.GetLoginThrottlePairForUpdateParams{
+				AccountScope:   loginThrottleScopeAccount,
+				AccountKeyHash: accountKeyHash,
+				ClientScope:    loginThrottleScopeClient,
+				ClientKeyHash:  clientKeyHash,
+			},
+		)
+		if err != nil {
+			return ClassifyError(err)
+		}
+		if len(throttles) != 2 {
+			return fmt.Errorf("lock login throttle pair: got %d rows, want 2", len(throttles))
+		}
+
+		for _, throttle := range throttles {
+			retryAfter := retryAfterFromThrottle(throttle, now)
+			if retryAfter > admission.RetryAfter {
+				admission.RetryAfter = retryAfter
+			}
+		}
+		if admission.RetryAfter > 0 {
+			return errLoginAttemptBlocked
+		}
+
+		if err := advanceLoginThrottleAttempt(
 			ctx,
 			q,
 			loginThrottleScopeAccount,
 			accountKeyHash,
 			now,
-			accountFailureThreshold,
-		)
-		if err != nil {
+			accountAttemptThreshold,
+		); err != nil {
 			return err
 		}
-
-		clientRetryAfter, err := recordLoginThrottleFailure(
+		return advanceLoginThrottleAttempt(
 			ctx,
 			q,
 			loginThrottleScopeClient,
 			clientKeyHash,
 			now,
-			clientFailureThreshold,
+			clientAttemptThreshold,
 		)
-		if err != nil {
-			return err
-		}
-
-		if clientRetryAfter > accountRetryAfter {
-			accountRetryAfter = clientRetryAfter
-		}
-		decision.RetryAfter = accountRetryAfter
-		return nil
 	})
-	return decision, err
+	if errors.Is(err, errLoginAttemptBlocked) {
+		return admission, nil
+	}
+	return admission, err
 }
 
 func (s *SQLStore) ClearLoginAccountThrottle(
@@ -112,39 +122,36 @@ func (s *SQLStore) ClearLoginAccountThrottle(
 	}))
 }
 
-func recordLoginThrottleFailure(
+func advanceLoginThrottleAttempt(
 	ctx context.Context,
 	q *sqlcdb.Queries,
 	scope string,
 	keyHash string,
 	now time.Time,
 	threshold int32,
-) (time.Duration, error) {
-	throttle, err := q.IncrementLoginThrottle(ctx, sqlcdb.IncrementLoginThrottleParams{
+) error {
+	throttle, err := q.AdvanceLoginThrottleAttempt(ctx, sqlcdb.AdvanceLoginThrottleAttemptParams{
+		Now:              now,
+		WindowSeconds:    int32(loginThrottleWindow / time.Second),
+		RetentionSeconds: int32(loginThrottleRetention / time.Second),
 		Scope:            scope,
 		KeyHash:          keyHash,
-		Now:              now,
-		RetentionSeconds: int32(loginThrottleRetention / time.Second),
-		WindowSeconds:    int32(loginThrottleWindow / time.Second),
 	})
 	if err != nil {
-		return 0, ClassifyError(err)
+		return ClassifyError(err)
 	}
 
-	cooldown := loginCooldown(throttle.FailureCount, threshold)
+	cooldown := loginCooldown(throttle.AttemptCount, threshold)
 	if cooldown == 0 {
-		return 0, nil
+		return nil
 	}
 
-	blockedUntil := now.Add(cooldown)
-	if _, err := q.SetLoginThrottleBlockedUntil(ctx, sqlcdb.SetLoginThrottleBlockedUntilParams{
-		BlockedUntil: blockedUntil,
+	_, err = q.SetLoginThrottleBlockedUntil(ctx, sqlcdb.SetLoginThrottleBlockedUntilParams{
+		BlockedUntil: now.Add(cooldown),
 		Scope:        scope,
 		KeyHash:      keyHash,
-	}); err != nil {
-		return 0, ClassifyError(err)
-	}
-	return cooldown, nil
+	})
+	return ClassifyError(err)
 }
 
 func retryAfterFromThrottle(throttle sqlcdb.LoginThrottle, now time.Time) time.Duration {
@@ -175,12 +182,12 @@ func normalizeClientIP(clientIP string) string {
 	return trimmed
 }
 
-func loginCooldown(failures, threshold int32) time.Duration {
-	if failures < threshold {
+func loginCooldown(attempts, threshold int32) time.Duration {
+	if attempts < threshold {
 		return 0
 	}
 
-	exponent := failures - threshold
+	exponent := attempts - threshold
 	if exponent > 10 {
 		exponent = 10
 	}

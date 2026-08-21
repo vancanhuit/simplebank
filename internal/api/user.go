@@ -76,22 +76,6 @@ func loginThrottleError(c *echo.Context, retryAfter time.Duration) error {
 	return echo.NewHTTPError(http.StatusTooManyRequests, "too many login attempts")
 }
 
-func (s *Server) invalidLogin(c *echo.Context, username string) error {
-	decision, err := s.store.RecordLoginFailure(
-		c.Request().Context(),
-		username,
-		c.RealIP(),
-		time.Now(),
-	)
-	if err != nil {
-		return err
-	}
-	if decision.RetryAfter > 0 {
-		return loginThrottleError(c, decision.RetryAfter)
-	}
-	return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
-}
-
 func (s *Server) queueVerifyEmailTx(ctx context.Context, tx pgx.Tx, username string) error {
 	if s.riverClient == nil {
 		return nil
@@ -175,12 +159,12 @@ func (s *Server) loginUser(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	decision, err := s.store.CheckLoginThrottle(ctx, req.Username, c.RealIP(), time.Now())
+	admission, err := s.store.ReserveLoginAttempt(ctx, req.Username, c.RealIP(), time.Now())
 	if err != nil {
 		return err
 	}
-	if decision.RetryAfter > 0 {
-		return loginThrottleError(c, decision.RetryAfter)
+	if admission.RetryAfter > 0 {
+		return loginThrottleError(c, admission.RetryAfter)
 	}
 
 	user, err := s.store.GetUser(ctx, req.Username)
@@ -189,12 +173,12 @@ func (s *Server) loginUser(c *echo.Context) error {
 			// Run a comparison against a dummy hash so an unknown username takes
 			// the same time as a wrong password (no enumeration via timing).
 			_ = password.Check(req.Password, dummyPasswordHash)
-			return s.invalidLogin(c, req.Username)
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 		}
 		return err
 	}
 	if err := password.Check(req.Password, user.HashedPassword); err != nil {
-		return s.invalidLogin(c, req.Username)
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 	}
 	if err := s.store.ClearLoginAccountThrottle(ctx, user.Username); err != nil {
 		return err

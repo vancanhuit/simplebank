@@ -50,8 +50,7 @@ type fakeStore struct {
 	listAccounts              func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
 	createAccountTx           func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
 	listTransfers             func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
-	checkLoginThrottle        func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error)
-	recordLoginFailure        func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error)
+	reserveLoginAttempt       func(context.Context, string, string, time.Time) (store.LoginAttemptAdmission, error)
 	validateAccessSession     func(context.Context, uuid.UUID, string, time.Time) error
 	clearLoginAccountThrottle func(context.Context, string) error
 }
@@ -108,28 +107,16 @@ func (f fakeStore) ListTransfersByAccount(ctx context.Context, arg sqlcdb.ListTr
 	return f.listTransfers(ctx, arg)
 }
 
-func (f fakeStore) CheckLoginThrottle(
+func (f fakeStore) ReserveLoginAttempt(
 	ctx context.Context,
 	username string,
 	clientIP string,
 	now time.Time,
-) (store.LoginThrottleDecision, error) {
-	if f.checkLoginThrottle == nil {
-		return store.LoginThrottleDecision{}, nil
+) (store.LoginAttemptAdmission, error) {
+	if f.reserveLoginAttempt == nil {
+		return store.LoginAttemptAdmission{}, nil
 	}
-	return f.checkLoginThrottle(ctx, username, clientIP, now)
-}
-
-func (f fakeStore) RecordLoginFailure(
-	ctx context.Context,
-	username string,
-	clientIP string,
-	now time.Time,
-) (store.LoginThrottleDecision, error) {
-	if f.recordLoginFailure == nil {
-		return store.LoginThrottleDecision{}, nil
-	}
-	return f.recordLoginFailure(ctx, username, clientIP, now)
+	return f.reserveLoginAttempt(ctx, username, clientIP, now)
 }
 
 func (f fakeStore) ClearLoginAccountThrottle(ctx context.Context, username string) error {
@@ -715,11 +702,11 @@ func TestLoginUserWrongPassword(t *testing.T) {
 	}
 }
 
-func TestLoginUserRejectsActiveAccountThrottle(t *testing.T) {
+func TestLoginUserRejectsDeniedReservationBeforeCredentialVerification(t *testing.T) {
 	t.Parallel()
 	const clientIP = "198.51.100.10"
 	fake := fakeStore{
-		checkLoginThrottle: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginThrottleDecision, error) {
+		reserveLoginAttempt: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginAttemptAdmission, error) {
 			if username != "alice" {
 				t.Fatalf("username = %q, want alice", username)
 			}
@@ -727,12 +714,12 @@ func TestLoginUserRejectsActiveAccountThrottle(t *testing.T) {
 				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
 			}
 			if now.IsZero() {
-				t.Fatal("throttle check must receive current time")
+				t.Fatal("attempt reservation must receive current time")
 			}
-			return store.LoginThrottleDecision{RetryAfter: 30 * time.Second}, nil
+			return store.LoginAttemptAdmission{RetryAfter: 30 * time.Second}, nil
 		},
 		getUser: func(context.Context, string) (sqlcdb.User, error) {
-			t.Fatal("active account throttle must reject before user lookup")
+			t.Fatal("denied reservation must reject before user lookup and bcrypt")
 			return sqlcdb.User{}, nil
 		},
 	}
@@ -744,42 +731,48 @@ func TestLoginUserRejectsActiveAccountThrottle(t *testing.T) {
 	assertLoginThrottleResponse(t, rec)
 }
 
-func TestLoginUserRejectsActiveClientThrottle(t *testing.T) {
+func TestLoginUserReservesAttemptBeforeUserLookup(t *testing.T) {
 	t.Parallel()
 	const clientIP = "198.51.100.11"
+	reserved := false
 	fake := fakeStore{
-		checkLoginThrottle: func(_ context.Context, username string, gotClientIP string, _ time.Time) (store.LoginThrottleDecision, error) {
+		reserveLoginAttempt: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginAttemptAdmission, error) {
+			reserved = true
 			if username != "alice" {
 				t.Fatalf("username = %q, want alice", username)
 			}
 			if gotClientIP != clientIP {
 				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
 			}
-			return store.LoginThrottleDecision{RetryAfter: 30 * time.Second}, nil
+			if now.IsZero() {
+				t.Fatal("attempt reservation must receive current time")
+			}
+			return store.LoginAttemptAdmission{}, nil
 		},
 		getUser: func(context.Context, string) (sqlcdb.User, error) {
-			t.Fatal("active client throttle must reject before user lookup")
-			return sqlcdb.User{}, nil
+			if !reserved {
+				t.Fatal("user lookup ran before attempt reservation")
+			}
+			return sqlcdb.User{}, store.ErrRecordNotFound
 		},
 	}
 	s := newTestServerWithStore(t, fake)
 
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("alice", testPassword), clientIP))
+	s.Handler().ServeHTTP(rec, newLoginRequest(loginBody("alice", "wrong-password"), clientIP))
 
-	assertLoginThrottleResponse(t, rec)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d (%s)", rec.Code, rec.Body.String())
+	}
 }
 
-func TestLoginUserRecordsUnknownUserFailure(t *testing.T) {
+func TestLoginUserUnknownUserUsesSingleReservation(t *testing.T) {
 	t.Parallel()
 	const clientIP = "198.51.100.12"
-	recorded := false
+	reservations := 0
 	fake := fakeStore{
-		getUser: func(context.Context, string) (sqlcdb.User, error) {
-			return sqlcdb.User{}, store.ErrRecordNotFound
-		},
-		recordLoginFailure: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginThrottleDecision, error) {
-			recorded = true
+		reserveLoginAttempt: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginAttemptAdmission, error) {
+			reservations++
 			if username != "ghost" {
 				t.Fatalf("username = %q, want ghost", username)
 			}
@@ -787,9 +780,12 @@ func TestLoginUserRecordsUnknownUserFailure(t *testing.T) {
 				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
 			}
 			if now.IsZero() {
-				t.Fatal("record failure must receive current time")
+				t.Fatal("attempt reservation must receive current time")
 			}
-			return store.LoginThrottleDecision{}, nil
+			return store.LoginAttemptAdmission{}, nil
+		},
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{}, store.ErrRecordNotFound
 		},
 		clearLoginAccountThrottle: func(context.Context, string) error {
 			t.Fatal("unknown user must not clear account throttle")
@@ -804,25 +800,22 @@ func TestLoginUserRecordsUnknownUserFailure(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for unknown user, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if !recorded {
-		t.Fatal("unknown user must record a login failure")
+	if reservations != 1 {
+		t.Fatalf("reservations = %d, want 1", reservations)
 	}
 }
 
-func TestLoginUserRecordsWrongPasswordFailure(t *testing.T) {
+func TestLoginUserWrongPasswordUsesSingleReservation(t *testing.T) {
 	t.Parallel()
 	hashed, err := password.Hash(testPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const clientIP = "198.51.100.13"
-	recorded := false
+	reservations := 0
 	fake := fakeStore{
-		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
-			return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
-		},
-		recordLoginFailure: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginThrottleDecision, error) {
-			recorded = true
+		reserveLoginAttempt: func(_ context.Context, username string, gotClientIP string, now time.Time) (store.LoginAttemptAdmission, error) {
+			reservations++
 			if username != "alice" {
 				t.Fatalf("username = %q, want alice", username)
 			}
@@ -830,9 +823,12 @@ func TestLoginUserRecordsWrongPasswordFailure(t *testing.T) {
 				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
 			}
 			if now.IsZero() {
-				t.Fatal("record failure must receive current time")
+				t.Fatal("attempt reservation must receive current time")
 			}
-			return store.LoginThrottleDecision{}, nil
+			return store.LoginAttemptAdmission{}, nil
+		},
+		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
 		},
 		createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
 			t.Fatal("session must not be created on a failed login")
@@ -851,12 +847,12 @@ func TestLoginUserRecordsWrongPasswordFailure(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for wrong password, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if !recorded {
-		t.Fatal("wrong password must record a login failure")
+	if reservations != 1 {
+		t.Fatalf("reservations = %d, want 1", reservations)
 	}
 }
 
-func TestLoginUserReturns429WhenFailureStartsCooldown(t *testing.T) {
+func TestLoginUserThresholdReservationStillReturnsGeneric401(t *testing.T) {
 	t.Parallel()
 	hashed, err := password.Hash(testPassword)
 	if err != nil {
@@ -864,20 +860,14 @@ func TestLoginUserReturns429WhenFailureStartsCooldown(t *testing.T) {
 	}
 	const clientIP = "198.51.100.14"
 	fake := fakeStore{
+		reserveLoginAttempt: func(context.Context, string, string, time.Time) (store.LoginAttemptAdmission, error) {
+			return store.LoginAttemptAdmission{}, nil
+		},
 		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
 			return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
 		},
-		recordLoginFailure: func(_ context.Context, username string, gotClientIP string, _ time.Time) (store.LoginThrottleDecision, error) {
-			if username != "alice" {
-				t.Fatalf("username = %q, want alice", username)
-			}
-			if gotClientIP != clientIP {
-				t.Fatalf("client IP = %q, want %q", gotClientIP, clientIP)
-			}
-			return store.LoginThrottleDecision{RetryAfter: 30 * time.Second}, nil
-		},
 		createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
-			t.Fatal("session must not be created when cooldown starts")
+			t.Fatal("session must not be created for wrong credentials")
 			return sqlcdb.Session{}, nil
 		},
 		clearLoginAccountThrottle: func(context.Context, string) error {
@@ -890,7 +880,9 @@ func TestLoginUserReturns429WhenFailureStartsCooldown(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, newLoginRequest(`{"username":"alice","password":"wrong-password"}`, clientIP))
 
-	assertLoginThrottleResponse(t, rec)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for admitted threshold attempt, got %d (%s)", rec.Code, rec.Body.String())
+	}
 }
 
 func TestLoginUserUnknown(t *testing.T) {
@@ -1054,33 +1046,17 @@ func TestLoginUserThrottleStoreErrorReturns500(t *testing.T) {
 		body string
 	}{
 		{
-			name: "check login throttle",
+			name: "reserve login attempt",
 			fake: fakeStore{
-				checkLoginThrottle: func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error) {
-					return store.LoginThrottleDecision{}, errors.New("check throttle failed")
+				reserveLoginAttempt: func(context.Context, string, string, time.Time) (store.LoginAttemptAdmission, error) {
+					return store.LoginAttemptAdmission{}, errors.New("reserve login attempt failed")
 				},
 				getUser: func(context.Context, string) (sqlcdb.User, error) {
-					t.Fatal("user lookup must not run when throttle check fails")
+					t.Fatal("user lookup must not run when attempt reservation fails")
 					return sqlcdb.User{}, nil
 				},
 			},
 			body: loginBody("alice", testPassword),
-		},
-		{
-			name: "record login failure",
-			fake: fakeStore{
-				getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
-					return sqlcdb.User{Username: username, HashedPassword: hashed}, nil
-				},
-				recordLoginFailure: func(context.Context, string, string, time.Time) (store.LoginThrottleDecision, error) {
-					return store.LoginThrottleDecision{}, errors.New("record failure failed")
-				},
-				createSession: func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error) {
-					t.Fatal("session must not be created when failure recording fails")
-					return sqlcdb.Session{}, nil
-				},
-			},
-			body: `{"username":"alice","password":"wrong-password"}`,
 		},
 		{
 			name: "clear account throttle",

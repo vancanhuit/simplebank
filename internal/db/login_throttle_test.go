@@ -3,177 +3,175 @@
 package store
 
 import (
-	"context"
 	"fmt"
-	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-
-	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
 
-func TestLoginThrottle_AccountBlocksAtFifthFailure(t *testing.T) {
+func TestLoginAttemptReservation_AccountThresholdAdmitsFifthAttempt(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	username := throttleTestUsername("account")
 	clientIP := throttleTestIP()
 
-	for i := range 4 {
-		decision, err := testStore.RecordLoginFailure(t.Context(), username, clientIP, now)
+	for attempt := range int(accountAttemptThreshold) {
+		admission, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
 		if err != nil {
-			t.Fatalf("failure %d: %v", i+1, err)
+			t.Fatalf("attempt %d: %v", attempt+1, err)
 		}
-		if decision.RetryAfter != 0 {
-			t.Fatalf("failure %d retry_after = %s, want 0", i+1, decision.RetryAfter)
+		if admission.RetryAfter != 0 {
+			t.Fatalf("attempt %d retry_after = %s, want admitted", attempt+1, admission.RetryAfter)
 		}
 	}
 
-	decision, err := testStore.RecordLoginFailure(t.Context(), username, clientIP, now)
+	denied, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.RetryAfter != 30*time.Second {
-		t.Fatalf("fifth failure retry_after = %s, want %s", decision.RetryAfter, 30*time.Second)
+	if denied.RetryAfter != 30*time.Second {
+		t.Fatalf("sixth attempt retry_after = %s, want %s", denied.RetryAfter, 30*time.Second)
 	}
 
-	check, err := testStore.CheckLoginThrottle(t.Context(), lowerTrim(username), lowerTrim(clientIP), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if check.RetryAfter != 30*time.Second {
-		t.Fatalf("check retry_after = %s, want %s", check.RetryAfter, 30*time.Second)
+	accountHash := loginThrottleHash(loginThrottleScopeAccount, normalizeLoginUsername(username))
+	if got := loginThrottleAttemptCount(t, loginThrottleScopeAccount, accountHash); got != accountAttemptThreshold {
+		t.Fatalf("account attempt_count = %d, want %d", got, accountAttemptThreshold)
 	}
 }
 
-func TestLoginThrottle_ClientBlocksAtTwentiethFailure(t *testing.T) {
+func TestLoginAttemptReservation_ClientThresholdAdmitsTwentiethAttempt(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	clientIP := throttleTestIP()
 
-	for i := range 19 {
-		decision, err := testStore.RecordLoginFailure(
+	for attempt := range int(clientAttemptThreshold) {
+		admission, err := testStore.ReserveLoginAttempt(
 			t.Context(),
-			throttleTestUsername(fmt.Sprintf("client-%02d", i)),
+			throttleTestUsername(fmt.Sprintf("client-%02d", attempt)),
 			clientIP,
 			now,
 		)
 		if err != nil {
-			t.Fatalf("failure %d: %v", i+1, err)
+			t.Fatalf("attempt %d: %v", attempt+1, err)
 		}
-		if decision.RetryAfter != 0 {
-			t.Fatalf("failure %d retry_after = %s, want 0", i+1, decision.RetryAfter)
+		if admission.RetryAfter != 0 {
+			t.Fatalf("attempt %d retry_after = %s, want admitted", attempt+1, admission.RetryAfter)
 		}
 	}
 
-	decision, err := testStore.RecordLoginFailure(
+	denied, err := testStore.ReserveLoginAttempt(
 		t.Context(),
-		throttleTestUsername("client-threshold"),
+		throttleTestUsername("client-denied"),
 		clientIP,
 		now,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.RetryAfter != 30*time.Second {
-		t.Fatalf("twentieth failure retry_after = %s, want %s", decision.RetryAfter, 30*time.Second)
+	if denied.RetryAfter != 30*time.Second {
+		t.Fatalf("twenty-first attempt retry_after = %s, want %s", denied.RetryAfter, 30*time.Second)
 	}
 
-	check, err := testStore.CheckLoginThrottle(t.Context(), throttleTestUsername("other-user"), clientIP, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if check.RetryAfter != 30*time.Second {
-		t.Fatalf("client throttle retry_after = %s, want %s", check.RetryAfter, 30*time.Second)
+	clientHash := loginThrottleHash(loginThrottleScopeClient, normalizeClientIP(clientIP))
+	if got := loginThrottleAttemptCount(t, loginThrottleScopeClient, clientHash); got != clientAttemptThreshold {
+		t.Fatalf("client attempt_count = %d, want %d", got, clientAttemptThreshold)
 	}
 }
 
-func TestLoginThrottle_CooldownDoublesAndCaps(t *testing.T) {
+func TestLoginAttemptReservation_CooldownDoublesAfterExpiryAndCaps(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	username := throttleTestUsername("cooldown")
 	clientIP := throttleTestIP()
-	wantByFailure := map[int]time.Duration{
-		5:  30 * time.Second,
-		6:  60 * time.Second,
-		7:  120 * time.Second,
-		8:  240 * time.Second,
-		9:  480 * time.Second,
-		10: 15 * time.Minute,
-		11: 15 * time.Minute,
+
+	for attempt := range int(accountAttemptThreshold - 1) {
+		admission, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
+		if err != nil {
+			t.Fatalf("seed attempt %d: %v", attempt+1, err)
+		}
+		if admission.RetryAfter != 0 {
+			t.Fatalf("seed attempt %d retry_after = %s, want admitted", attempt+1, admission.RetryAfter)
+		}
 	}
 
-	for i := range 11 {
-		decision, err := testStore.RecordLoginFailure(t.Context(), username, clientIP, now)
+	for attempt, want := range []time.Duration{
+		30 * time.Second,
+		60 * time.Second,
+		120 * time.Second,
+		240 * time.Second,
+		480 * time.Second,
+		15 * time.Minute,
+		15 * time.Minute,
+	} {
+		admission, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
 		if err != nil {
-			t.Fatalf("failure %d: %v", i+1, err)
+			t.Fatalf("cooldown attempt %d: %v", attempt+int(accountAttemptThreshold), err)
 		}
-		if want, ok := wantByFailure[i+1]; ok && decision.RetryAfter != want {
-			t.Fatalf("failure %d retry_after = %s, want %s", i+1, decision.RetryAfter, want)
+		if admission.RetryAfter != 0 {
+			t.Fatalf("cooldown attempt %d was not admitted: %s", attempt+int(accountAttemptThreshold), admission.RetryAfter)
 		}
+
+		denied, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
+		if err != nil {
+			t.Fatalf("cooldown check %d: %v", attempt+1, err)
+		}
+		if denied.RetryAfter != want {
+			t.Fatalf("cooldown %d retry_after = %s, want %s", attempt+1, denied.RetryAfter, want)
+		}
+		now = now.Add(want)
 	}
 }
 
-func TestLoginThrottle_WindowResetStartsAtOne(t *testing.T) {
+func TestLoginAttemptReservation_InactivityWindowResetsCount(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Microsecond)
 	username := throttleTestUsername("window")
 	clientIP := throttleTestIP()
 
-	for i := range 4 {
-		decision, err := testStore.RecordLoginFailure(t.Context(), username, clientIP, start)
+	for attempt := range int(accountAttemptThreshold - 1) {
+		admission, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, start)
 		if err != nil {
-			t.Fatalf("initial failure %d: %v", i+1, err)
+			t.Fatalf("initial attempt %d: %v", attempt+1, err)
 		}
-		if decision.RetryAfter != 0 {
-			t.Fatalf("initial failure %d retry_after = %s, want 0", i+1, decision.RetryAfter)
+		if admission.RetryAfter != 0 {
+			t.Fatalf("initial attempt %d retry_after = %s, want admitted", attempt+1, admission.RetryAfter)
 		}
 	}
 
-	resetAt := start.Add(15 * time.Minute)
-	decision, err := testStore.RecordLoginFailure(t.Context(), username, clientIP, resetAt)
+	resetAt := start.Add(loginThrottleWindow + time.Microsecond)
+	for attempt := range int(accountAttemptThreshold) {
+		admission, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, resetAt)
+		if err != nil {
+			t.Fatalf("post-reset attempt %d: %v", attempt+1, err)
+		}
+		if admission.RetryAfter != 0 {
+			t.Fatalf("post-reset attempt %d retry_after = %s, want admitted", attempt+1, admission.RetryAfter)
+		}
+	}
+
+	denied, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, resetAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.RetryAfter != 0 {
-		t.Fatalf("reset failure retry_after = %s, want 0", decision.RetryAfter)
-	}
-
-	for i := range 3 {
-		decision, err = testStore.RecordLoginFailure(t.Context(), username, clientIP, resetAt)
-		if err != nil {
-			t.Fatalf("post-reset failure %d: %v", i+2, err)
-		}
-		if decision.RetryAfter != 0 {
-			t.Fatalf("post-reset failure %d retry_after = %s, want 0", i+2, decision.RetryAfter)
-		}
-	}
-
-	decision, err = testStore.RecordLoginFailure(t.Context(), username, clientIP, resetAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decision.RetryAfter != 30*time.Second {
-		t.Fatalf("fifth post-reset failure retry_after = %s, want %s", decision.RetryAfter, 30*time.Second)
+	if denied.RetryAfter != 30*time.Second {
+		t.Fatalf("post-reset denied retry_after = %s, want %s", denied.RetryAfter, 30*time.Second)
 	}
 }
 
-func TestLoginThrottle_ClearAccountPreservesClient(t *testing.T) {
+func TestLoginAttemptReservation_ClearAccountPreservesClient(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	username := throttleTestUsername("clear-account")
 	clientIP := throttleTestIP()
 
-	if _, err := testStore.RecordLoginFailure(t.Context(), username, clientIP, now); err != nil {
+	if _, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now); err != nil {
 		t.Fatal(err)
 	}
-	for i := range 19 {
-		if _, err := testStore.RecordLoginFailure(
+	for attempt := 1; attempt < int(clientAttemptThreshold); attempt++ {
+		if _, err := testStore.ReserveLoginAttempt(
 			t.Context(),
-			throttleTestUsername(fmt.Sprintf("clear-client-%02d", i)),
+			throttleTestUsername(fmt.Sprintf("clear-client-%02d", attempt)),
 			clientIP,
 			now,
 		); err != nil {
-			t.Fatalf("client failure %d: %v", i+2, err)
+			t.Fatalf("client attempt %d: %v", attempt+1, err)
 		}
 	}
 
@@ -181,113 +179,100 @@ func TestLoginThrottle_ClearAccountPreservesClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	clientBlocked, err := testStore.CheckLoginThrottle(t.Context(), lowerTrim(username), clientIP, now)
+	clientDenied, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if clientBlocked.RetryAfter != 30*time.Second {
-		t.Fatalf("same IP retry_after = %s, want %s", clientBlocked.RetryAfter, 30*time.Second)
+	if clientDenied.RetryAfter != 30*time.Second {
+		t.Fatalf("same IP retry_after = %s, want %s", clientDenied.RetryAfter, 30*time.Second)
 	}
 
-	accountCleared, err := testStore.CheckLoginThrottle(t.Context(), lowerTrim(username), throttleTestIP(), now)
+	accountAdmitted, err := testStore.ReserveLoginAttempt(t.Context(), username, throttleTestIP(), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if accountCleared.RetryAfter != 0 {
-		t.Fatalf("different IP retry_after = %s, want 0", accountCleared.RetryAfter)
+	if accountAdmitted.RetryAfter != 0 {
+		t.Fatalf("cleared account retry_after = %s, want admitted", accountAdmitted.RetryAfter)
 	}
 }
 
-func TestLoginThrottle_IsSharedAcrossStoreInstances(t *testing.T) {
+func TestLoginAttemptReservation_IsSharedAcrossStoreInstances(t *testing.T) {
 	otherStore := New(testPool)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	username := throttleTestUsername("shared")
-	clientIP := "203.0.113.10"
+	clientIP := throttleTestIP()
 
-	for range 5 {
-		if _, err := testStore.RecordLoginFailure(
-			t.Context(), username, clientIP, now,
-		); err != nil {
+	for range int(accountAttemptThreshold) {
+		if _, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	decision, err := otherStore.CheckLoginThrottle(
-		t.Context(), username, clientIP, now,
-	)
+	denied, err := otherStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.RetryAfter <= 0 {
+	if denied.RetryAfter <= 0 {
 		t.Fatal("second store instance must observe account cooldown")
 	}
 }
 
-func TestLoginThrottle_CheckUsesSingleSnapshot(t *testing.T) {
+func TestLoginAttemptReservation_ConcurrentAccountAdmissionsAreBounded(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	username := throttleTestUsername("single-snapshot")
+	username := throttleTestUsername("concurrent-account")
 	clientIP := throttleTestIP()
-	baseStore := New(testPool)
 
-	for i := range 4 {
-		decision, err := baseStore.RecordLoginFailure(t.Context(), username, clientIP, now)
-		if err != nil {
-			t.Fatalf("seed failure %d: %v", i+1, err)
-		}
-		if decision.RetryAfter != 0 {
-			t.Fatalf("seed failure %d retry_after = %s, want 0", i+1, decision.RetryAfter)
-		}
-	}
+	admitted, denied := runConcurrentReservations(t, 30, func(int) (string, string) {
+		return username, clientIP
+	}, now)
 
-	hookedStore := &SQLStore{
-		Queries: sqlcdb.New(&loginThrottleSnapshotHookDB{
-			inner: testPool,
-			runHook: func(ctx context.Context) error {
-				_, err := baseStore.RecordLoginFailure(ctx, username, clientIP, now)
-				return err
-			},
-		}),
-		connPool: testPool,
+	if admitted != int(accountAttemptThreshold) {
+		t.Fatalf("admitted account attempts = %d, want %d", admitted, accountAttemptThreshold)
 	}
-
-	decision, err := hookedStore.CheckLoginThrottle(t.Context(), username, clientIP, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decision.RetryAfter != 30*time.Second {
-		t.Fatalf("check retry_after = %s, want %s", decision.RetryAfter, 30*time.Second)
-	}
-
-	observed, err := baseStore.CheckLoginThrottle(t.Context(), username, clientIP, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if observed.RetryAfter != 30*time.Second {
-		t.Fatalf("persisted retry_after = %s, want %s", observed.RetryAfter, 30*time.Second)
+	if denied != 30-int(accountAttemptThreshold) {
+		t.Fatalf("denied account attempts = %d, want %d", denied, 30-int(accountAttemptThreshold))
 	}
 }
 
-func TestLoginThrottle_ExpiredRowsAreDeleted(t *testing.T) {
+func TestLoginAttemptReservation_ConcurrentClientAdmissionsAreBounded(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	clientIP := throttleTestIP()
+	usernames := make([]string, 40)
+	for index := range usernames {
+		usernames[index] = throttleTestUsername(fmt.Sprintf("concurrent-client-%02d", index))
+	}
+
+	admitted, denied := runConcurrentReservations(t, len(usernames), func(index int) (string, string) {
+		return usernames[index], clientIP
+	}, now)
+
+	if admitted != int(clientAttemptThreshold) {
+		t.Fatalf("admitted client attempts = %d, want %d", admitted, clientAttemptThreshold)
+	}
+	if denied != len(usernames)-int(clientAttemptThreshold) {
+		t.Fatalf("denied client attempts = %d, want %d", denied, len(usernames)-int(clientAttemptThreshold))
+	}
+}
+
+func TestLoginAttemptReservation_ExpiredRowsAreDeleted(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Microsecond)
 	oldUsername := throttleTestUsername("expired-old")
 	oldIP := throttleTestIP()
 	oldAccountHash := loginThrottleHash(loginThrottleScopeAccount, normalizeLoginUsername(oldUsername))
 	oldClientHash := loginThrottleHash(loginThrottleScopeClient, normalizeClientIP(oldIP))
 
-	if _, err := testStore.RecordLoginFailure(t.Context(), oldUsername, oldIP, start); err != nil {
+	if _, err := testStore.ReserveLoginAttempt(t.Context(), oldUsername, oldIP, start); err != nil {
 		t.Fatal(err)
 	}
 	if got := loginThrottleKeyCount(t, oldAccountHash, oldClientHash); got != 2 {
 		t.Fatalf("initial expired-key rows = %d, want 2", got)
 	}
 
-	newUsername := throttleTestUsername("expired-new")
-	newIP := throttleTestIP()
-	next := start.Add(30*time.Minute + time.Microsecond)
-	if _, err := testStore.RecordLoginFailure(
+	next := start.Add(loginThrottleRetention + time.Microsecond)
+	if _, err := testStore.ReserveLoginAttempt(
 		t.Context(),
-		newUsername,
-		newIP,
+		throttleTestUsername("expired-new"),
+		throttleTestIP(),
 		next,
 	); err != nil {
 		t.Fatal(err)
@@ -295,19 +280,52 @@ func TestLoginThrottle_ExpiredRowsAreDeleted(t *testing.T) {
 	if got := loginThrottleKeyCount(t, oldAccountHash, oldClientHash); got != 0 {
 		t.Fatalf("expired-key rows after cleanup = %d, want 0", got)
 	}
-	newAccountHash := loginThrottleHash(loginThrottleScopeAccount, normalizeLoginUsername(newUsername))
-	newClientHash := loginThrottleHash(loginThrottleScopeClient, normalizeClientIP(newIP))
-	if got := loginThrottleKeyCount(t, newAccountHash, newClientHash); got != 2 {
-		t.Fatalf("new-key rows after cleanup = %d, want 2", got)
+}
+
+type reservationResult struct {
+	admission LoginAttemptAdmission
+	err       error
+}
+
+func runConcurrentReservations(
+	t *testing.T,
+	total int,
+	keys func(int) (string, string),
+	now time.Time,
+) (int, int) {
+	t.Helper()
+
+	start := make(chan struct{})
+	results := make(chan reservationResult, total)
+	var wg sync.WaitGroup
+	wg.Add(total)
+
+	for index := range total {
+		username, clientIP := keys(index)
+		go func() {
+			defer wg.Done()
+			<-start
+			admission, err := testStore.ReserveLoginAttempt(t.Context(), username, clientIP, now)
+			results <- reservationResult{admission: admission, err: err}
+		}()
 	}
 
-	decision, err := testStore.CheckLoginThrottle(t.Context(), oldUsername, oldIP, next)
-	if err != nil {
-		t.Fatal(err)
+	close(start)
+	wg.Wait()
+	close(results)
+
+	var admitted, denied int
+	for result := range results {
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.admission.RetryAfter > 0 {
+			denied++
+		} else {
+			admitted++
+		}
 	}
-	if decision.RetryAfter != 0 {
-		t.Fatalf("expired key retry_after = %s, want 0", decision.RetryAfter)
-	}
+	return admitted, denied
 }
 
 func throttleTestUsername(prefix string) string {
@@ -317,10 +335,6 @@ func throttleTestUsername(prefix string) string {
 func throttleTestIP() string {
 	id := uuid.New()
 	return fmt.Sprintf(" 203.0.%d.%d ", id[0], id[1])
-}
-
-func lowerTrim(value string) string {
-	return normalizeLoginUsername(value)
 }
 
 func loginThrottleKeyCount(t *testing.T, keyHashes ...string) int {
@@ -337,70 +351,17 @@ func loginThrottleKeyCount(t *testing.T, keyHashes ...string) int {
 	return count
 }
 
-type loginThrottleSnapshotHookDB struct {
-	inner   sqlcdb.DBTX
-	runHook func(context.Context) error
-	fired   atomic.Bool
-}
+func loginThrottleAttemptCount(t *testing.T, scope, keyHash string) int32 {
+	t.Helper()
 
-func (db *loginThrottleSnapshotHookDB) Exec(
-	ctx context.Context,
-	sql string,
-	args ...interface{},
-) (pgconn.CommandTag, error) {
-	return db.inner.Exec(ctx, sql, args...)
-}
-
-func (db *loginThrottleSnapshotHookDB) Query(
-	ctx context.Context,
-	sql string,
-	args ...interface{},
-) (pgx.Rows, error) {
-	if strings.Contains(sql, "-- name: GetLoginThrottleSnapshot :many") {
-		if err := db.fire(ctx); err != nil {
-			return nil, err
-		}
+	var count int32
+	if err := testPool.QueryRow(
+		t.Context(),
+		"SELECT attempt_count FROM login_throttles WHERE scope = $1 AND key_hash = $2",
+		scope,
+		keyHash,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
 	}
-	return db.inner.Query(ctx, sql, args...)
-}
-
-func (db *loginThrottleSnapshotHookDB) QueryRow(
-	ctx context.Context,
-	sql string,
-	args ...interface{},
-) pgx.Row {
-	row := db.inner.QueryRow(ctx, sql, args...)
-	if strings.Contains(sql, "-- name: GetLoginThrottle :one") &&
-		len(args) > 0 &&
-		args[0] == loginThrottleScopeAccount {
-		return loginThrottleSnapshotHookRow{
-			Row: row,
-			hook: func() error {
-				return db.fire(ctx)
-			},
-		}
-	}
-	return row
-}
-
-func (db *loginThrottleSnapshotHookDB) fire(ctx context.Context) error {
-	if !db.fired.CompareAndSwap(false, true) {
-		return nil
-	}
-	return db.runHook(ctx)
-}
-
-type loginThrottleSnapshotHookRow struct {
-	pgx.Row
-	hook func() error
-}
-
-func (r loginThrottleSnapshotHookRow) Scan(dest ...interface{}) error {
-	if err := r.Row.Scan(dest...); err != nil {
-		return err
-	}
-	if r.hook != nil {
-		return r.hook()
-	}
-	return nil
+	return count
 }
