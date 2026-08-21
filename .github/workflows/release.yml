@@ -21,6 +21,13 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: scripts/check-supply-chain.sh
+
   # Cross-compile the single binary (with embedded SPA) for each target and
   # publish a tar.gz per platform as a build artifact for the release job.
   binaries:
@@ -78,6 +85,7 @@ jobs:
   # the git tag by metadata-action (e.g. v1.2.3, 1.2.3, 1.2, latest).
   docker:
     runs-on: ubuntu-latest
+    needs: [supply-chain]
     timeout-minutes: 30
     permissions:
       contents: read

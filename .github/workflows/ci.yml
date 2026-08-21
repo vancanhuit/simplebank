@@ -143,7 +143,7 @@ jobs:
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - uses: docker/setup-compose-action@4eb059ff7f16592f9c84d5ca339c53cb7c5064e2 # v2
         with:
-          version: latest
+          version: v5.5.0
       - uses: ./.github/actions/go-cache
         with:
           id: test
@@ -172,7 +172,7 @@ jobs:
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - uses: docker/setup-compose-action@4eb059ff7f16592f9c84d5ca339c53cb7c5064e2 # v2
         with:
-          version: latest
+          version: v5.5.0
       - run: |
           mise run compose:dev:up
           mise run compose:dev-https:up
