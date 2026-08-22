@@ -71,7 +71,9 @@ snapshot so a sender cannot observe the recipient's balance or account state.
 
 Registration and login use a stricter per-client token bucket; renew, logout,
 and email verification endpoints are also rate limited. These limiters use the
-trusted client address described above.
+trusted client address described above and keep separate buckets per endpoint,
+so activity on one flow does not throttle another. Limited responses include
+`Retry-After` and rate-limit metadata for clients to present useful feedback.
 
 CI runs Go vulnerability analysis and frontend dependency auditing in addition
 to lint, unit, integration, browser, application, and container build checks.

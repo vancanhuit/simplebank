@@ -14,10 +14,17 @@ func (s *Server) registerRoutes() {
 	v1 := s.router.Group("/api/v1")
 	v1.Use(noStore)
 
-	credentialLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStoreWithConfig(
-		middleware.RateLimiterMemoryStoreConfig{Rate: 0.2, Burst: 5, ExpiresIn: 15 * time.Minute},
-	))
-	authLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5))
+	endpointClient := func(c *echo.Context) (string, error) {
+		return c.Request().Method + " " + c.Request().URL.Path + "\x00" + c.RealIP(), nil
+	}
+	credentialLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store:               middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{Rate: 0.2, Burst: 5, ExpiresIn: 15 * time.Minute}),
+		IdentifierExtractor: endpointClient,
+	})
+	authLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store:               middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{Rate: 1, Burst: 5, ExpiresIn: 15 * time.Minute}),
+		IdentifierExtractor: endpointClient,
+	})
 
 	v1.POST("/users", s.createUser, credentialLimiter)
 	v1.POST("/users/login", s.loginUser, credentialLimiter)

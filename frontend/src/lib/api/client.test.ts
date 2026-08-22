@@ -42,6 +42,23 @@ describe("request", () => {
     } satisfies Partial<ApiError>);
   });
 
+  it("turns rate-limit metadata into an actionable message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "rate limit exceeded" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": "5" },
+        }),
+      ),
+    );
+
+    await expect(request("/users/login", { method: "POST", body: {} })).rejects.toMatchObject({
+      status: 429,
+      message: "Too many attempts. Try again in 5 seconds.",
+    } satisfies Partial<ApiError>);
+  });
+
   it("refreshes the token once and retries after a 401", async () => {
     const fetchMock = vi
       .fn()

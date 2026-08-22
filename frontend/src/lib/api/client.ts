@@ -75,6 +75,15 @@ async function decode<T>(response: Response): Promise<T> {
   const data: unknown = text ? JSON.parse(text) : undefined;
 
   if (!response.ok) {
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      const seconds = retryAfter === null ? 0 : Number.parseInt(retryAfter, 10);
+      const wait =
+        seconds > 0
+          ? ` Try again in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`
+          : " Please try again later.";
+      throw new ApiError(response.status, `Too many attempts.${wait}`);
+    }
     throw new ApiError(response.status, errorMessage(data, response.status));
   }
   return data as T;
