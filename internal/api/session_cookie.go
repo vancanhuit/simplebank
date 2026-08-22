@@ -10,6 +10,7 @@ import (
 const refreshCookieName = "simplebank_refresh"
 
 func (s *Server) setRefreshCookie(c *echo.Context, raw string, expiresAt time.Time) {
+	//nolint:gosec // Secure is required for HTTPS and configurable for local HTTP development.
 	c.SetCookie(&http.Cookie{
 		Name:     refreshCookieName,
 		Value:    raw,
@@ -22,6 +23,7 @@ func (s *Server) setRefreshCookie(c *echo.Context, raw string, expiresAt time.Ti
 }
 
 func (s *Server) clearRefreshCookie(c *echo.Context) {
+	//nolint:gosec // Secure is required for HTTPS and configurable for local HTTP development.
 	c.SetCookie(&http.Cookie{
 		Name:     refreshCookieName,
 		Value:    "",

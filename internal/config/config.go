@@ -26,8 +26,8 @@ type CurrencyLimit struct {
 type Config struct {
 	HTTPAddr            string
 	DBSource            string
-	DBMaxConns          int
-	DBMinConns          int
+	DBMaxConns          int32
+	DBMinConns          int32
 	DBMaxConnLifetime   time.Duration
 	DBMaxConnIdleTime   time.Duration
 	JWTSecret           string
@@ -163,8 +163,8 @@ func Flags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "http-addr", Value: ":8080", Sources: cli.EnvVars("HTTP_ADDR")},
 		&cli.StringFlag{Name: "db-source", Sources: cli.EnvVars("DB_SOURCE")},
-		&cli.IntFlag{Name: "db-max-conns", Sources: cli.EnvVars("DB_MAX_CONNS")},
-		&cli.IntFlag{Name: "db-min-conns", Sources: cli.EnvVars("DB_MIN_CONNS")},
+		&cli.Int32Flag{Name: "db-max-conns", Sources: cli.EnvVars("DB_MAX_CONNS")},
+		&cli.Int32Flag{Name: "db-min-conns", Sources: cli.EnvVars("DB_MIN_CONNS")},
 		&cli.DurationFlag{Name: "db-max-conn-lifetime", Sources: cli.EnvVars("DB_MAX_CONN_LIFETIME")},
 		&cli.DurationFlag{Name: "db-max-conn-idle-time", Sources: cli.EnvVars("DB_MAX_CONN_IDLE_TIME")},
 		&cli.StringFlag{Name: "jwt-secret", Sources: cli.EnvVars("JWT_SECRET")},
@@ -195,8 +195,8 @@ func FromCommand(cmd *cli.Command) Config {
 	return Config{
 		HTTPAddr:                cmd.String("http-addr"),
 		DBSource:                cmd.String("db-source"),
-		DBMaxConns:              cmd.Int("db-max-conns"),
-		DBMinConns:              cmd.Int("db-min-conns"),
+		DBMaxConns:              cmd.Int32("db-max-conns"),
+		DBMinConns:              cmd.Int32("db-min-conns"),
 		DBMaxConnLifetime:       cmd.Duration("db-max-conn-lifetime"),
 		DBMaxConnIdleTime:       cmd.Duration("db-max-conn-idle-time"),
 		JWTSecret:               cmd.String("jwt-secret"),

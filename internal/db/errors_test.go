@@ -33,6 +33,7 @@ func TestClassifyError(t *testing.T) {
 		t.Error("23514 accounts_balance_javascript_safe should map to ErrBalanceLimitExceeded")
 	}
 	other := errors.New("boom")
+	//nolint:errorlint // This assertion verifies identity, not error-chain membership.
 	if ClassifyError(other) != other {
 		t.Error("unknown error should pass through unchanged")
 	}

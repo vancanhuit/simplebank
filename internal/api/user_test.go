@@ -99,6 +99,7 @@ func (f fakeStore) ListTransfersByAccount(ctx context.Context, arg sqlcdb.ListTr
 }
 
 func newTestServer(t *testing.T) *Server {
+	t.Helper()
 	return newTestServerWithStore(t, nil)
 }
 

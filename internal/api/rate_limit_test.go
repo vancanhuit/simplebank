@@ -37,7 +37,7 @@ func TestCredentialRateLimitIsPerClientAndEndpoint(t *testing.T) {
 	if retryAfter, err := strconv.Atoi(limited.Header().Get("Retry-After")); err != nil || retryAfter < 1 {
 		t.Errorf("Retry-After = %q, want a positive number of seconds", limited.Header().Get("Retry-After"))
 	}
-	if got := limited.Header().Get("X-RateLimit-Limit"); got != "5" {
+	if got := limited.Header().Get("X-Ratelimit-Limit"); got != "5" {
 		t.Errorf("X-RateLimit-Limit = %q, want 5", got)
 	}
 	var body map[string]string

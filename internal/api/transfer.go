@@ -131,11 +131,13 @@ func (s *Server) listTransfers(c *echo.Context) error {
 	if offset > math.MaxInt32 {
 		return c.JSON(http.StatusOK, []sqlcdb.Transfer{})
 	}
+	//nolint:gosec // The upper bound is checked immediately above.
+	offset32 := int32(offset)
 
 	transfers, err := s.store.ListTransfersByAccount(ctx, sqlcdb.ListTransfersByAccountParams{
 		AccountID:  id,
 		PageLimit:  size,
-		PageOffset: int32(offset),
+		PageOffset: offset32,
 	})
 	if err != nil {
 		return store.ClassifyError(err)

@@ -36,6 +36,10 @@ var (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -46,8 +50,9 @@ func main() {
 
 	if err := cmd.Run(ctx, os.Args); err != nil {
 		logger.Error("command failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func newCommand() *cli.Command {
@@ -86,10 +91,10 @@ func newPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	if cfg.DBMaxConns > 0 {
-		poolCfg.MaxConns = int32(cfg.DBMaxConns)
+		poolCfg.MaxConns = cfg.DBMaxConns
 	}
 	if cfg.DBMinConns > 0 {
-		poolCfg.MinConns = int32(cfg.DBMinConns)
+		poolCfg.MinConns = cfg.DBMinConns
 	}
 	if cfg.DBMaxConnLifetime > 0 {
 		poolCfg.MaxConnLifetime = cfg.DBMaxConnLifetime
@@ -199,14 +204,15 @@ func runServices(
 	worker workerLifecycle,
 	serve func(context.Context) error,
 ) error {
-	if err := worker.Start(context.Background()); err != nil {
+	lifecycleCtx := context.WithoutCancel(ctx)
+	if err := worker.Start(lifecycleCtx); err != nil {
 		return fmt.Errorf("starting worker: %w", err)
 	}
 	slog.Info("worker started")
 
 	serverErr := serve(ctx)
 	slog.Info("worker shutting down", "cause", context.Cause(ctx))
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
 	defer cancel()
 	return errors.Join(serverErr, worker.Stop(shutdownCtx))
 }
@@ -264,6 +270,7 @@ func runHealthcheck(ctx context.Context, cmd *cli.Command) error {
 		// Loopback self-probe against the app's own self-signed dev cert; the CA
 		// is not mounted in the container, so skip verification. This is a
 		// liveness check to localhost, not a trust decision on remote traffic.
+		//nolint:gosec // The healthcheck only connects to this process on localhost.
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 

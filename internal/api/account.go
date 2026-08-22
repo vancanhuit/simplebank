@@ -101,6 +101,8 @@ func (s *Server) listAccounts(c *echo.Context) error {
 	if offset > math.MaxInt32 {
 		return c.JSON(http.StatusOK, []sqlcdb.Account{})
 	}
+	//nolint:gosec // The upper bound is checked immediately above.
+	offset32 := int32(offset)
 
 	payload, err := authPayload(c)
 	if err != nil {
@@ -110,7 +112,7 @@ func (s *Server) listAccounts(c *echo.Context) error {
 	accounts, err := s.store.ListAccounts(c.Request().Context(), sqlcdb.ListAccountsParams{
 		Owner:  payload.Username,
 		Limit:  size,
-		Offset: int32(offset),
+		Offset: offset32,
 	})
 	if err != nil {
 		return store.ClassifyError(err)
