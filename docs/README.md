@@ -10,6 +10,8 @@ implementation plans as historical context for the work they describe.
   current architecture.
 - [Frontend README](../frontend/README.md): local UI development, build and
   embedding behavior, and frontend verification.
+- [Security guide](security.md): implemented controls, production deployment
+  checklist, credential migration impact, and known limitations.
 
 These guides describe the repository as it works today and should change with
 the behavior they document.

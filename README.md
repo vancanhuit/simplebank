@@ -72,6 +72,7 @@ Migrations (schema + River) run automatically on startup.
 | `mise run frontend:lint` | Lint the frontend with ESLint |
 | `mise run frontend:format:check` | Check frontend formatting with Prettier |
 | `mise run frontend:test` | Frontend unit tests (Vitest) |
+| `mise run frontend:audit` | Audit frontend dependencies for known vulnerabilities |
 | `mise run frontend:test:e2e` | Frontend responsive accessibility tests (Playwright + axe) |
 | `mise run frontend:test:e2e:install` | Install Chromium required by frontend browser tests |
 | `mise run compose:dev:up` / `:down` | Start / stop the dev stack (DB, Mailpit, app) |
@@ -145,7 +146,13 @@ Protected routes accept only `Authorization: Bearer <access-token>` credentials.
 Refresh tokens are never returned in JSON responses; the browser receives them
 in the `simplebank_refresh` HttpOnly, `SameSite=Strict` cookie scoped to
 `/api/v1`, with `Secure` enabled by default. Only the renew/logout endpoints
-consume that cookie.
+consume that cookie, and both reject cross-origin browser requests. Registration
+requires a password of at least 15 characters and returns the same accepted
+response when a username or email is already registered.
+
+All `/api/v1` responses use `Cache-Control: no-store`. Transfer responses return
+the transfer and the caller's updated source account, but do not expose a
+recipient account snapshot.
 
 ### Transfer limits
 
@@ -236,6 +243,22 @@ The SPA treats account data as session-scoped. Losing authentication clears the
 account store, and generation checks discard load or create responses that were
 started before the reset so stale data cannot cross sessions.
 
+## Security
+
+SimpleBank applies a restrictive Content Security Policy, anti-framing and
+content-type protections, a no-referrer policy, HSTS, request size and timeout
+limits, and per-client throttling on authentication endpoints. Access tokens are
+short-lived and held in browser memory; refresh tokens and email verification
+codes are stored as digests rather than reusable plaintext credentials.
+
+Forwarded headers are ignored unless the connecting proxy is covered by an
+explicit `TRUSTED_PROXIES` CIDR. Production deployments should terminate TLS,
+leave `SESSION_COOKIE_SECURE=true`, set `PUBLIC_BASE_URL` to the external origin,
+and configure only the proxy ranges that can connect directly to the app.
+
+See the [security guide](docs/security.md) for the complete control inventory,
+deployment checklist, migration impact, and known limitations.
+
 ## Testing
 
 Unit tests run without external services. Integration tests are gated behind the
@@ -243,7 +266,7 @@ Unit tests run without external services. Integration tests are gated behind the
 compose stack — `mise run test:integration` handles the lifecycle automatically.
 The frontend has Vitest unit coverage plus Playwright checks across responsive
 viewports with axe accessibility assertions. Run `mise run frontend:check`,
-`mise run frontend:lint`, `mise run frontend:test`, and
+`mise run frontend:lint`, `mise run frontend:audit`, `mise run frontend:test`, and
 `mise run frontend:test:e2e` before shipping UI changes.
 
 ## Contributing
