@@ -21,7 +21,10 @@ import (
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
-const testSecret = "01234567890123456789012345678901"
+const (
+	testSecret       = "01234567890123456789012345678901"
+	testUserPassword = "correct horse battery staple"
+)
 
 // fakeStore satisfies store.Store by embedding the interface (nil underlying).
 // Only the methods a test actually exercises are overridden; calling any other
@@ -148,7 +151,7 @@ func TestCreateUserOK(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := `{"username":"alice","password":"` + testUserPassword + `","full_name":"Alice","email":"alice@example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -175,7 +178,7 @@ func TestCreateUserEmailExistsReturnsGenericAccepted(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := `{"username":"alice","password":"` + testUserPassword + `","full_name":"Alice","email":"alice@example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -205,7 +208,7 @@ func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
 	var logBuf bytes.Buffer
 	s.router.Logger = slog.New(slog.NewTextHandler(&logBuf, nil))
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := `{"username":"alice","password":"` + testUserPassword + `","full_name":"Alice","email":"alice@example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -227,7 +230,7 @@ func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
 	}
 }
 
-func TestCreateUserUsernameExistsReturnsConflict(t *testing.T) {
+func TestCreateUserUsernameExistsReturnsGenericAccepted(t *testing.T) {
 	t.Parallel()
 	fake := fakeStore{
 		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
@@ -236,14 +239,33 @@ func TestCreateUserUsernameExistsReturnsConflict(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"username":"alice","password":"secret123","full_name":"Alice","email":"alice@example.com"}`
+	body := `{"username":"alice","password":"` + testUserPassword + `","full_name":"Alice","email":"alice@example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("want 409 for duplicate username, got %d (%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for duplicate username, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateUserPasswordTooShort(t *testing.T) {
+	t.Parallel()
+	fake := fakeStore{
+		createUserTx: func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error) {
+			t.Fatal("user must not be created for a short password")
+			return sqlcdb.User{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+	body := `{"username":"alice","password":"short-password","full_name":"Alice","email":"alice@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for short password, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
 
@@ -393,6 +415,28 @@ func TestLogoutUserWithoutCookie(t *testing.T) {
 	}
 	if got := cookies[0]; got.Name != refreshCookieName || got.Value != "" || got.MaxAge != -1 {
 		t.Fatalf("logout must clear refresh cookie, got %+v", got)
+	}
+}
+
+func TestLogoutUserClearsCookieWhenRevocationFails(t *testing.T) {
+	t.Parallel()
+	tokens := mustIssueTokenPair(t, "alice")
+	fake := fakeStore{
+		blockSession: func(context.Context, uuid.UUID) (sqlcdb.Session, error) {
+			return sqlcdb.Session{}, errors.New("database unavailable")
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/logout", nil)
+	req.AddCookie(&http.Cookie{Name: refreshCookieName, Value: tokens.refresh, Path: "/api/v1"})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("want 500 when session revocation fails, got %d", rec.Code)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].MaxAge != -1 {
+		t.Fatalf("revocation failure must still clear browser credential, got %+v", cookies)
 	}
 }
 

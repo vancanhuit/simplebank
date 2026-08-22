@@ -8,6 +8,7 @@ import (
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 	"github.com/vancanhuit/simplebank/internal/random"
+	"github.com/vancanhuit/simplebank/internal/secret"
 )
 
 func TestVerifyEmailTx(t *testing.T) {
@@ -17,7 +18,7 @@ func TestVerifyEmailTx(t *testing.T) {
 	ve, err := testStore.CreateVerifyEmail(t.Context(), sqlcdb.CreateVerifyEmailParams{
 		Username:   u.Username,
 		Email:      u.Email,
-		SecretCode: code,
+		SecretCode: secret.Digest(code),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +35,7 @@ func TestVerifyEmailTx(t *testing.T) {
 	// Correct code flips the user's verified flag.
 	res, err := testStore.VerifyEmailTx(t.Context(), VerifyEmailTxParams{
 		ID:         ve.ID,
-		SecretCode: code,
+		SecretCode: secret.Digest(code),
 	})
 	if err != nil {
 		t.Fatalf("VerifyEmailTx: %v", err)

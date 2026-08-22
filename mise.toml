@@ -55,7 +55,7 @@ run = 'golangci-lint run -v ./cmd/... ./internal/...'
 description = "Run govulncheck"
 depends = ["frontend:build"]
 run = [
-  'go install golang.org/x/vuln/cmd/govulncheck@latest',
+  'go install golang.org/x/vuln/cmd/govulncheck@v1.7.0',
   'govulncheck -show verbose ./cmd/... ./internal/...',
 ]
 
@@ -98,7 +98,7 @@ run = 'cog install-hook --all --overwrite'
 
 [tasks."sqlc:generate"]
 description = "Generate Go code from SQL with sqlc"
-run = ['go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest', 'sqlc generate']
+run = ['go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1', 'sqlc generate']
 
 [tasks."dev:tls:certs"]
 description = "Generate TLS certificates for development"
@@ -172,6 +172,11 @@ run = 'bun run check'
 description = "Run the frontend unit tests (Vitest)"
 dir = "frontend"
 run = 'bun run test'
+
+[tasks."frontend:audit"]
+description = "Audit frontend dependencies for known vulnerabilities"
+dir = "frontend"
+run = 'bun audit'
 
 [tasks."frontend:test:e2e"]
 description = "Run the frontend browser accessibility tests (Playwright)"

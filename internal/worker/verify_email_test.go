@@ -44,11 +44,13 @@ func (m *mockMailer) Send(_ context.Context, to, subject, htmlBody string) error
 
 func TestSendVerifyEmailWorker(t *testing.T) {
 	var verification sqlcdb.VerifyEmail
+	var persistedCode string
 	st := fakeStore{
 		getUser: func(_ context.Context, username string) (sqlcdb.User, error) {
 			return sqlcdb.User{Username: username, Email: "alice@example.com", FullName: "<b>Bob</b>"}, nil
 		},
 		createVerifyEmail: func(_ context.Context, arg sqlcdb.CreateVerifyEmailParams) (sqlcdb.VerifyEmail, error) {
+			persistedCode = arg.SecretCode
 			verification = sqlcdb.VerifyEmail{ID: uuid.New(), SecretCode: arg.SecretCode}
 			return verification, nil
 		},
@@ -90,8 +92,11 @@ func TestSendVerifyEmailWorker(t *testing.T) {
 		t.Errorf("verification link target = %q, want https://bank.example.com/verify-email", verificationURL)
 	}
 	query := verificationURL.Query()
-	if query.Get("id") != verification.ID.String() || query.Get("code") != verification.SecretCode {
-		t.Errorf("verification link credentials = %v, want id=%s and code=%s", query, verification.ID, verification.SecretCode)
+	if query.Get("id") != verification.ID.String() || query.Get("code") == "" {
+		t.Errorf("verification link credentials = %v, want id=%s and a code", query, verification.ID)
+	}
+	if query.Get("code") == persistedCode {
+		t.Fatal("verification bearer credential was persisted without hashing")
 	}
 }
 

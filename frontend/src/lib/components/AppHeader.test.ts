@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { auth } from "../stores/auth.svelte";
 import AppHeader from "./AppHeader.svelte";
@@ -12,7 +12,10 @@ const user = {
 };
 
 describe("AppHeader", () => {
-  afterEach(() => auth.clear());
+  afterEach(() => {
+    auth.clear();
+    vi.unstubAllGlobals();
+  });
 
   it("exposes primary destinations through a mobile disclosure", async () => {
     auth.user = user;
@@ -54,6 +57,19 @@ describe("AppHeader", () => {
     expect(screen.getByText(user.full_name)).toHaveClass("truncate");
     expect(screen.getByRole("link", { name: "SimpleBank" })).toHaveClass("min-h-11");
     expect(screen.getByRole("button", { name: "Sign out" })).toHaveClass("whitespace-nowrap");
+  });
+
+  it("clears local access and reports a failed server sign out", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sign out failed");
+    expect(auth.user).toBeNull();
+    expect(auth.accessToken).toBeNull();
   });
 
   it("hides menu and close icons from the accessibility tree", async () => {

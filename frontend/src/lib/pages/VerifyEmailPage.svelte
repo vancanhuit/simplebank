@@ -20,6 +20,9 @@
     const id = params.get("id") ?? "";
     const code = params.get("code") ?? "";
 
+    // Keep the one-time credential out of browser history after capturing it.
+    window.history.replaceState(null, "", window.location.pathname);
+
     if (!id || !code) {
       status = "error";
       errorMessage = "This verification link is incomplete. Please use the link from your email.";

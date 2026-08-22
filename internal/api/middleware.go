@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 
 	jwt "github.com/golang-jwt/jwt/v5"
 	echojwt "github.com/labstack/echo-jwt/v5"
@@ -11,8 +13,9 @@ import (
 )
 
 const (
-	authContextKey = "user"
-	roleDepositor  = "depositor"
+	authContextKey     = "user"
+	roleDepositor      = "depositor"
+	headerSecFetchSite = "Sec-Fetch-Site"
 )
 
 func (s *Server) authMiddleware() echo.MiddlewareFunc {
@@ -45,4 +48,41 @@ func authorizeOwner(payload *token.Payload, owner string) error {
 		return echo.NewHTTPError(http.StatusForbidden, "you do not have access to this resource")
 	}
 	return nil
+}
+
+// sameOrigin rejects browser requests from hostile origins before a refresh
+// cookie can be used. Non-browser clients without Origin/Fetch Metadata remain
+// supported.
+func (s *Server) sameOrigin(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		r := c.Request()
+		if site := r.Header.Get(headerSecFetchSite); site != "" && site != "same-origin" && site != "none" {
+			return echo.NewHTTPError(http.StatusForbidden, "cross-origin request denied")
+		}
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return next(c)
+		}
+		got, err := url.Parse(origin)
+		if err != nil || got.Scheme == "" || got.Host == "" || got.Path != "" {
+			return echo.NewHTTPError(http.StatusForbidden, "cross-origin request denied")
+		}
+		expectedScheme := "http"
+		expectedHost := forwardedHost(r.Host, r.Header)
+		if r.TLS != nil {
+			expectedScheme = "https"
+		} else if forwardedScheme := r.Header.Get(echo.HeaderXForwardedProto); forwardedScheme == "http" || forwardedScheme == "https" {
+			expectedScheme = forwardedScheme
+		}
+		if s.config.PublicBaseURL != "" {
+			expected, parseErr := url.Parse(s.config.PublicBaseURL)
+			if parseErr == nil {
+				expectedScheme, expectedHost = expected.Scheme, expected.Host
+			}
+		}
+		if !strings.EqualFold(got.Scheme, expectedScheme) || !strings.EqualFold(got.Host, expectedHost) {
+			return echo.NewHTTPError(http.StatusForbidden, "cross-origin request denied")
+		}
+		return next(c)
+	}
 }

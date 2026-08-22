@@ -16,6 +16,7 @@ import (
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 	"github.com/vancanhuit/simplebank/internal/password"
 	"github.com/vancanhuit/simplebank/internal/random"
+	"github.com/vancanhuit/simplebank/internal/secret"
 	"github.com/vancanhuit/simplebank/internal/token"
 	"github.com/vancanhuit/simplebank/internal/worker"
 )
@@ -45,7 +46,7 @@ func hashRefreshToken(token string) string {
 
 type createUserRequest struct {
 	Username string `json:"username" validate:"required,alphanum"`
-	Password string `json:"password" validate:"required,min=6,maxbytes=72"`
+	Password string `json:"password" validate:"required,min=15,maxbytes=72"`
 	FullName string `json:"full_name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 }
@@ -118,7 +119,7 @@ func (s *Server) createUser(c *echo.Context) error {
 	if err != nil {
 		classified := store.ClassifyError(err)
 		if errors.Is(classified, store.ErrUsernameExists) {
-			return classified
+			return c.JSON(http.StatusAccepted, verificationAccepted)
 		}
 		if errors.Is(classified, store.ErrEmailExists) {
 			if enqueueErr := s.queueRegistrationNotice(ctx, req.Email); enqueueErr != nil {
@@ -291,13 +292,14 @@ func (s *Server) renewToken(c *echo.Context) error {
 
 func (s *Server) logoutUser(c *echo.Context) error {
 	refreshCookie, err := c.Cookie(refreshCookieName)
-	s.clearRefreshCookie(c)
 	if err != nil {
+		s.clearRefreshCookie(c)
 		return c.NoContent(http.StatusNoContent)
 	}
 
 	refreshPayload, err := s.tokenMaker.VerifyToken(refreshCookie.Value, token.Refresh)
 	if err != nil {
+		s.clearRefreshCookie(c)
 		return c.NoContent(http.StatusNoContent)
 	}
 
@@ -307,11 +309,14 @@ func (s *Server) logoutUser(c *echo.Context) error {
 		if errors.Is(classified, store.ErrRecordNotFound) {
 			// Missing or already-rotated sessions are normalized so logout does
 			// not reveal whether a refresh session row exists.
+			s.clearRefreshCookie(c)
 			return c.NoContent(http.StatusNoContent)
 		}
+		s.clearRefreshCookie(c)
 		return classified
 	}
 
+	s.clearRefreshCookie(c)
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -329,7 +334,7 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 	ctx := c.Request().Context()
 	_, err = s.store.VerifyEmailTx(ctx, store.VerifyEmailTxParams{
 		ID:         id,
-		SecretCode: code,
+		SecretCode: secret.Digest(code),
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrRecordNotFound) {

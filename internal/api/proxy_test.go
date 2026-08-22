@@ -18,10 +18,10 @@ func TestClientIPExtractor(t *testing.T) {
 		want           string
 	}{
 		{
-			name:       "default trusts private proxy and reads client from xff",
+			name:       "default ignores xff from private peer",
 			remoteAddr: "10.0.0.1:4321",
 			xff:        "203.0.113.5",
-			want:       "203.0.113.5",
+			want:       "10.0.0.1",
 		},
 		{
 			name:       "default ignores spoofed xff from public client",

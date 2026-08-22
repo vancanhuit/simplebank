@@ -17,7 +17,7 @@ runs:
   using: composite
   steps:
     # Module cache: identical across every job, invalidated only by go.sum.
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-gomod-${{ hashFiles('**/go.sum') }}
@@ -28,7 +28,7 @@ runs:
     # edit, so a stable go.sum key would freeze after the first save. The
     # run_id suffix forces a fresh save each run; the restore-keys warm it from
     # the most recent run for this job.
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.cache/go-build
         key: ${{ runner.os }}-gobuild-${{ inputs.id }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
@@ -39,7 +39,7 @@ runs:
     # golangci-lint keeps its own analysis cache, separate from go-build. Only
     # the lint job populates it, so save it only there.
     - if: inputs.lint == 'true'
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.cache/golangci-lint
         key: ${{ runner.os }}-golangci-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}

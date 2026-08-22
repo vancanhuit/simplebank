@@ -36,3 +36,11 @@ func TestTokenZero(t *testing.T) {
 		t.Fatalf("want empty token for n=0, got %q", tok)
 	}
 }
+
+func TestDigest(t *testing.T) {
+	t.Parallel()
+	const want = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+	if got := Digest("abc"); got != want {
+		t.Fatalf("Digest = %q, want %q", got, want)
+	}
+}

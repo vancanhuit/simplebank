@@ -14,6 +14,7 @@ import (
 
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
+	"github.com/vancanhuit/simplebank/internal/secret"
 )
 
 func getVerifyEmail(t *testing.T, s *Server, id, code string) *httptest.ResponseRecorder {
@@ -55,8 +56,8 @@ func TestVerifyEmailOK(t *testing.T) {
 	if !called {
 		t.Fatal("VerifyEmailTx should run")
 	}
-	if gotArg.ID != id || gotArg.SecretCode != code {
-		t.Fatalf("VerifyEmailTx params = %+v, want ID %s and code %q", gotArg, id, code)
+	if gotArg.ID != id || gotArg.SecretCode != secret.Digest(code) {
+		t.Fatalf("VerifyEmailTx params = %+v, want ID %s and hashed code", gotArg, id)
 	}
 }
 

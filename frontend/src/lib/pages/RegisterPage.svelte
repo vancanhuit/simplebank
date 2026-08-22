@@ -57,7 +57,7 @@
       type="password"
       bind:value={password}
       autocomplete="new-password"
-      hint="At least 6 characters."
+      hint="At least 15 characters."
       required
     />
 

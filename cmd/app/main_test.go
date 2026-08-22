@@ -3,9 +3,19 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 )
+
+func TestConfigureServerTimeouts(t *testing.T) {
+	server := &http.Server{}
+	configureServer(server)
+	if server.ReadHeaderTimeout != 5*time.Second || server.ReadTimeout != 30*time.Second ||
+		server.WriteTimeout != 30*time.Second || server.IdleTimeout != 120*time.Second {
+		t.Fatalf("unexpected server timeouts: %+v", server)
+	}
+}
 
 type fakeWorkerLifecycle struct {
 	startErr        error

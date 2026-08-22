@@ -56,7 +56,7 @@ describe("AuthStore", () => {
     expect(store.user).toBeNull();
   });
 
-  it("clears local state and navigates immediately before server logout", async () => {
+  it("clears local state only after server logout succeeds", async () => {
     let resolveLogout: (value: Response) => void;
     const logoutPromise = new Promise<Response>((resolve) => {
       resolveLogout = resolve;
@@ -78,9 +78,8 @@ describe("AuthStore", () => {
     // Call logout but don't resolve fetch yet.
     const logoutTask = store.logout();
 
-    // Assert immediate clear (state cleared before server response).
-    expect(store.user).toBeNull();
-    expect(store.accessToken).toBeNull();
+    expect(store.user).toEqual(verifiedUser);
+    expect(store.accessToken).toBe("access");
 
     // Now resolve server logout.
     resolveLogout!(jsonResponse(204, undefined));
@@ -91,13 +90,13 @@ describe("AuthStore", () => {
     expect(store.accessToken).toBeNull();
   });
 
-  it("clears local state even when server logout fails", async () => {
+  it("clears local state when server logout fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const store = new AuthStore();
     store.user = verifiedUser;
     store.accessToken = "access";
 
-    await store.logout();
+    await expect(store.logout()).rejects.toThrow("offline");
 
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();

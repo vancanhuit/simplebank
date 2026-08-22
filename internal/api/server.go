@@ -55,9 +55,10 @@ func NewServer(
 	e.IPExtractor = extractor
 
 	e.Use(middleware.Recover())
+	e.Use(trustedForwardingHeaders(cfg.TrustedProxies))
 	e.Use(middleware.RequestID())
 	e.Use(requestLogger())
-	e.Use(middleware.Secure())
+	e.Use(securityHeaders())
 	e.Use(middleware.BodyLimit(1 << 20))
 	e.Use(middleware.ContextTimeout(30 * time.Second))
 
@@ -78,12 +79,11 @@ func (s *Server) Handler() http.Handler { return s.router }
 // clientIPExtractor builds the RealIP() strategy. It reads the client address
 // from the X-Forwarded-For header, but only trusts the hop closest to us when it
 // falls inside a trusted proxy range — a directly-connected public client's
-// spoofed XFF header is ignored. When no proxies are configured it uses Echo's
-// defaults (loopback, link-local and private networks), which covers the common
-// "container behind Caddy on a private Docker network" deployment out of the box.
+// spoofed XFF header is ignored. Forwarding headers are ignored unless trusted
+// proxy ranges are explicitly configured.
 func clientIPExtractor(trustedProxies []string) (echo.IPExtractor, error) {
 	if len(trustedProxies) == 0 {
-		return echo.ExtractIPFromXFFHeader(), nil
+		return echo.ExtractIPDirect(), nil
 	}
 	opts := []echo.TrustOption{
 		echo.TrustLoopback(false),
@@ -98,6 +98,49 @@ func clientIPExtractor(trustedProxies []string) (echo.IPExtractor, error) {
 		opts = append(opts, echo.TrustIPRange(ipNet))
 	}
 	return echo.ExtractIPFromXFFHeader(opts...), nil
+}
+
+func trustedForwardingHeaders(trustedProxies []string) echo.MiddlewareFunc {
+	networks := make([]*net.IPNet, 0, len(trustedProxies))
+	for _, cidr := range trustedProxies {
+		_, network, _ := net.ParseCIDR(cidr) // validated by clientIPExtractor
+		networks = append(networks, network)
+	}
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			host, _, _ := net.SplitHostPort(c.Request().RemoteAddr)
+			remoteIP := net.ParseIP(host)
+			trusted := false
+			for _, network := range networks {
+				if network.Contains(remoteIP) {
+					trusted = true
+					break
+				}
+			}
+			if !trusted {
+				header := c.Request().Header
+				header.Del(echo.HeaderXForwardedFor)
+				header.Del(echo.HeaderXForwardedProto)
+				header.Del(headerXForwardedHost)
+			}
+			return next(c)
+		}
+	}
+}
+
+func securityHeaders() echo.MiddlewareFunc {
+	const csp = "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; " +
+		"img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; " +
+		"frame-ancestors 'none'; form-action 'self'"
+	return middleware.SecureWithConfig(middleware.SecureConfig{
+		XSSProtection:         "0",
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "DENY",
+		HSTSMaxAge:            31536000,
+		HSTSExcludeSubdomains: true,
+		ContentSecurityPolicy: csp,
+		ReferrerPolicy:        "no-referrer",
+	})
 }
 
 // forwardedHost returns the original client-facing host. Behind a proxy that

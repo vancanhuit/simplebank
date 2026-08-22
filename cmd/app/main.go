@@ -218,12 +218,7 @@ func startServer(ctx context.Context, cfg config.Config, handler http.Handler) e
 	sc := echo.StartConfig{
 		Address:         cfg.HTTPAddr,
 		GracefulTimeout: 10 * time.Second,
-		BeforeServeFunc: func(s *http.Server) error {
-			s.ReadHeaderTimeout = 5 * time.Second // slow-loris protection
-			s.WriteTimeout = 30 * time.Second     // response write
-			s.IdleTimeout = 120 * time.Second     // keep-alive connections
-			return nil
-		},
+		BeforeServeFunc: func(s *http.Server) error { configureServer(s); return nil },
 	}
 
 	if cfg.TLSCertFile != "" {
@@ -246,6 +241,13 @@ func startServer(ctx context.Context, cfg config.Config, handler http.Handler) e
 		return err
 	}
 	return nil
+}
+
+func configureServer(s *http.Server) {
+	s.ReadHeaderTimeout = 5 * time.Second // slow-loris protection
+	s.ReadTimeout = 30 * time.Second      // headers and request body
+	s.WriteTimeout = 30 * time.Second     // response write
+	s.IdleTimeout = 120 * time.Second     // keep-alive connections
 }
 
 // runHealthcheck probes the local /livez endpoint so a container HEALTHCHECK can

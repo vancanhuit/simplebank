@@ -25,6 +25,8 @@
 
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement;
+  let signingOut = $state(false);
+  let logoutError = $state("");
 
   function toggleMenu() {
     menuOpen = !menuOpen;
@@ -52,9 +54,18 @@
     }
   });
 
-  function logout() {
-    accounts.reset();
-    void auth.logout();
+  async function logout() {
+    signingOut = true;
+    logoutError = "";
+    try {
+      await auth.logout();
+      accounts.reset();
+    } catch {
+      accounts.reset();
+      logoutError = "Sign out failed. Check your connection and try again.";
+    } finally {
+      signingOut = false;
+    }
   }
 </script>
 
@@ -123,12 +134,18 @@
         type="button"
         class="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md border border-control px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
         onclick={logout}
+        disabled={signingOut}
       >
         <LogOut aria-hidden="true" size={16} />
-        Sign out
+        {signingOut ? "Signing out…" : "Sign out"}
       </button>
     </div>
   </div>
+  {#if logoutError}
+    <p role="alert" class="mx-auto max-w-6xl px-4 pb-2 text-sm text-negative sm:px-6">
+      {logoutError}
+    </p>
+  {/if}
 
   {#if menuOpen}
     <nav

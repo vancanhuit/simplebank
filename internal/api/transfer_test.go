@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -50,7 +51,9 @@ func TestCreateTransferOK(t *testing.T) {
 			transferred = true
 			gotArg = arg
 			return store.TransferTxResult{
-				Transfer: sqlcdb.Transfer{ID: uuid.New(), FromAccountID: arg.FromAccountID, ToAccountID: arg.ToAccountID, Amount: arg.Amount},
+				Transfer:    sqlcdb.Transfer{ID: uuid.New(), FromAccountID: arg.FromAccountID, ToAccountID: arg.ToAccountID, Amount: arg.Amount},
+				FromAccount: sqlcdb.Account{ID: arg.FromAccountID, Owner: "alice", Currency: "USD", Balance: 90},
+				ToAccount:   sqlcdb.Account{ID: arg.ToAccountID, Owner: "bob", Currency: "USD", Balance: 10},
 			}, nil
 		},
 	}
@@ -75,6 +78,13 @@ func TestCreateTransferOK(t *testing.T) {
 	}
 	if gotArg.IdempotencyKey.String() != key {
 		t.Errorf("idempotency key not forwarded: got %q, want %q", gotArg.IdempotencyKey, key)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := body["to_account"]; exposed {
+		t.Fatal("transfer response exposed recipient account state")
 	}
 }
 

@@ -88,12 +88,12 @@ class AuthStore {
 
   async logout(): Promise<void> {
     ++this.#generation;
-    this.clear();
-    navigate("/login");
     try {
       await request<void>("/users/logout", { method: "POST" });
-    } catch {
-      // Best-effort logout; local state already cleared.
+    } finally {
+      // Never leave a usable access token in a shared browser after sign-out.
+      this.clear();
+      navigate("/login");
     }
   }
 
