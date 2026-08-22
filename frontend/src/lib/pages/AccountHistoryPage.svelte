@@ -67,29 +67,25 @@
   }
 </script>
 
-<div class="mx-auto max-w-2xl">
-  <Link
-    href="/"
-    class="inline-flex min-h-11 items-center text-sm font-medium text-brand hover:text-brand-strong"
-    >← Back</Link
-  >
-  <h1 class="mt-4 text-2xl font-semibold text-ink">Account activity</h1>
+<div class="mx-auto max-w-3xl">
+  <Link href="/" class="btn btn-ghost -ml-4 min-h-11">← Back</Link>
+  <h1 class="mt-6 text-3xl font-bold tracking-tight text-base-content sm:text-4xl">
+    Account activity
+  </h1>
 
   {#if account}
-    <div class="mt-4 flex flex-wrap items-baseline justify-between gap-2">
-      <div>
-        <p class="text-sm text-muted">
-          <span
-            class="mr-2 inline-flex items-center rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-strong"
-          >
-            {account.currency}
-          </span>
-          <code class="font-mono text-xs break-all text-ink">{account.id}</code>
+    <div class="card mt-6 border border-base-300 bg-base-100 shadow-sm">
+      <div class="card-body gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div class="min-w-0">
+          <span class="badge badge-primary badge-soft">{account.currency}</span>
+          <code class="mt-3 block font-mono text-xs break-all text-base-content/70">
+            {account.id}
+          </code>
+        </div>
+        <p class="text-2xl font-semibold tracking-tight text-base-content tabular-nums">
+          {formatMoney(account.balance, account.currency)}
         </p>
       </div>
-      <p class="text-lg font-semibold tracking-tight text-ink tabular-nums">
-        {formatMoney(account.balance, account.currency)}
-      </p>
     </div>
   {/if}
 
@@ -97,64 +93,53 @@
     <div class="mt-6">
       <Alert variant="error">
         {error}
-        <button
-          type="button"
-          class="ml-2 inline-flex min-h-11 items-center underline"
-          onclick={() => void load()}>Retry</button
+        <button type="button" class="btn btn-link ml-2 min-h-11" onclick={() => void load()}
+          >Retry</button
         >
       </Alert>
     </div>
   {:else if loading}
     <div class="mt-6 flex flex-col gap-3" aria-busy="true" aria-label="Loading activity">
       {#each [0, 1, 2, 3] as placeholder (placeholder)}
-        <div class="h-16 animate-pulse rounded-card border border-border bg-surface-muted"></div>
+        <div class="skeleton h-20"></div>
       {/each}
     </div>
   {:else if transfers.length === 0}
-    <div
-      class="mt-6 rounded-card border border-dashed border-border bg-surface px-6 py-12 text-center"
-    >
-      <h2 class="text-sm font-semibold text-ink">No activity yet</h2>
-      <p class="mx-auto mt-1 max-w-sm text-sm text-muted">
-        Transfers to and from this account will appear here.
-      </p>
-      <div class="mt-4 flex justify-center">
-        <Link
-          href="/transfer"
-          class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
-        >
-          Send money
-        </Link>
+    <div class="card mt-6 border border-dashed border-base-300 bg-base-100 text-center">
+      <div class="card-body items-center px-6 py-12">
+        <h2 class="card-title text-base">No activity yet</h2>
+        <p class="max-w-sm text-sm text-base-content/60">
+          Transfers to and from this account will appear here.
+        </p>
+        <div class="card-actions mt-2">
+          <Link href="/transfer" class="btn btn-primary min-h-11">Send money</Link>
+        </div>
       </div>
     </div>
   {:else if account}
-    <ul class="mt-6 flex flex-col gap-3">
+    <ul class="list mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm">
       {#each transfers as transfer (transfer.id)}
         {@const r = row(transfer)}
-        <li
-          class="flex items-center justify-between gap-4 rounded-card border border-border bg-surface p-4"
-        >
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              {#if r.outgoing}
-                <ArrowUpRight size={16} class="shrink-0 text-negative" aria-hidden="true" />
-              {:else}
-                <ArrowDownLeft size={16} class="shrink-0 text-positive" aria-hidden="true" />
-              {/if}
-              <p class="text-sm font-semibold text-ink">
-                {r.outgoing ? "Sent" : "Received"}
-              </p>
-            </div>
-            <p class="mt-0.5 text-xs text-muted">
+        <li class="list-row items-center">
+          {#if r.outgoing}
+            <ArrowUpRight size={18} class="shrink-0 text-error" aria-hidden="true" />
+          {:else}
+            <ArrowDownLeft size={18} class="shrink-0 text-success" aria-hidden="true" />
+          {/if}
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-base-content">
+              {r.outgoing ? "Sent" : "Received"}
+            </p>
+            <p class="mt-0.5 text-xs text-base-content/60">
               {r.outgoing ? "To" : "From"}
               <code class="font-mono break-words">{r.counterparty}</code>
             </p>
-            <p class="mt-0.5 text-xs text-muted">{r.when}</p>
+            <p class="mt-0.5 text-xs text-base-content/60">{r.when}</p>
           </div>
           <p
             class="shrink-0 text-sm font-semibold tabular-nums"
-            class:text-negative={r.outgoing}
-            class:text-positive={!r.outgoing}
+            class:text-error={r.outgoing}
+            class:text-success={!r.outgoing}
           >
             {formatSignedMoney(r.signed, account.currency)}
           </p>

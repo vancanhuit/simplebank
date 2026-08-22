@@ -42,6 +42,30 @@ describe("AccountHistoryPage", () => {
     accounts.reset();
   });
 
+  it("renders loaded transfers as a daisyUI activity list", async () => {
+    requestMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes("/transfers")
+          ? [
+              {
+                id: "tx-1",
+                from_account_id: accountA,
+                to_account_id: accountB,
+                amount: 2500,
+                created_at: "2026-01-02T00:00:00Z",
+              },
+            ]
+          : account(accountA),
+      ),
+    );
+
+    const { container } = render(AccountHistoryPage);
+
+    expect(await screen.findByText("Sent")).toBeInTheDocument();
+    expect(container.querySelector("ul.list")).toBeInTheDocument();
+    expect(container.querySelector("li.list-row")).toBeInTheDocument();
+  });
+
   it("reloads account activity when the route account changes", async () => {
     render(AccountHistoryPage);
     expect(await screen.findByText(accountA)).toBeInTheDocument();
