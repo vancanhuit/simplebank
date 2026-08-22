@@ -13,12 +13,12 @@ ENV MISE_CONFIG_DIR="/mise"
 ENV MISE_CACHE_DIR="/mise/cache"
 ENV MISE_INSTALL_PATH="/usr/local/bin/mise"
 ENV PATH="/mise/shims:$PATH"
-ARG TARGETARCH
+ARG BUILDARCH
 ARG MISE_VERSION=2026.8.10
-RUN case "$TARGETARCH" in \
+RUN case "$BUILDARCH" in \
       amd64) mise_arch=x64; mise_sha=1f5e8795d24073904ef20ba70c1250ad6389d8c5672226d152e0ed24909ba72f ;; \
       arm64) mise_arch=arm64; mise_sha=57a14ecddf45aab8463a03bfbd424ebb08ba2d5808e19d45bd06d40c27019c4d ;; \
-      *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+      *) echo "unsupported build architecture: $BUILDARCH" >&2; exit 1 ;; \
     esac \
     && curl -fsSLo "$MISE_INSTALL_PATH" \
       "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-${mise_arch}" \
