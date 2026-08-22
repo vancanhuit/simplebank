@@ -88,6 +88,24 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
     if (viewport.width < 640) {
       const menu = page.getByRole("button", { name: "Open navigation" });
       await expect(menu).toHaveCSS("min-height", "44px");
+
+      if (viewport.width === 320) {
+        const controls = await Promise.all(
+          [
+            menu,
+            page.getByRole("link", { name: "SimpleBank" }),
+            page.getByRole("button", { name: /switch to (dark|light) theme/i }),
+            page.getByRole("button", { name: "Sign out" }),
+          ].map((control) => control.boundingBox()),
+        );
+        expect(controls.every((box) => box !== null)).toBe(true);
+        for (let index = 1; index < controls.length; index += 1) {
+          expect(controls[index - 1]!.x + controls[index - 1]!.width).toBeLessThanOrEqual(
+            controls[index]!.x,
+          );
+        }
+      }
+
       await menu.click();
       await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Transfer", exact: true }).last()).toBeVisible();

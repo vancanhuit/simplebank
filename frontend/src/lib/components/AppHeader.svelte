@@ -66,7 +66,7 @@
 
 <header class="border-b border-base-300 bg-base-100">
   <div class="navbar mx-auto min-h-16 max-w-7xl gap-2 px-4 sm:px-6">
-    <div class="navbar-start min-w-0 gap-2">
+    <div class="navbar-start w-auto flex-none gap-1 sm:w-1/2 sm:flex-1 sm:gap-2">
       <button
         bind:this={menuButton}
         type="button"
@@ -82,7 +82,11 @@
           <Menu aria-hidden="true" size={20} />
         {/if}
       </button>
-      <Link href="/" class="btn btn-ghost h-auto min-h-11 px-1 text-lg"><BrandMark /></Link>
+      <Link href="/" class="btn btn-ghost h-auto min-h-11 min-w-11 px-1 text-lg">
+        <span aria-hidden="true" class="sm:hidden"><BrandMark compact /></span>
+        <span aria-hidden="true" class="hidden sm:inline-flex"><BrandMark /></span>
+        <span class="sr-only">SimpleBank</span>
+      </Link>
     </div>
 
     <nav aria-label="Primary" class="navbar-center hidden sm:flex">
@@ -91,7 +95,7 @@
           <li>
             <Link
               href={item.href}
-              class="rounded-field aria-[current=page]:bg-primary aria-[current=page]:text-primary-content"
+              class="min-h-11 rounded-field aria-[current=page]:bg-primary aria-[current=page]:text-primary-content"
             >
               {item.label}
             </Link>
@@ -100,7 +104,7 @@
       </ul>
     </nav>
 
-    <div class="navbar-end min-w-0 gap-1 sm:gap-2">
+    <div class="navbar-end ml-auto w-auto flex-none gap-1 sm:w-1/2 sm:flex-1 sm:gap-2">
       <span
         class="hidden min-w-0 max-w-48 truncate text-sm font-medium md:block"
         title={auth.user?.email}
@@ -110,12 +114,12 @@
       <ThemeToggle />
       <button
         type="button"
-        class="btn btn-ghost min-h-11 whitespace-nowrap"
+        class="btn btn-ghost min-h-11 min-w-11 whitespace-nowrap px-0 sm:px-4"
         onclick={logout}
         disabled={signingOut}
       >
         <LogOut aria-hidden="true" size={16} />
-        {signingOut ? "Signing out…" : "Sign out"}
+        <span class="sr-only sm:not-sr-only">{signingOut ? "Signing out…" : "Sign out"}</span>
       </button>
     </div>
   </div>
@@ -136,7 +140,7 @@
           <li>
             <Link
               href={item.href}
-              class="aria-[current=page]:bg-primary aria-[current=page]:text-primary-content"
+              class="min-h-11 aria-[current=page]:bg-primary aria-[current=page]:text-primary-content"
               onclick={closeMenuAndRestoreFocus}
             >
               {item.label}

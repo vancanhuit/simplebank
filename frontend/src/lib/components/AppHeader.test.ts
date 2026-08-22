@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { router } from "../router.svelte";
 import { auth } from "../stores/auth.svelte";
 import AppHeader from "./AppHeader.svelte";
@@ -15,6 +15,7 @@ const user = {
 describe("AppHeader", () => {
   afterEach(() => {
     auth.clear();
+    router.path = "/";
     vi.unstubAllGlobals();
   });
 
@@ -48,6 +49,40 @@ describe("AppHeader", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(trigger).toHaveFocus();
     expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
+  });
+
+  it("closes the mobile navigation on Escape and restores trigger focus", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    await fireEvent.keyDown(window, { key: "Escape" });
+
+    const trigger = screen.getByRole("button", { name: "Open navigation" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
+  });
+
+  it("closes the mobile navigation when the route changes", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    router.path = "/";
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(screen.getByRole("navigation", { name: "Mobile primary" })).toBeInTheDocument();
+
+    router.path = "/transfer";
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
+    });
   });
 
   it("constrains long identities and keeps sign out on one line", () => {
@@ -103,5 +138,17 @@ describe("AppHeader", () => {
       screen.getByRole("button", { name: /switch to (dark|light) theme/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps desktop and mobile navigation links at least 44px tall", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+
+    for (const link of screen.getAllByRole("link", { name: /^(Overview|Transfer)$/ })) {
+      expect(link).toHaveClass("min-h-11");
+    }
   });
 });
