@@ -36,6 +36,7 @@
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.11",
+    "daisyui": "^5.7.20",
     "eslint": "^10.9.0",
     "eslint-plugin-svelte": "^3.23.0",
     "globals": "^17.11.0",
