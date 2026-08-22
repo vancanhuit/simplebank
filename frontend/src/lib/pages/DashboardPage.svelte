@@ -32,50 +32,55 @@
   });
 </script>
 
-<section
-  class="flex flex-col gap-6 rounded-card bg-brand-strong p-6 text-surface sm:p-8"
-  aria-labelledby="summary-heading"
->
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-    <div>
-      <h1 id="summary-heading" class="text-sm font-medium text-brand-soft">
-        Good to see you, {firstName}
-      </h1>
-      <p class="mt-2 text-sm text-brand-soft">
-        {accounts.items.length}
-        {accounts.items.length === 1 ? "account" : "accounts"}
-      </p>
-    </div>
-    <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-      <Link
-        href="/transfer"
-        class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-surface px-4 py-2.5 text-sm font-semibold text-brand-strong transition-colors hover:bg-brand-soft"
-      >
-        <Send size={16} aria-hidden="true" />
-        Send money
-      </Link>
-      <Link
-        href="/accounts/new"
-        class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md border border-brand-soft/40 px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand"
-      >
-        <Plus size={16} aria-hidden="true" />
-        New account
-      </Link>
-    </div>
-  </div>
-
-  {#if totals.length > 0}
-    <dl class="flex flex-wrap gap-x-10 gap-y-4">
-      {#each totals as total (total.currency)}
-        <div>
-          <dt class="text-xs font-medium text-brand-soft">{total.currency} balance</dt>
-          <dd class="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
-            {formatMoney(total.amount, total.currency)}
-          </dd>
+<section class="card bg-neutral text-neutral-content shadow-sm" aria-labelledby="summary-heading">
+  <div class="card-body gap-7 p-6 sm:p-8">
+    <div class="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <span class="badge badge-outline border-neutral-content/30 text-neutral-content">
+          Your finances
+        </span>
+        <h1
+          id="summary-heading"
+          class="mt-4 max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl"
+        >
+          Good to see you, {firstName}.
+        </h1>
+        <p class="mt-2 text-sm text-neutral-content/60">
+          {accounts.items.length}
+          {accounts.items.length === 1 ? "account" : "accounts"} ready when you are.
+        </p>
+      </div>
+      {#if accounts.items.length > 0}
+        <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+          <Link href="/transfer" class="btn btn-primary min-h-11">
+            <Send size={16} aria-hidden="true" />
+            Send money
+          </Link>
+          <Link href="/accounts/new" class="btn btn-outline min-h-11 text-neutral-content">
+            <Plus size={16} aria-hidden="true" />
+            New account
+          </Link>
         </div>
-      {/each}
-    </dl>
-  {/if}
+      {/if}
+    </div>
+
+    {#if totals.length > 0}
+      <dl
+        class="stats stats-vertical bg-neutral-content/5 text-neutral-content shadow-none lg:stats-horizontal"
+      >
+        {#each totals as total (total.currency)}
+          <div class="stat">
+            <dt class="stat-title text-neutral-content/60">{total.currency} balance</dt>
+            <dd
+              class="stat-value text-2xl tracking-tight text-neutral-content tabular-nums sm:text-3xl"
+            >
+              {formatMoney(total.amount, total.currency)}
+            </dd>
+          </div>
+        {/each}
+      </dl>
+    {/if}
+  </div>
 </section>
 
 {#if auth.user && !auth.user.is_email_verified}
@@ -88,7 +93,7 @@
 
 <section class="mt-10" aria-labelledby="accounts-heading">
   <div class="mb-4 flex items-center justify-between">
-    <h2 id="accounts-heading" class="text-lg font-semibold text-ink">Your accounts</h2>
+    <h2 id="accounts-heading" class="text-lg font-semibold">Your accounts</h2>
   </div>
 
   {#if accounts.loading && !accounts.loaded}
@@ -98,7 +103,7 @@
       aria-label="Loading accounts"
     >
       {#each [0, 1, 2] as placeholder (placeholder)}
-        <div class="h-40 animate-pulse rounded-card border border-border bg-surface-muted"></div>
+        <div class="skeleton h-52"></div>
       {/each}
     </div>
   {:else if accounts.error}
@@ -106,23 +111,20 @@
       {accounts.error}
       <button
         type="button"
-        class="ml-2 inline-flex min-h-11 items-center underline"
+        class="btn btn-ghost btn-sm ml-2 min-h-11"
         onclick={() => accounts.load()}>Retry</button
       >
     </Alert>
   {:else if accounts.items.length === 0}
-    <div class="rounded-card border border-dashed border-border bg-surface px-6 py-12 text-center">
-      <h3 class="text-sm font-semibold text-ink">No accounts yet</h3>
-      <p class="mx-auto mt-1 max-w-sm text-sm text-muted">
-        Open your first account to start holding and transferring funds.
-      </p>
-      <div class="mt-4 flex justify-center">
-        <Link
-          href="/accounts/new"
-          class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
-        >
-          Open an account
-        </Link>
+    <div class="card border border-dashed border-base-300 bg-base-100 text-center">
+      <div class="card-body items-center px-6 py-12">
+        <h3 class="card-title text-base">No accounts yet</h3>
+        <p class="max-w-sm text-sm text-base-content/60">
+          Open your first account to start holding and transferring funds.
+        </p>
+        <div class="card-actions mt-2">
+          <Link href="/accounts/new" class="btn btn-primary min-h-11">Open an account</Link>
+        </div>
       </div>
     </div>
   {:else}

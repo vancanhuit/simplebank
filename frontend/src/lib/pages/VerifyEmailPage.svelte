@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
-  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import { request, toMessage } from "../api/client";
   import { auth } from "../stores/auth.svelte";
   import AuthLayout from "./AuthLayout.svelte";
@@ -49,49 +48,40 @@
 <AuthLayout title="Email verification" subtitle="Confirming your SimpleBank email address.">
   {#if status === "pending"}
     <div class="flex flex-col items-center gap-4 py-4 text-center" role="status" aria-busy="true">
-      <LoaderCircle
-        class="h-8 w-8 animate-spin motion-reduce:animate-none text-brand"
-        aria-hidden="true"
-      />
-      <p class="text-sm text-muted">Verifying your email…</p>
+      <span class="loading loading-ring loading-lg text-primary" aria-hidden="true"></span>
+      <p class="text-sm text-base-content/65">Verifying your email…</p>
     </div>
   {:else if status === "success"}
     <div class="flex flex-col items-center gap-4 py-4 text-center" role="status">
       <span
-        class="grid h-12 w-12 place-items-center rounded-full bg-positive-soft text-positive"
+        class="grid h-12 w-12 place-items-center rounded-full bg-success/15 text-success"
         aria-hidden="true"
       >
         <CircleCheck class="h-6 w-6" aria-hidden="true" />
       </span>
       <div>
-        <h2 class="text-base font-semibold text-ink">Email verified</h2>
-        <p class="mt-1 text-sm text-muted">
+        <h2 class="text-base font-semibold">Email verified</h2>
+        <p class="mt-1 text-sm text-base-content/65">
           Thanks for confirming your address. Your account is ready to use.
         </p>
       </div>
-      <Link
-        href={destination}
-        class="mt-2 inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-strong"
-      >
+      <Link href={destination} class="btn btn-primary mt-2">
         {destinationLabel}
       </Link>
     </div>
   {:else}
     <div class="flex flex-col items-center gap-4 py-4 text-center" role="alert">
       <span
-        class="grid h-12 w-12 place-items-center rounded-full bg-negative-soft text-negative"
+        class="grid h-12 w-12 place-items-center rounded-full bg-error/15 text-error"
         aria-hidden="true"
       >
         <CircleAlert class="h-6 w-6" aria-hidden="true" />
       </span>
       <div>
-        <h2 class="text-base font-semibold text-ink">Verification failed</h2>
-        <p class="mt-1 text-sm text-muted">{errorMessage}</p>
+        <h2 class="text-base font-semibold">Verification failed</h2>
+        <p class="mt-1 text-sm text-base-content/65">{errorMessage}</p>
       </div>
-      <Link
-        href={destination}
-        class="mt-2 inline-flex min-h-11 items-center justify-center rounded-md border border-control px-4 py-2 text-sm font-semibold text-ink hover:bg-canvas"
-      >
+      <Link href={destination} class="btn btn-outline mt-2">
         {destinationLabel}
       </Link>
     </div>

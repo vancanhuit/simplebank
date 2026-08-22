@@ -8,8 +8,9 @@ implementation plans as historical context for the work they describe.
 
 - [Project README](../README.md): setup, commands, configuration, API, and
   current architecture.
-- [Frontend README](../frontend/README.md): local UI development, build and
-  embedding behavior, and frontend verification.
+- [Frontend README](../frontend/README.md): Svelte, Tailwind CSS, and daisyUI
+  architecture; custom light/dark themes; local UI development; build and
+  embedding behavior; and frontend verification.
 - [Security guide](security.md): implemented controls, production deployment
   checklist, credential migration impact, and known limitations.
 
@@ -22,6 +23,11 @@ The project currently targets Go 1.27 and uses its standard-library `uuid`
 package. Exact Go, Bun, and development-tool versions are pinned in
 [`mise.toml`](../mise.toml) and checksummed in [`mise.lock`](../mise.lock); run
 `mise install` to install them.
+
+The web UI targets Svelte 5, TypeScript 6, Tailwind CSS 4, and daisyUI 5. The
+frontend defines only the custom `simplebank-light` and `simplebank-dark`
+themes, applies the selected theme before Svelte mounts, and stores an explicit
+selection in browser local storage.
 
 ## Architecture Decisions
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { router } from "../router.svelte";
 import { auth } from "../stores/auth.svelte";
 import AppHeader from "./AppHeader.svelte";
 
@@ -14,6 +15,7 @@ const user = {
 describe("AppHeader", () => {
   afterEach(() => {
     auth.clear();
+    router.path = "/";
     vi.unstubAllGlobals();
   });
 
@@ -47,6 +49,40 @@ describe("AppHeader", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(trigger).toHaveFocus();
     expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
+  });
+
+  it("closes the mobile navigation on Escape and restores trigger focus", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    await fireEvent.keyDown(window, { key: "Escape" });
+
+    const trigger = screen.getByRole("button", { name: "Open navigation" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
+  });
+
+  it("closes the mobile navigation when the route changes", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    router.path = "/";
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(screen.getByRole("navigation", { name: "Mobile primary" })).toBeInTheDocument();
+
+    router.path = "/transfer";
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
+    });
   });
 
   it("constrains long identities and keeps sign out on one line", () => {
@@ -88,43 +124,46 @@ describe("AppHeader", () => {
     expect(closeIcon).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("reserves active marker width to prevent layout shift", () => {
+  it("uses daisyUI navigation and exposes theme switching", () => {
     auth.user = user;
     auth.accessToken = "access-token";
+    router.path = "/";
     render(AppHeader);
 
-    const desktopLinks = screen.getAllByRole("link", { name: "Overview" });
-    const desktopLink = desktopLinks[0];
-
-    // All nav links should have border-l-2 and border-transparent (marker width reserved)
-    expect(desktopLink).toHaveClass("border-l-2");
-    expect(desktopLink).toHaveClass("border-transparent");
+    expect(screen.getByRole("banner").querySelector(".navbar")).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Primary" }).querySelector(".menu"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /switch to (dark|light) theme/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("asserts static fallback-class for active navigation marker on desktop and mobile links", async () => {
+  it("keeps desktop and mobile navigation links at least 44px tall", async () => {
     auth.user = user;
     auth.accessToken = "access-token";
     render(AppHeader);
 
-    // Open mobile menu to expose both desktop and mobile navigation links
     await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
 
-    const overviewLinks = screen.getAllByRole("link", { name: "Overview" });
-    expect(overviewLinks).toHaveLength(2);
-    const desktopLink = overviewLinks[0];
-    const mobileLink = overviewLinks[1];
+    for (const link of screen.getAllByRole("link", { name: /^(Overview|Transfer)$/ })) {
+      expect(link).toHaveClass("min-h-11");
+    }
+  });
 
-    // Verify desktop and mobile links are distinct elements
-    expect(desktopLink).not.toBe(mobileLink);
+  it("keeps a reserved forced-colors marker on desktop and mobile current links", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    router.path = "/";
+    render(AppHeader);
 
-    // Desktop link: assert marker width reservation and forced-colors fallback
-    expect(desktopLink).toHaveClass("border-l-2");
-    expect(desktopLink).toHaveClass("border-transparent");
-    expect(desktopLink.className).toContain("forced-colors:aria-[current=page]:border-[Highlight]");
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
 
-    // Mobile link: assert marker width reservation and forced-colors fallback
-    expect(mobileLink).toHaveClass("border-l-2");
-    expect(mobileLink).toHaveClass("border-transparent");
-    expect(mobileLink.className).toContain("forced-colors:aria-[current=page]:border-[Highlight]");
+    for (const link of screen.getAllByRole("link", { name: "Overview" })) {
+      expect(link).toHaveAttribute("aria-current", "page");
+      expect(link).toHaveClass("border-2", "border-transparent");
+      expect(link.className).toContain("forced-colors:aria-[current=page]:border-[Highlight]");
+    }
   });
 });

@@ -38,7 +38,7 @@
 </script>
 
 <AuthLayout title="Create your account" subtitle="Open a SimpleBank account in seconds.">
-  <form class="flex flex-col gap-4" onsubmit={handleSubmit} novalidate>
+  <form class="flex flex-col gap-5" onsubmit={handleSubmit} novalidate>
     {#if error}
       <Alert variant="error">{error}</Alert>
     {/if}
@@ -61,11 +61,11 @@
       required
     />
 
-    <Button type="submit" loading={submitting} class="mt-2 w-full sm:w-auto">Create account</Button>
+    <Button type="submit" loading={submitting} class="mt-2 w-full">Create account</Button>
   </form>
 
   {#snippet footer()}
     Already have an account?
-    <Link href="/login" class="font-semibold text-brand hover:text-brand-strong">Sign in</Link>
+    <Link href="/login" class="link link-primary font-semibold">Sign in</Link>
   {/snippet}
 </AuthLayout>

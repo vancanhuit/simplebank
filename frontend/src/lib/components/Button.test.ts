@@ -9,7 +9,9 @@ describe("Button", () => {
     render(Button, { loading: true, children });
 
     const button = screen.getByRole("button", { name: "Save" });
+    expect(button).toHaveClass("btn", "btn-primary");
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button.querySelector(".loading-spinner")).toBeInTheDocument();
   });
 });

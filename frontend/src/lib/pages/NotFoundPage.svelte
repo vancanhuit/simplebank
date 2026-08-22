@@ -5,16 +5,19 @@
   const home = $derived(auth.isAuthenticated ? "/" : "/login");
 </script>
 
-<div class="mx-auto max-w-md py-16 text-center">
-  <p class="text-sm font-semibold text-brand">404</p>
-  <h1 class="mt-2 text-2xl font-semibold text-ink">Page not found</h1>
-  <p class="mt-2 text-sm text-muted">The page you're looking for doesn't exist or has moved.</p>
-  <div class="mt-6">
-    <Link
-      href={home}
-      class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-surface transition-colors hover:bg-brand-strong"
-    >
-      Back to safety
-    </Link>
+<div class="hero py-10 sm:py-16">
+  <div class="hero-content w-full max-w-lg">
+    <div class="card w-full border border-base-300 bg-base-100 text-center shadow-sm">
+      <div class="card-body items-center px-6 py-10 sm:px-10 sm:py-12">
+        <p class="text-sm font-bold tracking-[0.25em] text-primary">404</p>
+        <h1 class="card-title mt-1 text-3xl tracking-tight">Page not found</h1>
+        <p class="mt-1 text-sm text-base-content/60">
+          The page you're looking for doesn't exist or has moved.
+        </p>
+        <div class="card-actions mt-4">
+          <Link href={home} class="btn btn-primary min-h-11">Back to safety</Link>
+        </div>
+      </div>
+    </div>
   </div>
 </div>

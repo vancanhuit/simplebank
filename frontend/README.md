@@ -1,8 +1,9 @@
 # SimpleBank Frontend
 
 The SimpleBank web UI is a Svelte 5 single-page application built with Vite,
-TypeScript, and Tailwind CSS. Production assets are embedded in the Go binary,
-so the UI and `/api/v1` are served from the same origin.
+TypeScript, Tailwind CSS, and daisyUI. It uses custom `simplebank-light` and
+`simplebank-dark` themes; an explicit selection is stored in the browser, while
+the operating-system preference supplies the initial default.
 
 See the [project README](../README.md) for the complete application setup,
 configuration, API, and deployment-oriented Compose profiles.

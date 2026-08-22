@@ -12,6 +12,12 @@ It covers the full journey: registration with email verification, account
 creation with an optional opening balance, transfers between accounts, and
 per-account transfer history.
 
+The responsive interface uses Tailwind CSS 4 and daisyUI 5 with custom
+`simplebank-light` and `simplebank-dark` themes. A user-selected theme persists
+in the browser; otherwise the app follows the operating-system preference. The
+shared controls retain native semantics, keyboard navigation, visible focus,
+forced-colors support, and screen-reader announcements.
+
 | | |
 |---|---|
 | ![Sign in](docs/images/login.png) | ![Account overview](docs/images/dashboard.png) |
