@@ -10,9 +10,9 @@ require (
 	github.com/labstack/echo-jwt/v5 v5.0.2
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/pressly/goose/v3 v3.27.3
-	github.com/riverqueue/river v0.43.0
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.43.0
-	github.com/urfave/cli/v3 v3.10.1
+	github.com/riverqueue/river v0.44.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.44.0
+	github.com/urfave/cli/v3 v3.11.0
 	github.com/wneessen/go-mail v0.8.1
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.55.0
@@ -27,9 +27,9 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
-	github.com/riverqueue/river/riverdriver v0.43.0 // indirect
-	github.com/riverqueue/river/rivershared v0.43.0 // indirect
-	github.com/riverqueue/river/rivertype v0.43.0 // indirect
+	github.com/riverqueue/river/riverdriver v0.44.0 // indirect
+	github.com/riverqueue/river/rivershared v0.44.0 // indirect
+	github.com/riverqueue/river/rivertype v0.44.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
