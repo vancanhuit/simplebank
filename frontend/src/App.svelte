@@ -111,25 +111,22 @@
 <div aria-live="polite" aria-atomic="true" class="sr-only">{routeAnnouncement}</div>
 
 {#if auth.initializing}
-  <div class="grid min-h-screen place-items-center bg-canvas" aria-busy="true">
-    <span
-      class="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent"
-      aria-label="Loading"
-    ></span>
+  <div class="grid min-h-screen place-items-center bg-base-200" aria-busy="true">
+    <span class="loading loading-ring loading-lg text-primary" aria-label="Loading"></span>
   </div>
 {:else}
-  <div class="flex min-h-screen flex-col">
+  <div class="flex min-h-screen flex-col bg-base-200 text-base-content">
     {#if view.chrome}
       <a
         href="#main"
-        class="sr-only min-h-11 rounded-md bg-brand px-4 py-2 text-surface focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10 focus:inline-flex focus:items-center"
+        class="btn btn-primary sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50"
       >
         Skip to content
       </a>
 
       <AppHeader />
 
-      <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      <main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:py-12">
         <Page />
       </main>
     {:else}

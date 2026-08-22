@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import { router } from "../router.svelte";
 import { auth } from "../stores/auth.svelte";
 import AppHeader from "./AppHeader.svelte";
 
@@ -88,43 +89,19 @@ describe("AppHeader", () => {
     expect(closeIcon).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("reserves active marker width to prevent layout shift", () => {
+  it("uses daisyUI navigation and exposes theme switching", () => {
     auth.user = user;
     auth.accessToken = "access-token";
+    router.path = "/";
     render(AppHeader);
 
-    const desktopLinks = screen.getAllByRole("link", { name: "Overview" });
-    const desktopLink = desktopLinks[0];
-
-    // All nav links should have border-l-2 and border-transparent (marker width reserved)
-    expect(desktopLink).toHaveClass("border-l-2");
-    expect(desktopLink).toHaveClass("border-transparent");
-  });
-
-  it("asserts static fallback-class for active navigation marker on desktop and mobile links", async () => {
-    auth.user = user;
-    auth.accessToken = "access-token";
-    render(AppHeader);
-
-    // Open mobile menu to expose both desktop and mobile navigation links
-    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-
-    const overviewLinks = screen.getAllByRole("link", { name: "Overview" });
-    expect(overviewLinks).toHaveLength(2);
-    const desktopLink = overviewLinks[0];
-    const mobileLink = overviewLinks[1];
-
-    // Verify desktop and mobile links are distinct elements
-    expect(desktopLink).not.toBe(mobileLink);
-
-    // Desktop link: assert marker width reservation and forced-colors fallback
-    expect(desktopLink).toHaveClass("border-l-2");
-    expect(desktopLink).toHaveClass("border-transparent");
-    expect(desktopLink.className).toContain("forced-colors:aria-[current=page]:border-[Highlight]");
-
-    // Mobile link: assert marker width reservation and forced-colors fallback
-    expect(mobileLink).toHaveClass("border-l-2");
-    expect(mobileLink).toHaveClass("border-transparent");
-    expect(mobileLink.className).toContain("forced-colors:aria-[current=page]:border-[Highlight]");
+    expect(screen.getByRole("banner").querySelector(".navbar")).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Primary" }).querySelector(".menu"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /switch to (dark|light) theme/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   });
 });
