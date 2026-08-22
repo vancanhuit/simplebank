@@ -95,7 +95,7 @@
           <li>
             <Link
               href={item.href}
-              class="min-h-11 rounded-field aria-[current=page]:bg-primary aria-[current=page]:text-primary-content"
+              class="min-h-11 rounded-field border-2 border-transparent aria-[current=page]:bg-primary aria-[current=page]:text-primary-content forced-colors:aria-[current=page]:border-[Highlight]"
             >
               {item.label}
             </Link>
@@ -140,7 +140,7 @@
           <li>
             <Link
               href={item.href}
-              class="min-h-11 aria-[current=page]:bg-primary aria-[current=page]:text-primary-content"
+              class="min-h-11 border-2 border-transparent aria-[current=page]:bg-primary aria-[current=page]:text-primary-content forced-colors:aria-[current=page]:border-[Highlight]"
               onclick={closeMenuAndRestoreFocus}
             >
               {item.label}

@@ -151,4 +151,19 @@ describe("AppHeader", () => {
       expect(link).toHaveClass("min-h-11");
     }
   });
+
+  it("keeps a reserved forced-colors marker on desktop and mobile current links", async () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    router.path = "/";
+    render(AppHeader);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+
+    for (const link of screen.getAllByRole("link", { name: "Overview" })) {
+      expect(link).toHaveAttribute("aria-current", "page");
+      expect(link).toHaveClass("border-2", "border-transparent");
+      expect(link.className).toContain("forced-colors:aria-[current=page]:border-[Highlight]");
+    }
+  });
 });
