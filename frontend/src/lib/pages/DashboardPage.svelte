@@ -50,16 +50,18 @@
           {accounts.items.length === 1 ? "account" : "accounts"} ready when you are.
         </p>
       </div>
-      <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-        <Link href="/transfer" class="btn btn-primary min-h-11">
-          <Send size={16} aria-hidden="true" />
-          Send money
-        </Link>
-        <Link href="/accounts/new" class="btn btn-outline min-h-11 text-neutral-content">
-          <Plus size={16} aria-hidden="true" />
-          New account
-        </Link>
-      </div>
+      {#if accounts.items.length > 0}
+        <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+          <Link href="/transfer" class="btn btn-primary min-h-11">
+            <Send size={16} aria-hidden="true" />
+            Send money
+          </Link>
+          <Link href="/accounts/new" class="btn btn-outline min-h-11 text-neutral-content">
+            <Plus size={16} aria-hidden="true" />
+            New account
+          </Link>
+        </div>
+      {/if}
     </div>
 
     {#if totals.length > 0}
