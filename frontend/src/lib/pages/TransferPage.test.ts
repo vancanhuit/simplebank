@@ -60,6 +60,62 @@ describe("TransferPage", () => {
     expect(source).toHaveClass("select", "w-full");
   });
 
+  it("rejects a transfer without a source account", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+    accounts.transferFromId = "stale-account";
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose an account to send from.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects the source account as the recipient", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    const recipient = screen.getByRole("textbox", { name: "Recipient account id" });
+    await fireEvent.input(recipient, { target: { value: "acct-1" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+
+    expect(recipient).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose a different recipient account.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an amount above the per-transfer limit", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { USD: { max_per_transfer: 10000, daily: 50000 } }),
+    );
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    await fireEvent.input(screen.getByRole("textbox", { name: "Recipient account id" }), {
+      target: { value: "acct-2" },
+    });
+    const amount = screen.getByRole("spinbutton", { name: "Amount (USD)" });
+    await fireEvent.input(amount, { target: { value: "100.01" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+
+    expect(amount).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Amount exceeds the $100.00 per-transfer limit.",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("consolidates success message and details into one role=status receipt", async () => {
     const idempotencyKey = "11111111-1111-4111-8111-111111111111";
     vi.spyOn(crypto, "randomUUID")

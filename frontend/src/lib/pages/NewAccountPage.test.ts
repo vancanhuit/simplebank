@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NewAccountPage from "./NewAccountPage.svelte";
 import { accounts } from "../stores/accounts.svelte";
@@ -60,6 +60,54 @@ describe("NewAccountPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: /EUR/ })).toBeChecked();
     });
+  });
+
+  it("offers only currencies the customer does not already hold", async () => {
+    render(NewAccountPage);
+
+    expect(await screen.findByRole("radio", { name: /EUR/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /VND/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /USD/ })).not.toBeInTheDocument();
+  });
+
+  it("applies opening policy to the deposit controls when the policy is ready", async () => {
+    let resolveLimits!: (value: Response) => void;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolveLimits = resolve;
+      }),
+    );
+
+    render(NewAccountPage);
+
+    const euro = await screen.findByRole("radio", { name: /EUR/ });
+    const deposit = screen.getByRole("spinbutton", { name: "Opening deposit (EUR)" });
+    const submit = screen.getByRole("button", { name: "Create account" });
+    expect(euro).toBeDisabled();
+    expect(deposit).toBeDisabled();
+    expect(submit).toBeDisabled();
+
+    resolveLimits(jsonResponse(200, { EUR: 123456, VND: 500000 }));
+
+    await waitFor(() => {
+      expect(euro).toBeEnabled();
+      expect(deposit).toBeEnabled();
+      expect(submit).toBeEnabled();
+    });
+    expect(deposit).toHaveAttribute("step", "0.01");
+    expect(deposit).toHaveAttribute("max", "1234.56");
+    expect(deposit).toHaveAccessibleDescription(
+      "Optional. Maximum €1,234.56. Leave blank to open at zero.",
+    );
+
+    await fireEvent.click(screen.getByRole("radio", { name: /VND/ }));
+
+    const dongDeposit = screen.getByRole("spinbutton", { name: "Opening deposit (VND)" });
+    expect(dongDeposit).toHaveAttribute("step", "1");
+    expect(dongDeposit).toHaveAttribute("max", "500000");
+    expect(dongDeposit).toHaveAccessibleDescription(
+      "Optional. Maximum ₫500,000. Leave blank to open at zero.",
+    );
   });
 
   it("fetches opening policy before account load completes and corrects currency after", async () => {
