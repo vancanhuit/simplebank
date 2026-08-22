@@ -16,6 +16,8 @@ describe("TextField", () => {
     const field = screen.getByRole("textbox", { name: "Recipient account id" });
     const error = screen.getByRole("alert");
 
+    expect(field).toHaveClass("input", "w-full");
+    expect(field.closest("fieldset")).toHaveClass("fieldset");
     expect(field).toHaveAttribute("aria-invalid", "true");
     expect(field).toHaveAttribute("aria-describedby", "recipient-error");
     expect(error).toHaveAttribute("id", "recipient-error");

@@ -9,11 +9,9 @@
   let { variant = "info", children }: Props = $props();
 
   const styles = {
-    error:
-      "border-negative bg-negative-soft text-negative forced-colors:border-[CanvasText] forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]",
-    success:
-      "border-positive bg-positive-soft text-positive forced-colors:border-[CanvasText] forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]",
-    info: "border-info bg-info-soft text-info forced-colors:border-[CanvasText] forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]",
+    error: "alert-error",
+    success: "alert-success",
+    info: "alert-info",
   };
 
   // Errors are assertive so screen readers announce them immediately; info and
@@ -21,6 +19,9 @@
   const role = $derived(variant === "error" ? "alert" : "status");
 </script>
 
-<div {role} class={`rounded-md border px-4 py-3 text-sm font-medium ${styles[variant]}`}>
-  {@render children()}
+<div
+  {role}
+  class={`alert ${styles[variant]} text-sm forced-colors:border-[CanvasText] forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]`}
+>
+  <div>{@render children()}</div>
 </div>

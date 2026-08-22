@@ -16,6 +16,10 @@ describe("Alert", () => {
 
     const alert = screen.getByRole(role);
 
+    expect(alert).toHaveClass("alert");
+    expect(alert).toHaveClass(
+      variant === "error" ? "alert-error" : variant === "success" ? "alert-success" : "alert-info",
+    );
     // Alert should have forced-colors fallback for border, background, and text
     expect(alert.className).toContain("forced-colors:border-[CanvasText]");
     expect(alert.className).toContain("forced-colors:bg-[Canvas]");

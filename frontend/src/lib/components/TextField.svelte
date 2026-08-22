@@ -56,8 +56,8 @@
   });
 </script>
 
-<div class="flex flex-col gap-1.5">
-  <label for={id} class="text-sm font-medium text-ink contrast-more:font-bold">{label}</label>
+<fieldset class="fieldset">
+  <label for={id} class="fieldset-legend contrast-more:font-bold">{label}</label>
   <input
     {id}
     {type}
@@ -74,16 +74,16 @@
     bind:this={inputElement}
     aria-describedby={describedBy}
     aria-invalid={error ? true : undefined}
-    class="min-h-11 rounded-md border bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted focus-visible:border-brand disabled:bg-surface-muted disabled:cursor-not-allowed contrast-more:border-2 forced-colors:border-[ButtonBorder] {error
-      ? 'border-negative contrast-more:border-[Mark] forced-colors:aria-invalid:border-[Mark]'
-      : 'border-control'}"
+    class="input w-full min-h-11 disabled:cursor-not-allowed contrast-more:border-2 forced-colors:border-[ButtonBorder] {error
+      ? 'input-error forced-colors:aria-invalid:border-[Mark]'
+      : ''}"
   />
   {#if error}
-    <p id={errorId} role="alert" class="text-xs font-medium text-negative contrast-more:font-bold">
+    <p id={errorId} role="alert" class="label text-error contrast-more:font-bold">
       {error}
     </p>
   {/if}
   {#if hint}
-    <p id={hintId} class="text-xs text-muted">{hint}</p>
+    <p id={hintId} class="label text-base-content/70">{hint}</p>
   {/if}
-</div>
+</fieldset>
