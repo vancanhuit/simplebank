@@ -13,12 +13,14 @@ class AccountsStore {
   error = $state<string | null>(null);
   loaded = $state(false);
   #generation = 0;
+  #loadSequence = 0;
 
   /** Account id to preselect on the transfer form (set from an account card). */
   transferFromId = $state<string | null>(null);
 
   async load(): Promise<void> {
     const generation = this.#generation;
+    const sequence = ++this.#loadSequence;
     this.loading = true;
     this.error = null;
     try {
@@ -27,17 +29,17 @@ class AccountsStore {
       const items = await request<Account[]>("/accounts?page=1&size=100", {
         authenticated: true,
       });
-      if (this.#generation !== generation) {
+      if (this.#generation !== generation || this.#loadSequence !== sequence) {
         return;
       }
       this.items = items;
       this.loaded = true;
     } catch (err) {
-      if (this.#generation === generation) {
+      if (this.#generation === generation && this.#loadSequence === sequence) {
         this.error = toMessage(err);
       }
     } finally {
-      if (this.#generation === generation) {
+      if (this.#generation === generation && this.#loadSequence === sequence) {
         this.loading = false;
       }
     }
@@ -62,6 +64,7 @@ class AccountsStore {
 
   reset(): void {
     this.#generation += 1;
+    this.#loadSequence += 1;
     this.items = [];
     this.loading = false;
     this.loaded = false;

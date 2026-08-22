@@ -62,6 +62,99 @@ describe("NewAccountPage", () => {
     });
   });
 
+  it("gates creation on account inventory and initializes available currency after retry", async () => {
+    accounts.loaded = false;
+    accounts.items = [];
+    let resolveInitialLoad!: () => void;
+    const initialLoad = new Promise<void>((resolve) => {
+      resolveInitialLoad = resolve;
+    });
+    const loadSpy = vi
+      .spyOn(accounts, "load")
+      .mockReturnValueOnce(initialLoad)
+      .mockImplementationOnce(() => {
+        accounts.error = null;
+        accounts.items = [
+          {
+            id: "1",
+            owner: "alice",
+            currency: "USD",
+            balance: 1000,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        ];
+        accounts.loaded = true;
+        return Promise.resolve();
+      });
+
+    render(NewAccountPage);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading your accounts");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create account" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/account-opening-limits", expect.any(Object));
+    });
+
+    accounts.error = "offline";
+    resolveInitialLoad();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load your accounts. offline",
+    );
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("radio", { name: /EUR/ })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: /USD/ })).not.toBeInTheDocument();
+    expect(loadSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps stale account-creation controls gated while a retry reload is pending", async () => {
+    render(NewAccountPage);
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: /EUR/ })).toBeEnabled();
+    });
+
+    accounts.error = "offline";
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load your accounts. offline",
+    );
+
+    let resolveReload!: () => void;
+    const reload = new Promise<void>((resolve) => {
+      resolveReload = resolve;
+    });
+    vi.spyOn(accounts, "load").mockImplementationOnce(() => {
+      accounts.loading = true;
+      accounts.error = null;
+      return reload.then(() => {
+        accounts.items = [
+          {
+            id: "2",
+            owner: "alice",
+            currency: "EUR",
+            balance: 2000,
+            created_at: "2026-01-02T00:00:00Z",
+          },
+        ];
+        accounts.loading = false;
+      });
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading your accounts");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create account" })).not.toBeInTheDocument();
+
+    resolveReload();
+
+    expect(await screen.findByRole("radio", { name: /USD/ })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: /EUR/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
+  });
+
   it("offers only currencies the customer does not already hold", async () => {
     render(NewAccountPage);
 

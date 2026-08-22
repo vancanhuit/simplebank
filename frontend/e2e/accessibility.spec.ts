@@ -106,6 +106,21 @@ for (const theme of ["simplebank-light", "simplebank-dark"] as const) {
   });
 }
 
+test("empty registration focuses the first invalid field and remains accessible at 320", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/tokens/renew", (route) => route.fulfill({ status: 204 }));
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/register");
+
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  const fullName = page.getByRole("textbox", { name: "Full name" });
+  await expect(fullName).toBeFocused();
+  await expect(fullName).toHaveAttribute("aria-invalid", "true");
+  await expectNoAccessibilityViolations(page);
+});
+
 test("dashboard reflows and remains accessible at supported viewports", async ({ page }) => {
   await mockAuthenticatedAPI(page);
 
@@ -210,6 +225,25 @@ test("validation focuses and announces the first invalid field", async ({ page }
   await expect(recipient).toBeFocused();
   await expect(recipient).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toHaveText("Enter the recipient account id.");
+  await expectNoAccessibilityViolations(page);
+});
+
+test("transfer account-load failure exposes an accessible retry state at 320", async ({ page }) => {
+  await mockAuthenticatedAPI(page);
+  await page.route("**/api/v1/accounts?*", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Service unavailable" }),
+    }),
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/transfer");
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Couldn't load your accounts. Service unavailable",
+  );
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   await expectNoAccessibilityViolations(page);
 });
 

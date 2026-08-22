@@ -6,7 +6,7 @@ import type {
   RenewResponse,
   User,
 } from "../api/types";
-import { navigate } from "../router.svelte";
+import { replaceNavigation } from "../router.svelte";
 
 /**
  * Authentication state backed by httpOnly cookie sessions. The access token
@@ -17,8 +17,14 @@ class AuthStore {
   accessToken = $state<string | null>(null);
   /** True until the initial session-restore attempt has completed. */
   initializing = $state(true);
+  /** True from local logout invalidation through server response handling and navigation. */
+  loggingOut = $state(false);
   /** Monotonic generation to prevent race conditions. */
   #generation = 0;
+
+  get generation(): number {
+    return this.#generation;
+  }
 
   get isAuthenticated(): boolean {
     return this.user !== null && this.accessToken !== null;
@@ -41,6 +47,9 @@ class AuthStore {
   }
 
   async login(username: string, password: string): Promise<void> {
+    if (this.loggingOut) {
+      throw new Error("Wait for sign-out to finish before signing in.");
+    }
     const gen = ++this.#generation;
     const res = await request<LoginResponse>("/users/login", {
       method: "POST",
@@ -87,19 +96,28 @@ class AuthStore {
   }
 
   async logout(): Promise<void> {
+    this.loggingOut = true;
     ++this.#generation;
+    this.#clearState();
+    let logoutFailed = false;
     try {
       await request<void>("/users/logout", { method: "POST" });
+    } catch {
+      logoutFailed = true;
     } finally {
-      // Never leave a usable access token in a shared browser after sign-out.
-      this.clear();
-      navigate("/login");
+      replaceNavigation("/login", logoutFailed ? { logoutFailed: true } : {});
+      this.loggingOut = false;
     }
   }
 
-  clear(): void {
+  #clearState(): void {
     this.user = null;
     this.accessToken = null;
+  }
+
+  clear(): void {
+    this.#generation += 1;
+    this.#clearState();
   }
 }
 

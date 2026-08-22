@@ -93,6 +93,31 @@ describe("request", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("does not retry a 401 after the auth generation changes", async () => {
+    let resolveFirst!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    auth.accessToken = "old-token";
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+
+    const pending = request("/transfers", { method: "POST", authenticated: true, body: {} });
+    auth.clear();
+    auth.accessToken = "new-token";
+    resolveFirst(jsonResponse(401, { error: "expired" }));
+
+    await expect(pending).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it("shares one refresh across concurrent 401 responses", async () => {
     const fetchMock = vi
       .fn()
@@ -111,6 +136,37 @@ describe("request", () => {
     expect(results).toEqual([{ id: "a" }, { id: "b" }]);
     expect(refresh).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not share a refresh across auth generations", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }));
+    vi.stubGlobal("fetch", fetchMock);
+    auth.accessToken = "old-token";
+
+    const resolveRefreshes: Array<(refreshed: boolean) => void> = [];
+    const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveRefreshes.push(resolve);
+        }),
+    );
+
+    const oldRequest = request("/accounts/old", { authenticated: true });
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    auth.clear();
+    auth.accessToken = "new-token";
+    const newRequest = request("/accounts/new", { authenticated: true });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    resolveRefreshes.forEach((resolve) => resolve(false));
+    await expect(oldRequest).rejects.toMatchObject({ status: 401 });
+    await expect(newRequest).rejects.toMatchObject({ status: 401 });
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry when concurrent refresh fails", async () => {

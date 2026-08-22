@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { router } from "../router.svelte";
 import { auth } from "../stores/auth.svelte";
+import { accounts } from "../stores/accounts.svelte";
 import AppHeader from "./AppHeader.svelte";
 
 const user = {
@@ -16,6 +17,7 @@ describe("AppHeader", () => {
   afterEach(() => {
     auth.clear();
     router.path = "/";
+    router.state = {};
     vi.unstubAllGlobals();
   });
 
@@ -95,17 +97,21 @@ describe("AppHeader", () => {
     expect(screen.getByRole("button", { name: "Sign out" })).toHaveClass("whitespace-nowrap");
   });
 
-  it("clears local access and reports a failed server sign out", async () => {
+  it("clears session-scoped state without retaining failed logout feedback", async () => {
     auth.user = user;
     auth.accessToken = "access-token";
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const reset = vi.spyOn(accounts, "reset");
     render(AppHeader);
 
     await fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Sign out failed");
-    expect(auth.user).toBeNull();
-    expect(auth.accessToken).toBeNull();
+    await waitFor(() => {
+      expect(reset).toHaveBeenCalledOnce();
+      expect(auth.user).toBeNull();
+      expect(auth.accessToken).toBeNull();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("hides menu and close icons from the accessibility tree", async () => {
