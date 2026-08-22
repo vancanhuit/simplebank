@@ -4,13 +4,29 @@ import { auth } from "../stores/auth.svelte";
  *  dev server proxies it to the Go backend (see vite.config.ts). */
 const BASE_URL = "/api/v1";
 
-let refreshPromise: Promise<boolean> | null = null;
+interface RefreshAttempt {
+  generation: number;
+  promise: Promise<boolean>;
+}
 
-function refreshAccessToken(): Promise<boolean> {
-  refreshPromise ??= auth.tryRefresh().finally(() => {
-    refreshPromise = null;
+let refreshAttempt: RefreshAttempt | null = null;
+
+function refreshAccessToken(generation: number): Promise<boolean> {
+  if (refreshAttempt?.generation === generation) {
+    return refreshAttempt.promise;
+  }
+
+  const attempt: RefreshAttempt = {
+    generation,
+    promise: Promise.resolve(false),
+  };
+  attempt.promise = auth.tryRefresh().finally(() => {
+    if (refreshAttempt === attempt) {
+      refreshAttempt = null;
+    }
   });
-  return refreshPromise;
+  refreshAttempt = attempt;
+  return attempt.promise;
 }
 
 /** Error thrown for any non-2xx API response. Carries the HTTP status and the
@@ -58,11 +74,12 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
  * retries, so an expired access token is invisible to callers.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const generation = auth.generation;
   let response = await send(path, options);
 
-  if (response.status === 401 && options.authenticated) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
+  if (response.status === 401 && options.authenticated && auth.generation === generation) {
+    const refreshed = await refreshAccessToken(generation);
+    if (refreshed && auth.generation === generation) {
       response = await send(path, options);
     }
   }

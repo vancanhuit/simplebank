@@ -60,6 +60,110 @@ describe("TransferPage", () => {
     expect(source).toHaveClass("select", "w-full");
   });
 
+  it("gates transfers on account inventory and initializes the requested source after retry", async () => {
+    accounts.loaded = false;
+    accounts.items = [];
+    accounts.transferFromId = "acct-eur";
+    let resolveInitialLoad!: () => void;
+    const initialLoad = new Promise<void>((resolve) => {
+      resolveInitialLoad = resolve;
+    });
+    const loadSpy = vi
+      .spyOn(accounts, "load")
+      .mockReturnValueOnce(initialLoad)
+      .mockImplementationOnce(() => {
+        accounts.error = null;
+        accounts.items = [
+          {
+            id: "acct-usd",
+            owner: "alice",
+            currency: "USD",
+            balance: 100000,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "acct-eur",
+            owner: "alice",
+            currency: "EUR",
+            balance: 200000,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        ];
+        accounts.loaded = true;
+        return Promise.resolve();
+      });
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+
+    render(TransferPage);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading your accounts");
+    expect(screen.queryByRole("combobox", { name: "From account" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send transfer" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    accounts.error = "offline";
+    resolveInitialLoad();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load your accounts. offline",
+    );
+    expect(screen.queryByRole("combobox", { name: "From account" })).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    const source = await screen.findByRole("combobox", { name: "From account" });
+    expect(source).toHaveValue("acct-eur");
+    expect(accounts.transferFromId).toBeNull();
+    expect(loadSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps stale transfer controls gated while a retry reload is pending", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    accounts.error = "offline";
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load your accounts. offline",
+    );
+
+    let resolveReload!: () => void;
+    const reload = new Promise<void>((resolve) => {
+      resolveReload = resolve;
+    });
+    vi.spyOn(accounts, "load").mockImplementationOnce(() => {
+      accounts.loading = true;
+      accounts.error = null;
+      return reload.then(() => {
+        accounts.items = [
+          {
+            id: "acct-fresh",
+            owner: "alice",
+            currency: "EUR",
+            balance: 200000,
+            created_at: "2026-01-02T00:00:00Z",
+          },
+        ];
+        accounts.loading = false;
+      });
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading your accounts");
+    expect(screen.queryByRole("combobox", { name: "From account" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send transfer" })).not.toBeInTheDocument();
+
+    resolveReload();
+
+    const source = await screen.findByRole("combobox", { name: "From account" });
+    expect(source).toHaveValue("acct-fresh");
+    expect(screen.getByRole("button", { name: "Send transfer" })).toBeInTheDocument();
+  });
+
   it("rejects a transfer without a source account", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
     accounts.transferFromId = "stale-account";
@@ -250,6 +354,240 @@ describe("TransferPage", () => {
     const retryBody = jsonRequestBody(fetchMock.mock.calls[2]);
     expect(firstBody.idempotency_key).toBe(idempotencyKey);
     expect(retryBody).toEqual(firstBody);
+  });
+
+  it("uses a new idempotency key when the same normalized transfer is submitted after success", async () => {
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
+      .mockReturnValueOnce("22222222-2222-4222-8222-222222222222")
+      .mockReturnValueOnce("33333333-3333-4333-8333-333333333333");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          transfer: { id: "tx-first", amount: 5000 },
+          from_account: { currency: "USD", balance: 95000 },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, accounts.items))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          transfer: { id: "tx-second", amount: 5000 },
+          from_account: { currency: "USD", balance: 90000 },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, accounts.items));
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    const recipient = screen.getByRole("textbox", { name: /recipient account id/i });
+    const amount = screen.getByRole("spinbutton", { name: /amount/i });
+    const submit = screen.getByRole("button", { name: /send transfer/i });
+    await fireEvent.input(recipient, { target: { value: " acct-2 " } });
+    await fireEvent.input(amount, { target: { value: "50.00" } });
+    await fireEvent.click(submit);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /send transfer/i })).toBeEnabled(),
+    );
+
+    await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+      target: { value: "acct-2" },
+    });
+    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+      target: { value: "50.0" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: /send transfer/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+
+    const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
+    const secondBody = jsonRequestBody(fetchMock.mock.calls[3]);
+    expect(firstBody).toMatchObject({
+      to_account_id: "acct-2",
+      amount: 5000,
+      idempotency_key: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(secondBody).toMatchObject({
+      to_account_id: "acct-2",
+      amount: 5000,
+      idempotency_key: "22222222-2222-4222-8222-222222222222",
+    });
+  });
+
+  it("reuses the idempotency key after normalized-equivalent retry edits", async () => {
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
+      .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(503, { error: "first failure" }))
+      .mockResolvedValueOnce(jsonResponse(503, { error: "retry failure" }));
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    const recipient = screen.getByRole("textbox", { name: /recipient account id/i });
+    const amount = screen.getByRole("spinbutton", { name: /amount/i });
+    const submit = screen.getByRole("button", { name: /send transfer/i });
+    await fireEvent.input(recipient, { target: { value: " acct-2 " } });
+    await fireEvent.input(amount, { target: { value: "50.00" } });
+    await fireEvent.click(submit);
+    await screen.findByText("first failure");
+
+    await fireEvent.input(recipient, { target: { value: "acct-2" } });
+    await fireEvent.input(amount, { target: { value: "50.0" } });
+    await fireEvent.click(submit);
+    await screen.findByText("retry failure");
+
+    const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
+    const retryBody = jsonRequestBody(fetchMock.mock.calls[2]);
+    expect(retryBody).toEqual(firstBody);
+    expect(retryBody.idempotency_key).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  it.each([
+    {
+      field: "recipient",
+      edit: () =>
+        fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+          target: { value: "acct-3" },
+        }),
+      changedField: "to_account_id",
+      changedValue: "acct-3",
+    },
+    {
+      field: "minor amount",
+      edit: () =>
+        fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+          target: { value: "50.01" },
+        }),
+      changedField: "amount",
+      changedValue: 5001,
+    },
+  ])(
+    "rotates the idempotency key when the $field changes after a failed transfer",
+    async ({ edit, changedField, changedValue }) => {
+      vi.spyOn(crypto, "randomUUID")
+        .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
+        .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+        .mockResolvedValueOnce(jsonResponse(503, { error: "first failure" }))
+        .mockResolvedValueOnce(jsonResponse(503, { error: "changed failure" }));
+
+      render(TransferPage);
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+      });
+
+      await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+        target: { value: "acct-2" },
+      });
+      await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+        target: { value: "50.00" },
+      });
+      const submitButton = screen.getByRole("button", { name: /send transfer/i });
+      await fireEvent.click(submitButton);
+      await screen.findByText("first failure");
+
+      await edit();
+      await fireEvent.click(submitButton);
+      await screen.findByText("changed failure");
+
+      const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
+      const changedBody = jsonRequestBody(fetchMock.mock.calls[2]);
+      expect(changedBody[changedField]).toBe(changedValue);
+      expect(changedBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+    },
+  );
+
+  it("rotates the idempotency key when the source account and currency change", async () => {
+    accounts.items = [
+      ...accounts.items,
+      {
+        id: "acct-2",
+        owner: "alice",
+        currency: "EUR",
+        balance: 100000,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+    ];
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
+      .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          USD: { max_per_transfer: 1000000 },
+          EUR: { max_per_transfer: 1000000 },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(503, { error: "first failure" }))
+      .mockResolvedValueOnce(jsonResponse(503, { error: "changed failure" }));
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+      target: { value: "acct-3" },
+    });
+    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+      target: { value: "50.00" },
+    });
+    const submitButton = screen.getByRole("button", { name: /send transfer/i });
+    await fireEvent.click(submitButton);
+    await screen.findByText("first failure");
+
+    await fireEvent.change(screen.getByRole("combobox", { name: "From account" }), {
+      target: { value: "acct-2" },
+    });
+    await fireEvent.click(submitButton);
+    await screen.findByText("changed failure");
+
+    const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
+    const changedBody = jsonRequestBody(fetchMock.mock.calls[2]);
+    expect(firstBody).toMatchObject({ from_account_id: "acct-1", currency: "USD" });
+    expect(changedBody).toMatchObject({ from_account_id: "acct-2", currency: "EUR" });
+    expect(changedBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+  });
+
+  it("does not rotate the idempotency key for invalid local submissions", async () => {
+    const randomUUID = vi
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-4111-8111-111111111111");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(503, { error: "temporary failure" }));
+
+    render(TransferPage);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
+    });
+
+    const submitButton = screen.getByRole("button", { name: /send transfer/i });
+    await fireEvent.click(submitButton);
+    expect(await screen.findByText("Enter the recipient account id.")).toBeInTheDocument();
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+      target: { value: "acct-2" },
+    });
+    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+      target: { value: "50.00" },
+    });
+    await fireEvent.click(submitButton);
+    await screen.findByText("temporary failure");
+
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("clears recipient validation when the user edits the field", async () => {

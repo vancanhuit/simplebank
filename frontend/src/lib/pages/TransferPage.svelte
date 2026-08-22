@@ -4,7 +4,7 @@
   import { request, toMessage } from "../api/client";
   import type { TransferLimits, TransferResult } from "../api/types";
   import { accounts } from "../stores/accounts.svelte";
-  import { formatMoney, fractionDigits, parseAmountToMinor } from "../money";
+  import { formatMoney, fractionDigits, parseAmountToMinor, type Currency } from "../money";
   import Button from "../components/Button.svelte";
   import Alert from "../components/Alert.svelte";
   import TextField from "../components/TextField.svelte";
@@ -19,18 +19,45 @@
   let submitting = $state(false);
   let receipt = $state<TransferResult | null>(null);
   let limits = $state<TransferLimits>({});
-  // One key per logical transfer, held stable so a retry after a lost response
-  // replays the original instead of moving money twice. Rotated only once a
-  // transfer is confirmed (see the success branch below).
-  let idempotencyKey = crypto.randomUUID();
+  interface TransferIntent {
+    from_account_id: string;
+    to_account_id: string;
+    amount: number;
+    currency: Currency;
+  }
 
-  onMount(async () => {
-    if (!accounts.loaded) {
+  // One key per validated transfer intent. Failed unchanged retries retain the
+  // binding; a changed validated intent rotates before it reaches the API.
+  let idempotencyKey = crypto.randomUUID();
+  let keyedIntent: TransferIntent | null = null;
+
+  function sameIntent(left: TransferIntent, right: TransferIntent): boolean {
+    return (
+      left.from_account_id === right.from_account_id &&
+      left.to_account_id === right.to_account_id &&
+      left.amount === right.amount &&
+      left.currency === right.currency
+    );
+  }
+
+  onMount(() => {
+    void loadAccounts();
+    void loadTransferLimits();
+  });
+
+  async function loadAccounts(): Promise<void> {
+    if (!accounts.loaded || accounts.error !== null) {
       await accounts.load();
     }
-    // Preselect the account chosen from a card, then the first account.
-    fromAccountId = accounts.transferFromId ?? accounts.items[0]?.id ?? "";
-    accounts.transferFromId = null;
+
+    if (accounts.loaded && !accounts.loading && accounts.error === null) {
+      // Preselect the account chosen from a card, then the first account.
+      fromAccountId = accounts.transferFromId ?? accounts.items[0]?.id ?? "";
+      accounts.transferFromId = null;
+    }
+  }
+
+  async function loadTransferLimits(): Promise<void> {
     // Load the per-currency limits so we can flag an over-limit amount before
     // hitting the API. A failure here is non-fatal: the server still enforces.
     try {
@@ -38,7 +65,7 @@
     } catch {
       limits = {};
     }
-  });
+  }
 
   const fromAccount = $derived(accounts.get(fromAccountId));
   const amountStep = $derived(
@@ -78,16 +105,24 @@
       return;
     }
 
+    const intent: TransferIntent = {
+      from_account_id: fromAccount.id,
+      to_account_id: recipient,
+      amount: minor,
+      currency: fromAccount.currency,
+    };
+    if (keyedIntent && !sameIntent(keyedIntent, intent)) {
+      idempotencyKey = crypto.randomUUID();
+    }
+    keyedIntent = intent;
+
     submitting = true;
     try {
       const result = await request<TransferResult>("/transfers", {
         method: "POST",
         authenticated: true,
         body: {
-          from_account_id: fromAccount.id,
-          to_account_id: recipient,
-          amount: minor,
-          currency: fromAccount.currency,
+          ...intent,
           // Stable across retries of this same transfer: if the response is lost
           // but the server committed, resubmitting replays it rather than
           // debiting twice.
@@ -98,6 +133,7 @@
       // The transfer is confirmed, so the next one is a new intent: rotate the
       // key and clear the form.
       idempotencyKey = crypto.randomUUID();
+      keyedIntent = null;
       // Reload balances so the dashboard and the from-account reflect the debit.
       await accounts.load();
       amount = "";
@@ -151,7 +187,21 @@
     </div>
   {/if}
 
-  {#if accounts.items.length === 0 && accounts.loaded}
+  {#if !accounts.loaded || accounts.loading || accounts.error}
+    <div class="mt-8" aria-busy={accounts.loading}>
+      {#if accounts.error}
+        <Alert variant="error">
+          Couldn't load your accounts. {accounts.error}
+          <button type="button" class="btn btn-ghost min-h-11" onclick={loadAccounts}>Retry</button>
+        </Alert>
+      {:else}
+        <Alert variant="info">
+          <span class="loading loading-spinner loading-sm" aria-hidden="true"></span>
+          Loading your accounts…
+        </Alert>
+      {/if}
+    </div>
+  {:else if accounts.items.length === 0}
     <div class="mt-8">
       <Alert variant="info">
         You need an account before you can send money.

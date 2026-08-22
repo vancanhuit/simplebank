@@ -12,8 +12,14 @@ function normalize(path: string): string {
   return path;
 }
 
+function historyState(): Record<string, unknown> {
+  const state: unknown = window.history.state;
+  return state !== null && typeof state === "object" ? { ...state } : {};
+}
+
 export const router = $state({
   path: normalize(window.location.pathname),
+  state: historyState(),
 });
 
 /** Navigate to an in-app path, pushing a new history entry. An optional state
@@ -22,8 +28,24 @@ export function navigate(to: string, state: Record<string, unknown> = {}): void 
   const path = normalize(to);
   window.history.pushState(state, "", path);
   router.path = path;
+  router.state = state;
+}
+
+/** Navigate to an in-app path by replacing the current history entry. */
+export function replaceNavigation(to: string, state: Record<string, unknown> = {}): void {
+  const path = normalize(to);
+  window.history.replaceState(state, "", path);
+  router.path = path;
+  router.state = state;
+}
+
+/** Replace state on the current entry and publish the same reactive snapshot. */
+export function replaceNavigationState(state: Record<string, unknown>): void {
+  window.history.replaceState(state, "", window.location.href);
+  router.state = state;
 }
 
 window.addEventListener("popstate", () => {
   router.path = normalize(window.location.pathname);
+  router.state = historyState();
 });

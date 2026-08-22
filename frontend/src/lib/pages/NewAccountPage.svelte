@@ -28,19 +28,20 @@
   let policyError = $state<string | null>(null);
 
   onMount(() => {
-    void initialize();
+    void loadOpeningLimits();
+    void loadAccounts();
   });
 
-  async function initialize(): Promise<void> {
-    void loadOpeningLimits();
-    if (!accounts.loaded) {
+  async function loadAccounts(): Promise<void> {
+    if (!accounts.loaded || accounts.error !== null) {
       await accounts.load();
     }
-    const firstAvailable = CURRENCIES.find(
-      (code) => !accounts.items.some((account) => account.currency === code),
-    );
-    if (firstAvailable && !available.includes(currency)) {
-      currency = firstAvailable;
+
+    if (accounts.loaded && !accounts.loading && accounts.error === null) {
+      const firstAvailable = available[0];
+      if (firstAvailable && !available.includes(currency)) {
+        currency = firstAvailable;
+      }
     }
   }
 
@@ -54,7 +55,8 @@
   const openingLimit = $derived(openingLimitFor(openingLimits, currency));
   const depositMax = $derived(openingLimitInputMax(openingLimit, currency));
   const policyReady = $derived(!policyLoading && policyError === null);
-  const formDisabled = $derived(!policyReady || submitting);
+  const accountsReady = $derived(accounts.loaded && !accounts.loading && accounts.error === null);
+  const formDisabled = $derived(!policyReady || !accountsReady || submitting);
   const depositHint = $derived(
     `Optional. Maximum ${formatMoney(openingLimit, currency)}. Leave blank to open at zero.`,
   );
@@ -139,7 +141,23 @@
         <Alert variant="info">Loading the account opening policy…</Alert>
       {/if}
 
-      {#if available.length === 0}
+      {#if !accountsReady}
+        <div aria-busy={accounts.loading}>
+          {#if accounts.error}
+            <Alert variant="error">
+              Couldn't load your accounts. {accounts.error}
+              <button type="button" class="btn btn-ghost min-h-11" onclick={loadAccounts}
+                >Retry</button
+              >
+            </Alert>
+          {:else}
+            <Alert variant="info">
+              <span class="loading loading-spinner loading-sm" aria-hidden="true"></span>
+              Loading your accounts…
+            </Alert>
+          {/if}
+        </div>
+      {:else if available.length === 0}
         <Alert variant="info">You already hold an account in every supported currency.</Alert>
       {:else}
         <fieldset class="fieldset gap-3" aria-busy={policyLoading}>
@@ -185,7 +203,7 @@
         <Button
           type="submit"
           loading={submitting}
-          disabled={!policyReady || available.length === 0}
+          disabled={formDisabled || available.length === 0}
           class="mt-2 w-full sm:w-auto"
         >
           Create account

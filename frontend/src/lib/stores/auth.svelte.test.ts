@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AuthStore } from "./auth.svelte";
+import { router } from "../router.svelte";
 
 function jsonResponse(status: number, body: unknown): Response {
   // 204 No Content must not have a body.
@@ -22,6 +23,45 @@ describe("AuthStore", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+    router.path = "/";
+    router.state = {};
+  });
+
+  it("advances the auth generation when local auth is cleared", () => {
+    const store = new AuthStore();
+    const generation = store.generation;
+
+    store.clear();
+
+    expect(store.generation).toBe(generation + 1);
+  });
+
+  it("advances the auth generation when login starts", async () => {
+    let resolveLogin!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveLogin = resolve;
+          }),
+      ),
+    );
+    const store = new AuthStore();
+    const generation = store.generation;
+
+    const loginTask = store.login("alice", "password");
+
+    expect(store.generation).toBe(generation + 1);
+    resolveLogin(
+      jsonResponse(200, {
+        access_token: "access",
+        access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        user: verifiedUser,
+      }),
+    );
+    await loginTask;
   });
 
   it("restores the access token from the refresh cookie", async () => {
@@ -48,58 +88,129 @@ describe("AuthStore", () => {
     const store = new AuthStore();
     store.user = verifiedUser;
     store.accessToken = "stale-access";
+    const generation = store.generation;
 
     const refreshed = await store.tryRefresh();
 
     expect(refreshed).toBe(false);
     expect(store.accessToken).toBeNull();
     expect(store.user).toBeNull();
+    expect(store.generation).toBe(generation + 1);
   });
 
-  it("clears local state only after server logout succeeds", async () => {
-    let resolveLogout: (value: Response) => void;
-    const logoutPromise = new Promise<Response>((resolve) => {
-      resolveLogout = resolve;
-    });
-
-    const fetchMock = vi.fn((url: string | URL | Request) => {
-      const urlString = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
-      if (urlString.endsWith("/users/logout")) {
-        return logoutPromise;
-      }
-      return Promise.reject(new Error(`Unexpected URL: ${urlString}`));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("invalidates local auth before server logout settles", async () => {
+    let resolveLogout!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveLogout = resolve;
+          }),
+      ),
+    );
     const store = new AuthStore();
     store.user = verifiedUser;
     store.accessToken = "access";
+    const generation = store.generation;
 
-    // Call logout but don't resolve fetch yet.
     const logoutTask = store.logout();
 
-    expect(store.user).toEqual(verifiedUser);
-    expect(store.accessToken).toBe("access");
-
-    // Now resolve server logout.
-    resolveLogout!(jsonResponse(204, undefined));
-    await logoutTask;
-
-    // State must remain cleared.
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();
+    expect(store.generation).toBe(generation + 1);
+    resolveLogout(jsonResponse(204, undefined));
+    await logoutTask;
+    expect(router.state).toEqual({});
   });
 
-  it("clears local state when server logout fails", async () => {
+  it("blocks login while logout is pending and allows it after logout completes", async () => {
+    let resolveLogout!: (value: Response) => void;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/users/logout")) {
+        return new Promise<Response>((resolve) => {
+          resolveLogout = resolve;
+        });
+      }
+      if (url.endsWith("/users/login")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            access_token: "new-access",
+            access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+            user: verifiedUser,
+          }),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected URL: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "old-access";
+    const generation = store.generation;
+
+    const logoutTask = store.logout();
+
+    expect(store.loggingOut).toBe(true);
+    expect(store.generation).toBe(generation + 1);
+    await expect(store.login("alice", "password")).rejects.toThrow(/sign-out/i);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(store.generation).toBe(generation + 1);
+
+    resolveLogout(jsonResponse(204, undefined));
+    await logoutTask;
+
+    expect(store.loggingOut).toBe(false);
+    await store.login("alice", "password");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(store.generation).toBe(generation + 2);
+    expect(store.accessToken).toBe("new-access");
+  });
+
+  it("replaces the current history entry when logout completes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(204, undefined)));
+    const store = new AuthStore();
+    const historyLength = history.length;
+
+    await store.logout();
+
+    expect(location.pathname).toBe("/login");
+    expect(history.length).toBe(historyLength);
+    expect(router.path).toBe("/login");
+    expect(router.state).toEqual({});
+  });
+
+  it("resolves with cleared local state and a one-shot notice when server logout fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const store = new AuthStore();
     store.user = verifiedUser;
     store.accessToken = "access";
+    const generation = store.generation;
 
-    await expect(store.logout()).rejects.toThrow("offline");
+    await expect(store.logout()).resolves.toBeUndefined();
 
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();
+    expect(store.generation).toBe(generation + 1);
+    expect(store.loggingOut).toBe(false);
+    expect(router.state).toEqual({ logoutFailed: true });
+    expect(history.state).toEqual({ logoutFailed: true });
+  });
+
+  it("advances the auth generation when refresh fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+    const generation = store.generation;
+
+    const refreshed = await store.tryRefresh();
+
+    expect(refreshed).toBe(false);
+    expect(store.user).toBeNull();
+    expect(store.accessToken).toBeNull();
+    expect(store.generation).toBe(generation + 1);
   });
 
   it("purges legacy refresh token on init", async () => {

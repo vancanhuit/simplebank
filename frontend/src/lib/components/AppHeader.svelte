@@ -19,7 +19,6 @@
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement;
   let signingOut = $state(false);
-  let logoutError = $state("");
 
   function toggleMenu() {
     menuOpen = !menuOpen;
@@ -49,14 +48,10 @@
 
   async function logout() {
     signingOut = true;
-    logoutError = "";
     try {
       await auth.logout();
-      accounts.reset();
-    } catch {
-      accounts.reset();
-      logoutError = "Sign out failed. Check your connection and try again.";
     } finally {
+      accounts.reset();
       signingOut = false;
     }
   }
@@ -123,12 +118,6 @@
       </button>
     </div>
   </div>
-  {#if logoutError}
-    <p role="alert" class="mx-auto max-w-7xl px-4 pb-3 text-sm text-error sm:px-6">
-      {logoutError}
-    </p>
-  {/if}
-
   {#if menuOpen}
     <nav
       id="mobile-primary-navigation"

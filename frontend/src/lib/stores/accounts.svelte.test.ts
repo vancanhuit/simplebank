@@ -9,6 +9,35 @@ const staleAccount = {
   created_at: "2026-01-01T00:00:00Z",
 };
 
+const freshAccount = {
+  id: "22222222-2222-2222-2222-222222222222",
+  owner: "alice",
+  balance: 20_000,
+  currency: "USD" as const,
+  created_at: "2026-01-02T00:00:00Z",
+};
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function deferredFetches(): Array<(response: Response) => void> {
+  const resolveFetches: Array<(response: Response) => void> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetches.push(resolve);
+        }),
+    ),
+  );
+  return resolveFetches;
+}
+
 describe("AccountsStore", () => {
   afterEach(() => {
     accounts.reset();
@@ -65,5 +94,57 @@ describe("AccountsStore", () => {
     await createTask;
 
     expect(accounts.items).toEqual([]);
+  });
+
+  it("keeps the newest account response when an older load finishes last", async () => {
+    const resolveFetches = deferredFetches();
+
+    const first = accounts.load();
+    const second = accounts.load();
+    resolveFetches[1](jsonResponse(200, [freshAccount]));
+    await second;
+    expect(accounts.items).toEqual([freshAccount]);
+
+    resolveFetches[0](jsonResponse(200, [staleAccount]));
+    await first;
+
+    expect(accounts.items).toEqual([freshAccount]);
+    expect(accounts.loading).toBe(false);
+  });
+
+  it("keeps loading while the newest load is still pending", async () => {
+    const resolveFetches = deferredFetches();
+
+    const first = accounts.load();
+    const second = accounts.load();
+    resolveFetches[0](jsonResponse(200, [staleAccount]));
+    await first;
+
+    expect(accounts.items).toEqual([]);
+    expect(accounts.loaded).toBe(false);
+    expect(accounts.loading).toBe(true);
+
+    resolveFetches[1](jsonResponse(200, [freshAccount]));
+    await second;
+
+    expect(accounts.items).toEqual([freshAccount]);
+    expect(accounts.loaded).toBe(true);
+    expect(accounts.loading).toBe(false);
+  });
+
+  it("ignores an older load error after the newest load succeeds", async () => {
+    const resolveFetches = deferredFetches();
+
+    const first = accounts.load();
+    const second = accounts.load();
+    resolveFetches[1](jsonResponse(200, [freshAccount]));
+    await second;
+
+    resolveFetches[0](jsonResponse(500, { message: "stale failure" }));
+    await first;
+
+    expect(accounts.items).toEqual([freshAccount]);
+    expect(accounts.error).toBeNull();
+    expect(accounts.loading).toBe(false);
   });
 });
