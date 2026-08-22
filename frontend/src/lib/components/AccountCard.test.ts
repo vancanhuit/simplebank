@@ -36,6 +36,14 @@ describe("AccountCard", () => {
     expect(screen.getByText("USD")).toBeInTheDocument();
   });
 
+  it("uses a daisyUI card with an accessible balance label", () => {
+    const { container } = render(AccountCard, { props: { account } });
+
+    expect(container.querySelector("article.card.card-border")).toBeInTheDocument();
+    expect(screen.getByText("Available balance")).toBeInTheDocument();
+    expect(screen.getByText("USD")).toHaveClass("badge", "badge-outline");
+  });
+
   it("shows the full account number", () => {
     render(AccountCard, { props: { account } });
 

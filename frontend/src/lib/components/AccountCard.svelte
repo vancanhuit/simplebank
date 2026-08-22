@@ -48,53 +48,51 @@
   }
 </script>
 
-<article class="flex flex-col gap-4 rounded-card border border-border bg-surface p-5">
-  <div class="flex items-start justify-between">
-    <span
-      class="inline-flex items-center rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-strong"
-    >
-      {account.currency}
-    </span>
-    <span class="text-xs text-muted">Opened {created}</span>
-  </div>
+<article
+  class="card card-border bg-base-100 shadow-sm transition-transform hover:-translate-y-0.5 motion-reduce:transform-none"
+>
+  <div class="card-body gap-5 p-5 sm:p-6">
+    <div class="flex items-center justify-between gap-3">
+      <span class="badge badge-outline font-semibold">{account.currency}</span>
+      <span class="text-xs text-base-content/55">Opened {created}</span>
+    </div>
 
-  <p class="text-2xl font-semibold tracking-tight text-ink tabular-nums">
-    {formatMoney(account.balance, account.currency)}
-  </p>
+    <div>
+      <p class="text-xs font-medium tracking-wide text-base-content/55 uppercase">
+        Available balance
+      </p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
+        {formatMoney(account.balance, account.currency)}
+      </p>
+    </div>
 
-  <div>
-    <p class="text-xs font-medium text-muted">Account number</p>
-    <code class="mt-1 block font-mono text-xs break-all text-ink">{account.id}</code>
-    <button
-      type="button"
-      onclick={copyId}
-      class="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-control px-3 py-2 text-xs font-medium text-brand transition-colors hover:bg-brand-soft"
-      aria-label={copied ? "Account number copied" : "Copy account number"}
-    >
-      {#if copied}
-        <Check size={14} aria-hidden="true" />
-      {:else}
-        <Copy size={14} aria-hidden="true" />
-      {/if}
-      {copied ? "Copied" : "Copy"}
-    </button>
-  </div>
+    <div class="rounded-box bg-base-200 p-3">
+      <p class="text-xs font-medium text-base-content/55">Account number</p>
+      <code class="mt-1 block font-mono text-xs break-all">{account.id}</code>
+      <button
+        type="button"
+        onclick={copyId}
+        class="btn btn-ghost btn-sm mt-2 min-h-11"
+        aria-label={copied ? "Account number copied" : "Copy account number"}
+      >
+        {#if copied}
+          <Check size={14} aria-hidden="true" />
+        {:else}
+          <Copy size={14} aria-hidden="true" />
+        {/if}
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
 
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <button
-      type="button"
-      class="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand transition-colors hover:text-brand-strong"
-      onclick={sendFromHere}
-    >
-      <Send size={16} aria-hidden="true" />
-      Send money
-    </button>
-    <Link
-      href={`/accounts/${account.id}`}
-      class="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink"
-    >
-      <History size={16} aria-hidden="true" />
-      Activity
-    </Link>
+    <div class="card-actions grid grid-cols-2">
+      <button type="button" class="btn min-h-11" onclick={sendFromHere}>
+        <Send size={16} aria-hidden="true" />
+        Send money
+      </button>
+      <Link href={`/accounts/${account.id}`} class="btn btn-ghost min-h-11">
+        <History size={16} aria-hidden="true" />
+        Activity
+      </Link>
+    </div>
   </div>
 </article>
