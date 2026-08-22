@@ -69,6 +69,43 @@ async function expectNoAccessibilityViolations(page: Page): Promise<void> {
   expect(results.violations).toEqual([]);
 }
 
+test("theme selection is accessible, persisted, and valid after reload", async ({ page }) => {
+  await mockAuthenticatedAPI(page);
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "simplebank-light");
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "simplebank-dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "simplebank-dark");
+  await expect(page.getByRole("button", { name: "Switch to light theme" })).toBeVisible();
+  await expectNoAccessibilityViolations(page);
+});
+
+test("system dark preference initializes the dark theme without a saved value", async ({
+  page,
+}) => {
+  await mockAuthenticatedAPI(page);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "simplebank-dark");
+});
+
+for (const theme of ["simplebank-light", "simplebank-dark"] as const) {
+  test(`login remains accessible in ${theme}`, async ({ page }) => {
+    await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
+      key: "simplebank-theme",
+      value: theme,
+    });
+    await page.route("**/api/v1/tokens/renew", (route) => route.fulfill({ status: 204 }));
+    await page.goto("/login");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expectNoAccessibilityViolations(page);
+  });
+}
+
 test("dashboard reflows and remains accessible at supported viewports", async ({ page }) => {
   await mockAuthenticatedAPI(page);
 
@@ -106,10 +143,15 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
         }
       }
 
-      await menu.click();
+      await menu.focus();
+      await page.keyboard.press("Enter");
       await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Transfer", exact: true }).last()).toBeVisible();
-      await expectNoAccessibilityViolations(page);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeHidden();
+      await expect(menu).toBeFocused();
+
+      await menu.click();
       await page.getByRole("link", { name: "Overview", exact: true }).last().click();
       await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeHidden();
       await expect(page.getByRole("button", { name: "Open navigation" })).toBeFocused();
@@ -117,7 +159,18 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
       await expect(page.getByRole("navigation", { name: "Primary", exact: true })).toBeVisible();
     }
 
-    await expectNoAccessibilityViolations(page);
+    if (viewport.width === 320 || viewport.width === 1440) {
+      for (const theme of ["simplebank-light", "simplebank-dark"] as const) {
+        await page.evaluate(({ key, value }) => localStorage.setItem(key, value), {
+          key: "simplebank-theme",
+          value: theme,
+        });
+        await page.reload();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        await expect(page.getByRole("heading", { name: /Good to see you/ })).toBeVisible();
+        await expectNoAccessibilityViolations(page);
+      }
+    }
   }
 });
 

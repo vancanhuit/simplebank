@@ -19,9 +19,7 @@
   >
     <BrandMark />
     <div class="max-w-xl">
-      <p class="text-primary text-sm font-semibold tracking-[0.18em] uppercase">
-        Clear money movement
-      </p>
+      <p class="text-sm font-semibold tracking-[0.18em] uppercase">Clear money movement</p>
       <p class="mt-5 text-5xl leading-[1.05] font-semibold tracking-tight">
         Banking built around what matters.
       </p>
