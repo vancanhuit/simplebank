@@ -24,6 +24,7 @@
 
 # Docs
 !/README.md
+!/AGENTS.md
 !docs/**/*.md
 !docs/images/*.png
 
