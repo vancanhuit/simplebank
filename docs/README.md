@@ -16,6 +16,13 @@ implementation plans as historical context for the work they describe.
 These guides describe the repository as it works today and should change with
 the behavior they document.
 
+## Toolchain
+
+The project currently targets Go 1.27 and uses its standard-library `uuid`
+package. Exact Go, Bun, and development-tool versions are pinned in
+[`mise.toml`](../mise.toml) and checksummed in [`mise.lock`](../mise.lock); run
+`mise install` to install them.
+
 ## Architecture Decisions
 
 [Architecture decision records](decisions/README.md) capture significant,

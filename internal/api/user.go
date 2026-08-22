@@ -7,8 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 
@@ -206,7 +206,7 @@ type tokenPair struct {
 // issueTokenPair mints an access and a refresh token for the given identity,
 // each with its configured TTL.
 func (s *Server) issueTokenPair(username, role string) (tokenPair, error) {
-	return s.issueTokenPairWithRefreshID(uuid.Nil, username, role)
+	return s.issueTokenPairWithRefreshID(uuid.Nil(), username, role)
 }
 
 func (s *Server) issueTokenPairWithRefreshID(refreshID uuid.UUID, username, role string) (tokenPair, error) {
@@ -216,7 +216,7 @@ func (s *Server) issueTokenPairWithRefreshID(refreshID uuid.UUID, username, role
 	}
 	var refresh string
 	var refreshPayload *token.Payload
-	if refreshID == uuid.Nil {
+	if refreshID == uuid.Nil() {
 		refresh, refreshPayload, err = s.tokenMaker.CreateToken(username, role, token.Refresh, s.config.RefreshTTL)
 	} else {
 		refresh, refreshPayload, err = s.tokenMaker.CreateTokenWithID(refreshID, username, role, token.Refresh, s.config.RefreshTTL)

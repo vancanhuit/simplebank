@@ -2,8 +2,7 @@ package store
 
 import (
 	"context"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )

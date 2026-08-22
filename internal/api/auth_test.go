@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
@@ -33,7 +33,7 @@ func bearer(t *testing.T, username string) string {
 func TestProtectedRouteRequiresAuth(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+uuid.NewString(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -44,7 +44,7 @@ func TestProtectedRouteRequiresAuth(t *testing.T) {
 func TestProtectedRouteRejectsBadToken(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+uuid.NewString(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+uuid.New().String(), nil)
 	req.Header.Set("Authorization", "Bearer not-a-real-token")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -134,7 +134,7 @@ func TestCreateTransferForbiddenWhenNotFromOwner(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"from_account_id":"` + fromID.String() + `","to_account_id":"` + toID.String() + `","amount":10,"currency":"USD","idempotency_key":"` + uuid.NewString() + `"}`
+	body := `{"from_account_id":"` + fromID.String() + `","to_account_id":"` + toID.String() + `","amount":10,"currency":"USD","idempotency_key":"` + uuid.New().String() + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, "alice"))
@@ -157,7 +157,7 @@ func TestCreateTransferSameAccount(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	body := `{"from_account_id":"` + id.String() + `","to_account_id":"` + id.String() + `","amount":10,"currency":"USD","idempotency_key":"` + uuid.NewString() + `"}`
+	body := `{"from_account_id":"` + id.String() + `","to_account_id":"` + id.String() + `","amount":10,"currency":"USD","idempotency_key":"` + uuid.New().String() + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, "alice"))

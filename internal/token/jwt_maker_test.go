@@ -4,11 +4,33 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 const testSecret = "01234567890123456789012345678901"
+
+func TestJWTMakerPreservesStandardUUID(t *testing.T) {
+	t.Parallel()
+	maker, err := NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := uuid.MustParse("0198d5f0-76b7-7d5d-bfa1-a8d285ef66f7")
+
+	raw, _, err := maker.CreateTokenWithID(id, "alice", "depositor", Refresh, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := maker.VerifyToken(raw, Refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.ID != id {
+		t.Fatalf("payload ID = %s, want %s", payload.ID, id)
+	}
+}
 
 func TestJWTMaker(t *testing.T) {
 	t.Parallel()

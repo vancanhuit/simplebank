@@ -3,8 +3,8 @@ package api
 import (
 	"math"
 	"net/http"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	"github.com/vancanhuit/simplebank/internal/currency"

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/config"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"

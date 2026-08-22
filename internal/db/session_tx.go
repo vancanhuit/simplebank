@@ -5,8 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )

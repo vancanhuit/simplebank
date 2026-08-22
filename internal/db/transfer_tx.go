@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"

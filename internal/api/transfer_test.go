@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
@@ -18,7 +18,7 @@ import (
 
 func postTransfer(t *testing.T, s *Server, from, to uuid.UUID, currency, username string) *httptest.ResponseRecorder {
 	t.Helper()
-	return postTransferWithKey(t, s, from, to, currency, username, uuid.NewString())
+	return postTransferWithKey(t, s, from, to, currency, username, uuid.New().String())
 }
 
 func postTransferWithKey(t *testing.T, s *Server, from, to uuid.UUID, currency, username, key string) *httptest.ResponseRecorder {
@@ -62,7 +62,7 @@ func TestCreateTransferOK(t *testing.T) {
 		"USD": {Daily: 500},
 	}
 
-	key := uuid.NewString()
+	key := uuid.New().String()
 	rec := postTransferWithKey(t, s, fromID, toID, "USD", "alice", key)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
@@ -171,7 +171,7 @@ func TestCreateTransferUnsafeAmount(t *testing.T) {
 	body := `{"from_account_id":"` + fromID.String() +
 		`","to_account_id":"` + toID.String() +
 		`","amount":9007199254740992,"currency":"USD","idempotency_key":"` +
-		uuid.NewString() + `"}`
+		uuid.New().String() + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transfers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", bearer(t, "alice"))

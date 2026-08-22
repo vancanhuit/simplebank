@@ -5,7 +5,7 @@ package store
 import (
 	"testing"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )

@@ -3,9 +3,9 @@ package token
 import (
 	"errors"
 	"time"
+	"uuid"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 var (
@@ -45,11 +45,7 @@ func (p Payload) Validate() error {
 }
 
 func NewPayload(username, role string, tokenType Type, duration time.Duration) (*Payload, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
-	return NewPayloadWithID(id, username, role, tokenType, duration), nil
+	return NewPayloadWithID(uuid.NewV7(), username, role, tokenType, duration), nil
 }
 
 func NewPayloadWithID(id uuid.UUID, username, role string, tokenType Type, duration time.Duration) *Payload {
@@ -59,7 +55,7 @@ func NewPayloadWithID(id uuid.UUID, username, role string, tokenType Type, durat
 		Username:  username,
 		Role:      role,
 		TokenType: tokenType,
-		Nonce:     uuid.NewString(),
+		Nonce:     uuid.New().String(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        id.String(),
 			Subject:   username,

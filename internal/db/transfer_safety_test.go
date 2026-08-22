@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
@@ -110,10 +110,10 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 		if outcome.err != nil {
 			t.Fatalf("concurrent replay failed: %v", outcome.err)
 		}
-		if outcome.result.Transfer.ID == uuid.Nil {
+		if outcome.result.Transfer.ID == uuid.Nil() {
 			t.Fatal("concurrent replay returned an empty transfer")
 		}
-		if transferID == uuid.Nil {
+		if transferID == uuid.Nil() {
 			transferID = outcome.result.Transfer.ID
 		} else if outcome.result.Transfer.ID != transferID {
 			t.Fatalf("concurrent replay returned transfer %s, want %s", outcome.result.Transfer.ID, transferID)
@@ -225,7 +225,7 @@ func TestTransferTxDailyLimit(t *testing.T) {
 		switch {
 		case outcome.err == nil:
 			succeeded++
-			if outcome.result.Transfer.ID == uuid.Nil {
+			if outcome.result.Transfer.ID == uuid.Nil() {
 				t.Fatal("successful transfer returned an empty result")
 			}
 		case errors.Is(outcome.err, ErrDailyLimitExceeded):

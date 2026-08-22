@@ -25,7 +25,7 @@ Prerequisites: [mise](https://mise.jdx.dev/) (manages the Go, golangci-lint, and
 cocogitto toolchain) and Docker (for PostgreSQL and Mailpit).
 
 ```sh
-mise install              # install pinned tools (Go 1.26.6, Bun 1.3.14, etc.)
+mise install              # install pinned tools (Go 1.27.0, Bun 1.4.0, etc.)
 mise run compose:dev:up   # start PostgreSQL + Mailpit + pgAdmin + app (profile: dev)
 ```
 
@@ -242,6 +242,10 @@ limit. See [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md).
 The SPA treats account data as session-scoped. Losing authentication clears the
 account store, and generation checks discard load or create responses that were
 started before the reset so stale data cannot cross sessions.
+
+The backend uses Go 1.27's standard-library `uuid` package for identifiers. The
+sqlc UUID override in `sqlc.yaml` keeps generated database models on the same
+type, while PostgreSQL remains responsible for persisted UUID generation.
 
 ## Security
 

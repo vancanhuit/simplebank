@@ -3,9 +3,9 @@ package token
 import (
 	"errors"
 	"time"
+	"uuid"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 type JWTMaker struct {

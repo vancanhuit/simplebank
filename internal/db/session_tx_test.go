@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
 )
@@ -30,7 +30,7 @@ func TestRotateSessionTx_Valid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newHash := uuid.NewString()
+	newHash := uuid.New().String()
 	newExpiry := time.Now().Add(2 * time.Hour)
 
 	rotated, err := testStore.RotateSessionTx(t.Context(), RotateSessionTxParams{
@@ -98,7 +98,7 @@ func TestRotateSessionTx_ReplacementIDMismatch(t *testing.T) {
 		NewSession: func() (SessionReplacement, error) {
 			return SessionReplacement{
 				ID:               uuid.New(),
-				RefreshTokenHash: uuid.NewString(),
+				RefreshTokenHash: uuid.New().String(),
 				ExpiresAt:        time.Now().Add(2 * time.Hour),
 			}, nil
 		},
@@ -145,7 +145,7 @@ func TestRotateSessionTx_BlockedSession(t *testing.T) {
 		NewSession: func() (SessionReplacement, error) {
 			return SessionReplacement{
 				ID:               uuid.New(),
-				RefreshTokenHash: uuid.NewString(),
+				RefreshTokenHash: uuid.New().String(),
 				ExpiresAt:        time.Now().Add(time.Hour),
 			}, nil
 		},
@@ -198,7 +198,7 @@ func TestRotateSessionTx_ExpiredSession(t *testing.T) {
 				NewSession: func() (SessionReplacement, error) {
 					return SessionReplacement{
 						ID:               oldID,
-						RefreshTokenHash: uuid.NewString(),
+						RefreshTokenHash: uuid.New().String(),
 						ExpiresAt:        time.Now().Add(time.Hour),
 					}, nil
 				},
@@ -260,7 +260,7 @@ func TestRotateSessionTx_TokenHashMismatch(t *testing.T) {
 		NewSession: func() (SessionReplacement, error) {
 			return SessionReplacement{
 				ID:               uuid.New(),
-				RefreshTokenHash: uuid.NewString(),
+				RefreshTokenHash: uuid.New().String(),
 				ExpiresAt:        time.Now().Add(time.Hour),
 			}, nil
 		},
@@ -296,7 +296,7 @@ func TestRotateSessionTx_UsernameMismatch(t *testing.T) {
 		NewSession: func() (SessionReplacement, error) {
 			return SessionReplacement{
 				ID:               uuid.New(),
-				RefreshTokenHash: uuid.NewString(),
+				RefreshTokenHash: uuid.New().String(),
 				ExpiresAt:        time.Now().Add(time.Hour),
 			}, nil
 		},
@@ -335,7 +335,7 @@ func TestRotateSessionTx_ConcurrentReuse(t *testing.T) {
 				NewSession: func() (SessionReplacement, error) {
 					return SessionReplacement{
 						ID:               oldID,
-						RefreshTokenHash: uuid.NewString(),
+						RefreshTokenHash: uuid.New().String(),
 						ExpiresAt:        time.Now().Add(time.Hour),
 					}, nil
 				},
@@ -391,7 +391,7 @@ func TestRotateSessionTx_LogoutInterleavingsStableID(t *testing.T) {
 			NewSession: func() (SessionReplacement, error) {
 				return SessionReplacement{
 					ID:               sessionID,
-					RefreshTokenHash: uuid.NewString(),
+					RefreshTokenHash: uuid.New().String(),
 					ExpiresAt:        time.Now().Add(time.Hour),
 				}, nil
 			},
@@ -412,7 +412,7 @@ func TestRotateSessionTx_LogoutInterleavingsStableID(t *testing.T) {
 		user := createTestUser(t)
 		sessionID := uuid.New()
 		const oldHash = "old-refresh-hash"
-		newHash := uuid.NewString()
+		newHash := uuid.New().String()
 
 		_, err := testStore.CreateSession(t.Context(), sqlcdb.CreateSessionParams{
 			ID:           sessionID,

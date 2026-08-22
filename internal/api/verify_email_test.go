@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
+	"uuid"
 
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
@@ -86,7 +86,7 @@ func TestVerifyEmailEmptyCode(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	if rec := getVerifyEmail(t, s, uuid.NewString(), ""); rec.Code != http.StatusBadRequest {
+	if rec := getVerifyEmail(t, s, uuid.New().String(), ""); rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for empty code, got %d", rec.Code)
 	}
 }
@@ -107,7 +107,7 @@ func TestVerifyEmailCodeNotLogged(t *testing.T) {
 	var buf bytes.Buffer
 	s.router.Logger = slog.New(slog.NewTextHandler(&buf, nil))
 
-	rec := getVerifyEmail(t, s, uuid.NewString(), secret)
+	rec := getVerifyEmail(t, s, uuid.New().String(), secret)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -130,7 +130,7 @@ func TestVerifyEmailInvalidCode(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	if rec := getVerifyEmail(t, s, uuid.NewString(), "wrong-code"); rec.Code != http.StatusBadRequest {
+	if rec := getVerifyEmail(t, s, uuid.New().String(), "wrong-code"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for invalid/expired code, got %d", rec.Code)
 	}
 }
