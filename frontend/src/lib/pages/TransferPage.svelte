@@ -110,89 +110,104 @@
   }
 </script>
 
-<div class="mx-auto max-w-lg">
-  <Link
-    href="/"
-    class="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-brand hover:text-brand-strong"
-  >
+<div class="mx-auto max-w-2xl">
+  <Link href="/" class="btn btn-ghost -ml-4 min-h-11 gap-2">
     <ArrowLeft class="h-4 w-4" aria-hidden="true" />
     Back
   </Link>
-  <h1 class="mt-4 text-2xl font-semibold text-ink">Send money</h1>
-  <p class="mt-1 text-sm text-muted">Transfer funds to another SimpleBank account.</p>
+  <h1 class="mt-6 text-3xl font-bold tracking-tight text-base-content sm:text-4xl">Send money</h1>
+  <p class="mt-2 text-base text-base-content/65">Transfer funds to another SimpleBank account.</p>
 
   {#if receipt}
-    <div role="status" class="mt-6 rounded-card border border-border bg-surface p-5 text-sm">
-      <p class="mb-4 text-sm font-medium text-positive">
-        Sent {formatMoney(receipt.transfer.amount, receipt.from_account.currency)} successfully.
-      </p>
-      <dl class="grid grid-cols-2 gap-4">
-        <div>
-          <dt class="text-muted">From</dt>
-          <dd class="mt-0.5 font-medium text-ink">
-            {formatMoney(receipt.from_account.balance, receipt.from_account.currency)} left
-          </dd>
-        </div>
-        <div>
-          <dt class="text-muted">Reference</dt>
-          <dd class="mt-0.5 font-mono text-xs break-all text-ink">{receipt.transfer.id}</dd>
-        </div>
-      </dl>
+    <div role="status" class="card card-border mt-8 border-success/30 bg-success/10">
+      <div class="card-body gap-5 p-6 sm:p-8">
+        <p class="font-semibold text-success">
+          Sent {formatMoney(receipt.transfer.amount, receipt.from_account.currency)} successfully.
+        </p>
+        <dl class="grid gap-4 text-sm sm:grid-cols-3">
+          <div>
+            <dt class="text-base-content/60">Amount</dt>
+            <dd class="mt-1 font-medium text-base-content">
+              {formatMoney(receipt.transfer.amount, receipt.from_account.currency)}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base-content/60">From account</dt>
+            <dd class="mt-1 font-medium text-base-content">
+              Remaining balance: {formatMoney(
+                receipt.from_account.balance,
+                receipt.from_account.currency,
+              )} left
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base-content/60">Reference</dt>
+            <dd class="mt-1 font-mono text-xs break-all text-base-content">
+              {receipt.transfer.id}
+            </dd>
+          </div>
+        </dl>
+      </div>
     </div>
   {/if}
 
   {#if accounts.items.length === 0 && accounts.loaded}
-    <div class="mt-6">
+    <div class="mt-8">
       <Alert variant="info">
         You need an account before you can send money.
         <Link href="/accounts/new" class="font-semibold underline">Open one</Link>.
       </Alert>
     </div>
   {:else}
-    <form class="mt-6 flex flex-col gap-5" onsubmit={handleSubmit} novalidate>
-      {#if error}
-        <Alert variant="error">{error}</Alert>
-      {/if}
+    <div class="card card-border mt-8 bg-base-100 shadow-sm">
+      <form class="card-body gap-5 p-6 sm:p-8" onsubmit={handleSubmit} novalidate>
+        {#if error}
+          <Alert variant="error">{error}</Alert>
+        {/if}
 
-      <div class="flex flex-col gap-1.5">
-        <label for="from" class="text-sm font-medium text-ink">From account</label>
-        <select
-          id="from"
-          bind:value={fromAccountId}
-          class="min-h-11 rounded-md border border-control bg-surface px-3 py-2.5 text-sm text-ink focus-visible:border-brand"
-        >
-          {#each accounts.items as account (account.id)}
-            <option value={account.id}>
-              {account.currency} · {formatMoney(account.balance, account.currency)}
-            </option>
-          {/each}
-        </select>
-      </div>
+        <fieldset class="fieldset">
+          <label for="from" class="fieldset-legend">From account</label>
+          <select id="from" bind:value={fromAccountId} class="select w-full min-h-11">
+            {#each accounts.items as account (account.id)}
+              <option value={account.id}>
+                {account.currency} · {formatMoney(account.balance, account.currency)}
+              </option>
+            {/each}
+          </select>
+          {#if fromAccount}
+            <p class="label text-base-content/65">
+              Available: {formatMoney(fromAccount.balance, fromAccount.currency)}
+            </p>
+          {/if}
+        </fieldset>
 
-      <TextField
-        label="Recipient account id"
-        bind:value={toAccountId}
-        placeholder="00000000-0000-0000-0000-000000000000"
-        hint="The recipient's account must use the same currency."
-        error={toError ?? undefined}
-        oninput={() => (toError = null)}
-        required
-      />
+        <TextField
+          label="Recipient account id"
+          bind:value={toAccountId}
+          placeholder="00000000-0000-0000-0000-000000000000"
+          hint="The recipient's account must use the same currency."
+          error={toError ?? undefined}
+          oninput={() => (toError = null)}
+          required
+        />
 
-      <TextField
-        label={`Amount${fromAccount ? ` (${fromAccount.currency})` : ""}`}
-        type="number"
-        inputmode="decimal"
-        step={amountStep}
-        min="0"
-        bind:value={amount}
-        placeholder="0.00"
-        error={amountError ?? undefined}
-        oninput={() => (amountError = null)}
-        required
-      />
+        <TextField
+          label={`Amount${fromAccount ? ` (${fromAccount.currency})` : ""}`}
+          type="number"
+          inputmode="decimal"
+          step={amountStep}
+          min="0"
+          bind:value={amount}
+          placeholder="0.00"
+          error={amountError ?? undefined}
+          oninput={() => (amountError = null)}
+          required
+        />
 
-      <Button type="submit" loading={submitting} class="w-full sm:w-auto">Send transfer</Button>
-    </form>
+        <Button type="submit" loading={submitting} class="mt-2 w-full sm:w-auto">
+          Send transfer
+        </Button>
+      </form>
+    </div>
   {/if}
 </div>

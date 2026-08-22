@@ -46,6 +46,13 @@ describe("NewAccountPage", () => {
     cleanup();
   });
 
+  it("uses native daisyUI radios for currency choices", async () => {
+    render(NewAccountPage);
+
+    const euro = await screen.findByRole("radio", { name: /EUR/ });
+    expect(euro).toHaveClass("radio", "radio-primary");
+  });
+
   it("selects the first available currency when accounts are already loaded", async () => {
     render(NewAccountPage);
 

@@ -51,6 +51,15 @@ describe("TransferPage", () => {
     cleanup();
   });
 
+  it("presents the source account as a daisyUI select", () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+
+    render(TransferPage);
+
+    const source = screen.getByRole("combobox", { name: "From account" });
+    expect(source).toHaveClass("select", "w-full");
+  });
+
   it("consolidates success message and details into one role=status receipt", async () => {
     const idempotencyKey = "11111111-1111-4111-8111-111111111111";
     vi.spyOn(crypto, "randomUUID")
@@ -115,6 +124,7 @@ describe("TransferPage", () => {
     await waitFor(() => {
       const receipt = screen.getByRole("status");
       expect(receipt).toBeInTheDocument();
+      expect(receipt).toHaveClass("card");
       expect(receipt).toHaveTextContent("Sent $50.00 successfully");
       expect(receipt).toHaveTextContent("From");
       expect(receipt).toHaveTextContent("$950.00 left");
@@ -124,6 +134,12 @@ describe("TransferPage", () => {
       // Verify definition list structure inside receipt
       const definitionList = receipt.querySelector("dl");
       expect(definitionList).toBeInTheDocument();
+      expect(definitionList).toHaveTextContent("Amount");
+      expect(definitionList).toHaveTextContent("$50.00");
+      expect(definitionList).toHaveTextContent("Remaining balance");
+      expect(definitionList).toHaveTextContent("$950.00");
+      expect(definitionList).toHaveTextContent("Reference");
+      expect(definitionList).toHaveTextContent("tx-abc123");
     });
 
     expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/transfers");

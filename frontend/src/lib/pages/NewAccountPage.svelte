@@ -112,80 +112,85 @@
   }
 </script>
 
-<div class="mx-auto max-w-lg">
-  <Link
-    href="/"
-    class="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-brand hover:text-brand-strong"
-  >
+<div class="mx-auto max-w-2xl">
+  <Link href="/" class="btn btn-ghost -ml-4 min-h-11 gap-2">
     <ArrowLeft class="h-4 w-4" aria-hidden="true" />
     Back
   </Link>
-  <h1 class="mt-4 text-2xl font-semibold text-ink">Open a new account</h1>
-  <p class="mt-1 text-sm text-muted">Choose a currency for your new account.</p>
+  <h1 class="mt-6 text-3xl font-bold tracking-tight text-base-content sm:text-4xl">
+    Open a new account
+  </h1>
+  <p class="mt-2 text-base text-base-content/65">Choose a currency for your new account.</p>
 
-  <form class="mt-6 flex flex-col gap-5" onsubmit={handleSubmit}>
-    {#if error}
-      <Alert variant="error">{error}</Alert>
-    {/if}
+  <div class="card card-border mt-8 bg-base-100 shadow-sm">
+    <form class="card-body gap-5 p-6 sm:p-8" onsubmit={handleSubmit}>
+      {#if error}
+        <Alert variant="error">{error}</Alert>
+      {/if}
 
-    {#if policyError}
-      <Alert variant="error">
-        {policyError}
-        <button
-          type="button"
-          class="ml-2 inline-flex min-h-11 items-center underline"
-          onclick={loadOpeningLimits}>Retry</button
-        >
-      </Alert>
-    {:else if policyLoading}
-      <Alert variant="info">Loading the account opening policy…</Alert>
-    {/if}
-
-    {#if available.length === 0}
-      <Alert variant="info">You already hold an account in every supported currency.</Alert>
-    {:else}
-      <fieldset class="flex flex-col gap-3" aria-busy={policyLoading}>
-        <legend class="text-sm font-medium text-ink">Currency</legend>
-        {#each available as code (code)}
-          <label
-            class="flex cursor-pointer items-center gap-3 rounded-md border border-control bg-surface px-4 py-3 text-sm has-[:checked]:border-brand has-[:checked]:bg-brand-soft/40"
+      {#if policyError}
+        <Alert variant="error">
+          {policyError}
+          <button type="button" class="btn btn-ghost ml-2 min-h-11" onclick={loadOpeningLimits}
+            >Retry</button
           >
-            <input
-              type="radio"
-              name="currency"
-              value={code}
-              bind:group={currency}
-              disabled={formDisabled}
-              class="accent-brand"
-            />
-            <span class="font-semibold text-ink">{code}</span>
-            <span class="ml-auto text-muted">Starts at {formatMoney(0, code)}</span>
-          </label>
-        {/each}
-      </fieldset>
+        </Alert>
+      {:else if policyLoading}
+        <Alert variant="info">Loading the account opening policy…</Alert>
+      {/if}
 
-      <TextField
-        label={`Opening deposit (${currency})`}
-        type="number"
-        inputmode="decimal"
-        step={depositStep}
-        min="0"
-        max={depositMax}
-        bind:value={deposit}
-        placeholder="0.00"
-        hint={depositHint}
-        error={depositError ?? undefined}
-        disabled={formDisabled}
-      />
+      {#if available.length === 0}
+        <Alert variant="info">You already hold an account in every supported currency.</Alert>
+      {:else}
+        <fieldset class="fieldset gap-3" aria-busy={policyLoading}>
+          <legend class="fieldset-legend">Currency</legend>
+          <div class="grid gap-3 sm:grid-cols-3">
+            {#each available as code (code)}
+              <label
+                class="label min-h-20 cursor-pointer rounded-box border border-base-300 bg-base-100 p-4 has-[:checked]:border-primary has-[:checked]:bg-primary/10"
+              >
+                <span>
+                  <span class="block font-semibold">{code}</span>
+                  <span class="text-xs text-base-content/60">
+                    Starts at {formatMoney(0, code)}
+                  </span>
+                </span>
+                <input
+                  type="radio"
+                  name="currency"
+                  value={code}
+                  bind:group={currency}
+                  disabled={formDisabled}
+                  class="radio radio-primary"
+                />
+              </label>
+            {/each}
+          </div>
+        </fieldset>
 
-      <Button
-        type="submit"
-        loading={submitting}
-        disabled={!policyReady || available.length === 0}
-        class="w-full sm:w-auto"
-      >
-        Create account
-      </Button>
-    {/if}
-  </form>
+        <TextField
+          label={`Opening deposit (${currency})`}
+          type="number"
+          inputmode="decimal"
+          step={depositStep}
+          min="0"
+          max={depositMax}
+          bind:value={deposit}
+          placeholder="0.00"
+          hint={depositHint}
+          error={depositError ?? undefined}
+          disabled={formDisabled}
+        />
+
+        <Button
+          type="submit"
+          loading={submitting}
+          disabled={!policyReady || available.length === 0}
+          class="mt-2 w-full sm:w-auto"
+        >
+          Create account
+        </Button>
+      {/if}
+    </form>
+  </div>
 </div>
