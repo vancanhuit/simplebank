@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import BrandMark from "../components/BrandMark.svelte";
 
   interface Props {
     title: string;
@@ -11,31 +12,36 @@
   let { title, subtitle, children, footer }: Props = $props();
 </script>
 
-<main class="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-12">
-  <div class="mb-8 flex items-center gap-2 text-lg font-semibold text-ink">
-    <span
-      class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-surface"
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 10 12 4l9 6" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M5 10v8h14v-8" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M9 18v-5h6v5" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </span>
-    SimpleBank
-  </div>
-
-  <div class="rounded-card border border-border bg-surface-raised p-6 shadow-raised sm:p-8">
-    <h1 class="text-xl font-semibold text-ink">{title}</h1>
-    <p class="mt-1 text-sm text-muted">{subtitle}</p>
-
-    <div class="mt-6">
-      {@render children()}
+<main class="grid min-h-[calc(100vh-5rem)] flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,0.8fr)]">
+  <section
+    class="hidden bg-neutral px-10 py-14 text-neutral-content lg:flex lg:flex-col lg:justify-between"
+    aria-label="SimpleBank introduction"
+  >
+    <BrandMark />
+    <div class="max-w-xl">
+      <p class="text-primary text-sm font-semibold tracking-[0.18em] uppercase">
+        Clear money movement
+      </p>
+      <p class="mt-5 text-5xl leading-[1.05] font-semibold tracking-tight">
+        Banking built around what matters.
+      </p>
+      <p class="mt-5 max-w-md text-base text-neutral-content/70">
+        See every balance clearly, move money confidently, and stay in control.
+      </p>
     </div>
-  </div>
-
-  <p class="mt-6 text-center text-sm text-muted">
-    {@render footer()}
-  </p>
+    <p class="text-sm text-neutral-content/60">Secure by design. Simple by default.</p>
+  </section>
+  <section class="flex items-center justify-center px-4 py-10 sm:px-8">
+    <div class="w-full max-w-md">
+      <div class="mb-8 lg:hidden"><BrandMark /></div>
+      <div class="card card-border bg-base-100 shadow-sm">
+        <div class="card-body gap-0 p-6 sm:p-8">
+          <h1 class="card-title text-3xl tracking-tight">{title}</h1>
+          <p class="mt-2 text-base-content/65">{subtitle}</p>
+          <div class="mt-7">{@render children()}</div>
+        </div>
+      </div>
+      <p class="mt-6 text-center text-sm text-base-content/65">{@render footer()}</p>
+    </div>
+  </section>
 </main>

@@ -37,7 +37,7 @@
 </script>
 
 <AuthLayout title="Welcome back" subtitle="Sign in to your SimpleBank account.">
-  <form class="flex flex-col gap-4" onsubmit={handleSubmit} novalidate>
+  <form class="flex flex-col gap-5" onsubmit={handleSubmit} novalidate>
     {#if registered}
       <Alert variant="success"
         >Account request accepted. Check your email to verify it, then sign in.</Alert
@@ -56,13 +56,11 @@
       required
     />
 
-    <Button type="submit" loading={submitting} class="mt-2 w-full sm:w-auto">Sign in</Button>
+    <Button type="submit" loading={submitting} class="mt-2 w-full">Sign in</Button>
   </form>
 
   {#snippet footer()}
     Don't have an account?
-    <Link href="/register" class="font-semibold text-brand hover:text-brand-strong">
-      Create one
-    </Link>
+    <Link href="/register" class="link link-primary font-semibold">Create one</Link>
   {/snippet}
 </AuthLayout>
