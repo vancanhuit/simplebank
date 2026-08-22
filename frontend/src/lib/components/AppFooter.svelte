@@ -4,7 +4,7 @@
   const appVersion = __APP_VERSION__;
 
   // The stack this reference app is built on, linked to each project's home.
-  // External links, so they open in a new tab with rel="noreferrer".
+  // External links, so they open in a new tab without access to this window.
   const stack = [
     { name: "Go", href: "https://go.dev" },
     { name: "Bun", href: "https://bun.sh" },
@@ -26,7 +26,7 @@
         <a
           href={tech.href}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           class="rounded-sm font-medium text-ink underline-offset-4 hover:text-brand hover:underline"
         >
           {tech.name}

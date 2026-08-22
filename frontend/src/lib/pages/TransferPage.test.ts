@@ -10,8 +10,22 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
+
+function jsonRequestBody(call: FetchCall): Record<string, unknown> {
+  const body = call[1]?.body;
+  if (typeof body !== "string") {
+    throw new TypeError("expected a JSON request body");
+  }
+  const parsed: unknown = JSON.parse(body);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new TypeError("expected a JSON object request body");
+  }
+  return parsed as Record<string, unknown>;
+}
+
 describe("TransferPage", () => {
-  const fetchMock = vi.fn();
+  const fetchMock = vi.fn<(...args: FetchCall) => Promise<Response>>();
 
   beforeEach(() => {
     fetchMock.mockClear();
@@ -113,7 +127,7 @@ describe("TransferPage", () => {
     });
 
     expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/transfers");
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+    expect(jsonRequestBody(fetchMock.mock.calls[1])).toEqual({
       from_account_id: "acct-1",
       to_account_id: "acct-2",
       amount: 5000,
@@ -160,8 +174,8 @@ describe("TransferPage", () => {
     await fireEvent.click(submitButton);
     expect(await screen.findByRole("status")).toHaveTextContent("Sent $50.00 successfully");
 
-    const firstBody = JSON.parse(fetchMock.mock.calls[1][1].body);
-    const retryBody = JSON.parse(fetchMock.mock.calls[2][1].body);
+    const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
+    const retryBody = jsonRequestBody(fetchMock.mock.calls[2]);
     expect(firstBody.idempotency_key).toBe(idempotencyKey);
     expect(retryBody).toEqual(firstBody);
   });

@@ -63,7 +63,7 @@ describe("AuthStore", () => {
     });
 
     const fetchMock = vi.fn((url: string | URL | Request) => {
-      const urlString = typeof url === "string" ? url : url.toString();
+      const urlString = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
       if (urlString.endsWith("/users/logout")) {
         return logoutPromise;
       }
@@ -135,7 +135,7 @@ describe("AuthStore", () => {
     });
 
     const fetchMock = vi.fn((url: string | URL | Request) => {
-      const urlString = typeof url === "string" ? url : url.toString();
+      const urlString = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
       if (urlString.endsWith("/tokens/renew")) {
         return refreshPromise;
       }

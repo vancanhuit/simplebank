@@ -66,9 +66,9 @@ describe("request", () => {
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     auth.accessToken = "expired-token";
-    const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(async () => {
+    const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(() => {
       auth.accessToken = "refreshed-token";
-      return true;
+      return Promise.resolve(true);
     });
 
     const data = await request<{ ok: boolean }>("/accounts", { authenticated: true });
@@ -122,8 +122,12 @@ describe("request", () => {
     const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
 
     const results = await Promise.all([
-      request<{ id: string }>("/accounts/a", { authenticated: true }).catch((e) => e),
-      request<{ id: string }>("/accounts/b", { authenticated: true }).catch((e) => e),
+      request<{ id: string }>("/accounts/a", { authenticated: true }).catch(
+        (error: unknown) => error,
+      ),
+      request<{ id: string }>("/accounts/b", { authenticated: true }).catch(
+        (error: unknown) => error,
+      ),
     ]);
 
     expect(results).toEqual([expect.any(ApiError), expect.any(ApiError)]);

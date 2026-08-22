@@ -91,7 +91,7 @@ async function decode<T>(response: Response): Promise<T> {
 
 function errorMessage(data: unknown, status: number): string {
   if (data && typeof data === "object" && "error" in data) {
-    const value = (data as { error: unknown }).error;
+    const value = data.error;
     if (typeof value === "string" && value.length > 0) {
       return value;
     }

@@ -14,10 +14,12 @@
   let submitting = $state(false);
 
   // One-shot notice set by the register flow via history state.
+  const historyState: unknown = window.history.state;
   const registered =
-    typeof history.state === "object" &&
-    history.state !== null &&
-    history.state.registered === true;
+    typeof historyState === "object" &&
+    historyState !== null &&
+    "registered" in historyState &&
+    historyState.registered === true;
 
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
