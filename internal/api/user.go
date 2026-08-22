@@ -106,12 +106,10 @@ func (s *Server) createUser(c *echo.Context) error {
 
 	ctx := c.Request().Context()
 	_, err = s.store.CreateUserTx(ctx, store.CreateUserTxParams{
-		CreateUserParams: sqlcdb.CreateUserParams{
-			Username:       req.Username,
-			HashedPassword: hashed,
-			FullName:       req.FullName,
-			Email:          req.Email,
-		},
+		Username:       req.Username,
+		HashedPassword: hashed,
+		FullName:       req.FullName,
+		Email:          req.Email,
 		AfterCreate: func(tx pgx.Tx, u sqlcdb.User) error {
 			return s.queueVerifyEmailTx(ctx, tx, u.Username)
 		},
