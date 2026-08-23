@@ -31,6 +31,9 @@ affected account's activity page. Users can also mark all notifications read.
   shutdown.
 - Frontend data remains session-scoped. Requests and events started before
   logout must not update a later session.
+- The existing `UNIQUE (owner, currency)` account invariant remains unchanged.
+  Transfers require matching currencies, so a user cannot transfer between two
+  accounts they own under the current account model.
 
 ## Data Model
 
@@ -55,9 +58,9 @@ keys reference the transfer and account records.
 
 Create two rows inside `TransferTx`, after the balance updates and transfer row
 exist but before transaction completion. One row describes the sender account
-and one describes the recipient account. If both accounts belong to the same
-user, the user receives two account-scoped notifications because two balances
-changed.
+and one describes the recipient account. Notification identity remains scoped
+to the affected account even though the current account uniqueness invariant
+means sender and recipient owners are distinct.
 
 The transaction also calls PostgreSQL `pg_notify` once for each row with a small
 internal payload containing its notification ID and owner. The owner lets every
@@ -196,7 +199,6 @@ Use the approved hybrid layout:
 - A successful transfer creates exactly one sender and one recipient
   notification with correct owner, account, direction, amount, currency, and
   post-transfer balance.
-- Same-owner transfers create two distinct notifications.
 - Failed transactions create neither balance changes nor notifications.
 - Idempotent replay and concurrent duplicate requests do not create duplicate
   notifications.
