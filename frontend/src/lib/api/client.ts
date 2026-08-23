@@ -100,7 +100,16 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
 async function decode<T>(response: Response): Promise<T> {
   const text = await response.text();
-  const data: unknown = text ? JSON.parse(text) : undefined;
+  let data: unknown;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      if (response.ok) {
+        throw error;
+      }
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 429) {

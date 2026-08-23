@@ -271,6 +271,15 @@ describe("requestResponse", () => {
       } satisfies Partial<ApiError>,
     );
   });
+
+  it("throws ApiError with the fallback message for a non-JSON error response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 })));
+
+    await expect(requestResponse("/accounts", { authenticated: true })).rejects.toMatchObject({
+      status: 502,
+      message: "Request failed (502)",
+    } satisfies Partial<ApiError>);
+  });
 });
 
 describe("toMessage", () => {
