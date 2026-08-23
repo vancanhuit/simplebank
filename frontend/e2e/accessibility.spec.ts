@@ -224,6 +224,10 @@ test("notification popover and history remain accessible and responsive in both 
       await bell.click();
       await page.getByRole("link", { name: "View all notifications" }).click();
       await expect(page).toHaveURL("/notifications");
+      await expect(popover).toBeHidden();
+      await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => animation.playState !== "running"),
+      );
       await expectNoHorizontalOverflow(page);
       await expectMinimumInteractiveTargets(page, "main button, main a");
       await expectNoAccessibilityViolations(page);
