@@ -399,3 +399,156 @@ func TestNotificationReadQueriesAreOwnerScopedAndIdempotent(t *testing.T) {
 		t.Errorf("recipient unread = %d, want 0", recipientUnread)
 	}
 }
+
+func TestListNotificationsPageReturnsSnapshotAndHasMore(t *testing.T) {
+	owner := createTestUser(t)
+	otherOwner := createTestUser(t)
+	account := createTestAccount(t, owner.Username)
+	otherAccount := createTestAccount(t, otherOwner.Username)
+	ctx := t.Context()
+
+	for range 3 {
+		transfer, err := testStore.CreateTransfer(ctx, sqlcdb.CreateTransferParams{
+			FromAccountID:  account.ID,
+			ToAccountID:    otherAccount.ID,
+			Amount:         25,
+			IdempotencyKey: uuid.New(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := testStore.CreateNotification(ctx, sqlcdb.CreateNotificationParams{
+			Direction:  "sent",
+			TransferID: transfer.ID,
+			AccountID:  account.ID,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, err := testStore.ListNotificationsPage(ctx, ListNotificationsPageParams{
+		Owner: owner.Username,
+		Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Notifications) != 2 {
+		t.Errorf("notifications len = %d, want 2", len(page.Notifications))
+	}
+	if !page.HasMore {
+		t.Error("has_more = false, want true")
+	}
+	if page.UnreadCount != 3 {
+		t.Errorf("unread_count = %d, want 3", page.UnreadCount)
+	}
+	for _, notification := range page.Notifications {
+		if notification.Owner != owner.Username {
+			t.Errorf("notification owner = %q, want %q", notification.Owner, owner.Username)
+		}
+	}
+}
+
+func TestMarkNotificationReadTxReturnsAuthoritativeCount(t *testing.T) {
+	owner := createTestUser(t)
+	otherOwner := createTestUser(t)
+	account := createTestAccount(t, owner.Username)
+	otherAccount := createTestAccount(t, otherOwner.Username)
+	ctx := t.Context()
+
+	create := func() sqlcdb.Notification {
+		t.Helper()
+		transfer, err := testStore.CreateTransfer(ctx, sqlcdb.CreateTransferParams{
+			FromAccountID:  account.ID,
+			ToAccountID:    otherAccount.ID,
+			Amount:         25,
+			IdempotencyKey: uuid.New(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		notification, err := testStore.CreateNotification(ctx, sqlcdb.CreateNotificationParams{
+			Direction:  "sent",
+			TransferID: transfer.ID,
+			AccountID:  account.ID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return notification
+	}
+
+	first := create()
+	create()
+
+	unreadCount, err := testStore.MarkNotificationReadTx(ctx, owner.Username, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unreadCount != 1 {
+		t.Errorf("first unread count = %d, want 1", unreadCount)
+	}
+
+	unreadCount, err = testStore.MarkNotificationReadTx(ctx, owner.Username, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unreadCount != 1 {
+		t.Errorf("repeated unread count = %d, want 1", unreadCount)
+	}
+
+	_, err = testStore.MarkNotificationReadTx(ctx, otherOwner.Username, first.ID)
+	if !errors.Is(err, ErrRecordNotFound) {
+		t.Fatalf("wrong-owner error = %v, want %v", err, ErrRecordNotFound)
+	}
+}
+
+func TestMarkAllNotificationsReadTxReturnsAuthoritativeCount(t *testing.T) {
+	owner := createTestUser(t)
+	otherOwner := createTestUser(t)
+	account := createTestAccount(t, owner.Username)
+	otherAccount := createTestAccount(t, otherOwner.Username)
+	ctx := t.Context()
+
+	for _, notificationAccount := range []struct {
+		accountID uuid.UUID
+		direction string
+	}{
+		{accountID: account.ID, direction: "sent"},
+		{accountID: account.ID, direction: "sent"},
+		{accountID: otherAccount.ID, direction: "received"},
+	} {
+		transfer, err := testStore.CreateTransfer(ctx, sqlcdb.CreateTransferParams{
+			FromAccountID:  account.ID,
+			ToAccountID:    otherAccount.ID,
+			Amount:         25,
+			IdempotencyKey: uuid.New(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := testStore.CreateNotification(ctx, sqlcdb.CreateNotificationParams{
+			Direction:  notificationAccount.direction,
+			TransferID: transfer.ID,
+			AccountID:  notificationAccount.accountID,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	unreadCount, err := testStore.MarkAllNotificationsReadTx(ctx, owner.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unreadCount != 0 {
+		t.Errorf("owner unread count = %d, want 0", unreadCount)
+	}
+
+	otherUnreadCount, err := testStore.CountUnreadNotifications(ctx, otherOwner.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherUnreadCount != 1 {
+		t.Errorf("other owner unread count = %d, want 1", otherUnreadCount)
+	}
+}
