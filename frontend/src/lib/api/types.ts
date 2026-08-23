@@ -76,3 +76,27 @@ export interface CurrencyLimit {
 /** Response from `GET /transfer-limits`: currency code → ceilings. Currencies
  *  without limits are simply absent from the map. */
 export type TransferLimits = Record<string, CurrencyLimit>;
+
+export type NotificationDirection = "sent" | "received";
+
+export interface Notification {
+  id: string;
+  account_id: string;
+  transfer_id: string;
+  direction: NotificationDirection;
+  amount: number;
+  currency: Currency;
+  balance: number;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationPage {
+  notifications: Notification[];
+  unread_count: number;
+  next_cursor: string | null;
+}
+
+export interface NotificationReadResponse {
+  unread_count: number;
+}
