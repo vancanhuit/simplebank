@@ -54,28 +54,42 @@ func NewListener(config *pgx.ConnConfig, hub *Hub) *Listener {
 
 func (l *Listener) Start(ctx context.Context) error {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	if l.started {
+		l.mu.Unlock()
 		return errors.New("notification listener already started")
 	}
 
 	listenerCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	l.started = true
+	l.cancel = cancel
+	l.done = done
+	l.mu.Unlock()
+
 	connection, err := l.connect(listenerCtx, l.config)
 	if err != nil {
 		cancel()
+		l.finishFailedStart(done)
+		return fmt.Errorf("connect notification listener: %w", err)
+	}
+	if err := listenerCtx.Err(); err != nil {
+		_ = connection.Close(listenerCtx)
+		l.finishFailedStart(done)
 		return fmt.Errorf("connect notification listener: %w", err)
 	}
 	if _, err := connection.Exec(listenerCtx, listenQuery); err != nil {
 		_ = connection.Close(listenerCtx)
 		cancel()
+		l.finishFailedStart(done)
+		return fmt.Errorf("listen for balance notifications: %w", err)
+	}
+	if err := listenerCtx.Err(); err != nil {
+		_ = connection.Close(listenerCtx)
+		l.finishFailedStart(done)
 		return fmt.Errorf("listen for balance notifications: %w", err)
 	}
 
-	l.started = true
-	l.cancel = cancel
-	l.done = make(chan struct{})
-	go l.run(listenerCtx, connection)
+	go l.run(listenerCtx, connection, done)
 	return nil
 }
 
@@ -98,8 +112,19 @@ func (l *Listener) Stop(ctx context.Context) error {
 	}
 }
 
-func (l *Listener) run(ctx context.Context, connection listenerConn) {
-	defer close(l.done)
+func (l *Listener) finishFailedStart(done chan struct{}) {
+	l.mu.Lock()
+	if l.done == done {
+		l.started = false
+		l.cancel = nil
+		l.done = nil
+	}
+	close(done)
+	l.mu.Unlock()
+}
+
+func (l *Listener) run(ctx context.Context, connection listenerConn, done chan struct{}) {
+	defer close(done)
 
 	for {
 		notification, err := connection.WaitForNotification(ctx)

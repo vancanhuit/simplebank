@@ -14,6 +14,7 @@ import (
 
 type fakeListenerConn struct {
 	mu            sync.Mutex
+	exec          func(context.Context, string) (pgconn.CommandTag, error)
 	execErr       error
 	execQueries   []string
 	notifications chan fakeWaitResult
@@ -33,10 +34,14 @@ func newFakeListenerConn() *fakeListenerConn {
 	}
 }
 
-func (c *fakeListenerConn) Exec(_ context.Context, query string, _ ...any) (pgconn.CommandTag, error) {
+func (c *fakeListenerConn) Exec(ctx context.Context, query string, _ ...any) (pgconn.CommandTag, error) {
 	c.mu.Lock()
 	c.execQueries = append(c.execQueries, query)
+	exec := c.exec
 	c.mu.Unlock()
+	if exec != nil {
+		return exec(ctx, query)
+	}
 	return pgconn.CommandTag{}, c.execErr
 }
 
@@ -108,6 +113,96 @@ func TestListenerStartListensBeforeReturning(t *testing.T) {
 	}
 	if err := listener.Start(t.Context()); err == nil {
 		t.Fatal("second Start succeeded")
+	}
+}
+
+func TestListenerStopCancelsBlockedInitialConnect(t *testing.T) {
+	listener := newTestListener(t, NewHub())
+	connectStarted := make(chan struct{})
+	releaseConnect := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseConnect) }) }
+	t.Cleanup(release)
+	listener.connect = func(ctx context.Context, _ *pgx.ConnConfig) (listenerConn, error) {
+		close(connectStarted)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-releaseConnect:
+			return nil, errors.New("connect released without cancellation")
+		}
+	}
+
+	startResult := make(chan error, 1)
+	go func() { startResult <- listener.Start(t.Context()) }()
+	<-connectStarted
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	stopResult := make(chan error, 1)
+	go func() { stopResult <- listener.Stop(stopCtx) }()
+
+	select {
+	case err := <-stopResult:
+		if err != nil {
+			t.Fatalf("Stop returned %v", err)
+		}
+	case <-stopCtx.Done():
+		release()
+		<-stopResult
+		<-startResult
+		t.Fatal("Stop did not cancel blocked initial connect before its deadline")
+	}
+	if err := <-startResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Start returned %v, want context canceled", err)
+	}
+}
+
+func TestListenerStopCancelsBlockedInitialListen(t *testing.T) {
+	connection := newFakeListenerConn()
+	listenStarted := make(chan struct{})
+	releaseListen := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseListen) }) }
+	t.Cleanup(release)
+	connection.exec = func(ctx context.Context, _ string) (pgconn.CommandTag, error) {
+		close(listenStarted)
+		select {
+		case <-ctx.Done():
+			return pgconn.CommandTag{}, ctx.Err()
+		case <-releaseListen:
+			return pgconn.CommandTag{}, errors.New("listen released without cancellation")
+		}
+	}
+	listener := newTestListener(t, NewHub(), connection)
+
+	startResult := make(chan error, 1)
+	go func() { startResult <- listener.Start(t.Context()) }()
+	<-listenStarted
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	stopResult := make(chan error, 1)
+	go func() { stopResult <- listener.Stop(stopCtx) }()
+
+	select {
+	case err := <-stopResult:
+		if err != nil {
+			t.Fatalf("Stop returned %v", err)
+		}
+	case <-stopCtx.Done():
+		release()
+		<-stopResult
+		<-startResult
+		t.Fatal("Stop did not cancel blocked initial LISTEN before its deadline")
+	}
+	if err := <-startResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Start returned %v, want context canceled", err)
+	}
+	select {
+	case <-connection.closed:
+	default:
+		t.Fatal("initial connection was not closed")
 	}
 }
 
@@ -240,6 +335,77 @@ func TestListenerBackoffIsBounded(t *testing.T) {
 	got := append([]time.Duration(nil), delays...)
 	mu.Unlock()
 	want := []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond, 800 * time.Millisecond, 1600 * time.Millisecond, 3200 * time.Millisecond, 5 * time.Second, 5 * time.Second}
+	if len(got) != len(want) {
+		t.Fatalf("backoff delays = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("backoff delay %d = %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+func TestListenerBackoffResetsAfterSuccessfulReconnect(t *testing.T) {
+	hub := NewHub()
+	subscriber, unsubscribe := hub.Subscribe("alice")
+	t.Cleanup(unsubscribe)
+	first := newFakeListenerConn()
+	second := newFakeListenerConn()
+	third := newFakeListenerConn()
+	listener := newTestListener(t, hub)
+
+	var mu sync.Mutex
+	connectAttempt := 0
+	listener.connect = func(context.Context, *pgx.ConnConfig) (listenerConn, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		connectAttempt++
+		switch connectAttempt {
+		case 1:
+			return first, nil
+		case 2:
+			return nil, errors.New("database unavailable")
+		case 3:
+			return second, nil
+		case 4:
+			return third, nil
+		default:
+			return nil, errors.New("unexpected connect")
+		}
+	}
+	var delays []time.Duration
+	listener.sleep = func(_ context.Context, delay time.Duration) error {
+		mu.Lock()
+		defer mu.Unlock()
+		delays = append(delays, delay)
+		return nil
+	}
+
+	if err := listener.Start(t.Context()); err != nil {
+		t.Fatalf("start listener: %v", err)
+	}
+	t.Cleanup(func() { stopListener(t, listener) })
+
+	first.notifications <- fakeWaitResult{err: errors.New("first connection lost")}
+	second.notifications <- fakeWaitResult{err: errors.New("second connection lost")}
+	id := uuid.New()
+	third.notifications <- fakeWaitResult{notification: &pgconn.Notification{
+		Payload: `{"id":"` + id.String() + `","owner":"alice"}`,
+	}}
+
+	select {
+	case got := <-subscriber:
+		if got != id {
+			t.Fatalf("subscriber received %s, want %s", got, id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not receive notification after second reconnect")
+	}
+
+	mu.Lock()
+	got := append([]time.Duration(nil), delays...)
+	mu.Unlock()
+	want := []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 100 * time.Millisecond}
 	if len(got) != len(want) {
 		t.Fatalf("backoff delays = %v, want %v", got, want)
 	}
