@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { router } from "../router.svelte";
 import { auth } from "../stores/auth.svelte";
 import { accounts } from "../stores/accounts.svelte";
@@ -85,6 +86,15 @@ describe("AppHeader", () => {
       );
       expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
     });
+
+    router.path = "/";
+    await tick();
+
+    expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByRole("navigation", { name: "Mobile primary" })).not.toBeInTheDocument();
   });
 
   it("constrains long identities and keeps sign out on one line", () => {
@@ -144,6 +154,17 @@ describe("AppHeader", () => {
       screen.getByRole("button", { name: /switch to (dark|light) theme/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("places the notification bell before theme switching in the compact header controls", () => {
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(AppHeader);
+
+    const bell = screen.getByRole("button", { name: /Notifications, \d+ unread/ });
+    const theme = screen.getByRole("button", { name: /switch to (dark|light) theme/i });
+    expect(bell.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bell).toHaveClass("min-h-11", "min-w-11");
   });
 
   it("keeps desktop and mobile navigation links at least 44px tall", async () => {

@@ -1,9 +1,11 @@
 <script lang="ts">
+  import type { Attachment } from "svelte/attachments";
   import { auth } from "../stores/auth.svelte";
   import { accounts } from "../stores/accounts.svelte";
   import { router } from "../router.svelte";
   import BrandMark from "./BrandMark.svelte";
   import Link from "./Link.svelte";
+  import NotificationBell from "./NotificationBell.svelte";
   import ThemeToggle from "./ThemeToggle.svelte";
   import Menu from "@lucide/svelte/icons/menu";
   import X from "@lucide/svelte/icons/x";
@@ -16,9 +18,21 @@
     { label: "Transfer", href: "/transfer" },
   ];
 
-  let menuOpen = $state(false);
-  let menuButton: HTMLButtonElement;
+  let menuOpen = $derived.by(() => {
+    void router.path;
+    return false;
+  });
+  let menuButton: HTMLButtonElement | undefined;
   let signingOut = $state(false);
+
+  const captureMenuButton: Attachment<HTMLButtonElement> = (element) => {
+    menuButton = element;
+    return () => {
+      if (menuButton === element) {
+        menuButton = undefined;
+      }
+    };
+  };
 
   function toggleMenu() {
     menuOpen = !menuOpen;
@@ -30,21 +44,15 @@
 
   function closeMenuAndRestoreFocus() {
     closeMenu();
-    menuButton.focus();
+    menuButton?.focus();
   }
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape" && menuOpen) {
       closeMenu();
-      menuButton.focus();
+      menuButton?.focus();
     }
   }
-
-  $effect(() => {
-    if (router.path) {
-      closeMenu();
-    }
-  });
 
   async function logout() {
     signingOut = true;
@@ -63,7 +71,7 @@
   <div class="navbar mx-auto min-h-16 max-w-7xl gap-2 px-4 sm:px-6">
     <div class="navbar-start w-auto flex-none gap-1 sm:w-1/2 sm:flex-1 sm:gap-2">
       <button
-        bind:this={menuButton}
+        {@attach captureMenuButton}
         type="button"
         class="btn btn-ghost btn-square min-h-11 min-w-11 sm:hidden"
         aria-label={menuOpen ? "Close navigation" : "Open navigation"}
@@ -106,6 +114,7 @@
       >
         {userName}
       </span>
+      <NotificationBell />
       <ThemeToggle />
       <button
         type="button"
