@@ -188,6 +188,7 @@ test("notification popover and history remain accessible and responsive in both 
 }) => {
   const api = await mockAuthenticatedAPI(page, [account]);
   api.setNotifications({ notifications: [notification], unread_count: 1, next_cursor: null });
+  await page.goto("/");
 
   for (const viewport of [
     { width: 320, height: 800 },
@@ -195,11 +196,12 @@ test("notification popover and history remain accessible and responsive in both 
   ]) {
     await page.setViewportSize(viewport);
     for (const theme of ["simplebank-light", "simplebank-dark"] as const) {
-      await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
+      await page.evaluate(({ key, value }) => localStorage.setItem(key, value), {
         key: "simplebank-theme",
         value: theme,
       });
-      await page.goto("/");
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
       await bell.focus();
       await page.keyboard.press("Enter");
@@ -209,6 +211,9 @@ test("notification popover and history remain accessible and responsive in both 
       await expectMinimumInteractiveTargets(
         page,
         "#notification-preview button, #notification-preview a",
+      );
+      await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => animation.playState !== "running"),
       );
       await expectNoAccessibilityViolations(page);
 
