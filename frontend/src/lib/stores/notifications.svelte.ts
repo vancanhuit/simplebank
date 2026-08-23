@@ -14,6 +14,12 @@ export interface NotificationToast {
 
 const RECONNECT_DELAYS = [500, 1_000, 2_000, 5_000, 10_000, 30_000] as const;
 
+interface SessionContext {
+  generation: number;
+  authGeneration: number;
+  controller: AbortController;
+}
+
 class NotificationsStore {
   items = $state.raw<Notification[]>([]);
   unreadCount = $state(0);
@@ -28,12 +34,16 @@ class NotificationsStore {
   #generation = 0;
   #sessionAuthGeneration: number | null = null;
   #controller: AbortController | null = null;
+  #streamStarted = false;
+  #visibilityListener: (() => void) | null = null;
+  #hasBaseline = false;
   #knownIds = new Set<string>();
   #pendingLive = new Map<string, Notification>();
   #toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #reconcilePromise: Promise<void> | null = null;
   #queuedReason: ReconcileReason | null = null;
+  #mutationQueue: Promise<void> = Promise.resolve();
   #activityVersions = $state.raw<Record<string, number>>({});
 
   get recent(): Notification[] {
@@ -47,6 +57,7 @@ class NotificationsStore {
   start(): void {
     const authGeneration = auth.generation;
     if (
+      this.#streamStarted &&
       this.#sessionAuthGeneration === authGeneration &&
       this.#controller !== null &&
       !this.#controller.signal.aborted
@@ -54,15 +65,23 @@ class NotificationsStore {
       return;
     }
 
-    this.reset();
-    const generation = this.#generation;
-    const controller = new AbortController();
-    this.#sessionAuthGeneration = authGeneration;
-    this.#controller = controller;
+    if (this.#sessionAuthGeneration !== authGeneration || this.#controller?.signal.aborted) {
+      this.reset();
+    }
+    const context = this.#sessionContext();
+    if (context === null) {
+      return;
+    }
+    this.#streamStarted = true;
+    this.#visibilityListener = () => {
+      if (document.visibilityState === "visible") {
+        this.#queueReconcile("visibility", context);
+      }
+    };
 
-    document.addEventListener("visibilitychange", this.#handleVisibility);
+    document.addEventListener("visibilitychange", this.#visibilityListener);
     void this.reconcile("initial");
-    void this.#streamLoop(generation, authGeneration, controller.signal);
+    void this.#streamLoop(context);
   }
 
   reset(): void {
@@ -70,7 +89,11 @@ class NotificationsStore {
     this.#controller?.abort();
     this.#controller = null;
     this.#sessionAuthGeneration = null;
-    document.removeEventListener("visibilitychange", this.#handleVisibility);
+    this.#streamStarted = false;
+    if (this.#visibilityListener !== null) {
+      document.removeEventListener("visibilitychange", this.#visibilityListener);
+      this.#visibilityListener = null;
+    }
     if (this.#reconnectTimer !== null) {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
@@ -80,9 +103,11 @@ class NotificationsStore {
     }
     this.#toastTimers.clear();
     this.#knownIds.clear();
+    this.#hasBaseline = false;
     this.#pendingLive.clear();
     this.#reconcilePromise = null;
     this.#queuedReason = null;
+    this.#mutationQueue = Promise.resolve();
 
     this.items = [];
     this.unreadCount = 0;
@@ -97,20 +122,23 @@ class NotificationsStore {
   }
 
   reconcile(reason: ReconcileReason = "manual"): Promise<void> {
+    const context = this.#sessionContext();
+    if (context === null) {
+      return Promise.resolve();
+    }
+    return this.#reconcileForSession(reason, context);
+  }
+
+  #reconcileForSession(reason: ReconcileReason, context: SessionContext): Promise<void> {
+    if (!this.#isCurrent(context)) {
+      return Promise.resolve();
+    }
     if (this.#reconcilePromise !== null) {
       this.#queuedReason = this.#mergeQueuedReason(this.#queuedReason, reason);
       return this.#reconcilePromise;
     }
 
-    const generation = this.#generation;
-    const authGeneration = auth.generation;
-    const signal = this.#controller?.signal;
-    const reconciliation = this.#runReconciliations(
-      reason,
-      generation,
-      authGeneration,
-      signal,
-    ).finally(() => {
+    const reconciliation = this.#runReconciliations(reason, context).finally(() => {
       if (this.#reconcilePromise === reconciliation) {
         this.#reconcilePromise = null;
         this.#queuedReason = null;
@@ -126,10 +154,12 @@ class NotificationsStore {
       return;
     }
 
-    const generation = this.#generation;
-    const authGeneration = auth.generation;
-    const signal = this.#controller?.signal;
-    if (!this.#isCurrent(generation, authGeneration)) {
+    const context = this.#sessionContext();
+    if (context === null) {
+      return;
+    }
+    const signal = context.controller.signal;
+    if (!this.#isCurrent(context)) {
       return;
     }
     this.loadingMore = true;
@@ -140,7 +170,7 @@ class NotificationsStore {
         `/notifications?size=20&cursor=${encodeURIComponent(cursor)}`,
         { authenticated: true, signal },
       );
-      if (!this.#isCurrent(generation, authGeneration)) {
+      if (!this.#isCurrent(context)) {
         return;
       }
       const ids = new Set(this.items.map((notification) => notification.id));
@@ -152,11 +182,11 @@ class NotificationsStore {
         this.#knownIds.add(notification.id);
       }
     } catch (cause) {
-      if (this.#isCurrent(generation, authGeneration) && !signal?.aborted) {
+      if (this.#isCurrent(context)) {
         this.loadMoreError = toMessage(cause);
       }
     } finally {
-      if (this.#isCurrent(generation, authGeneration)) {
+      if (this.#isCurrent(context)) {
         this.loadingMore = false;
       }
     }
@@ -168,15 +198,44 @@ class NotificationsStore {
       return;
     }
 
-    const generation = this.#generation;
-    const authGeneration = auth.generation;
-    const signal = this.#controller?.signal;
-    const previousItems = this.items;
-    const previousCount = this.unreadCount;
-    const readAt = new Date().toISOString();
-    if (!this.#isCurrent(generation, authGeneration)) {
+    const context = this.#sessionContext();
+    if (context === null) {
       return;
     }
+    return this.#enqueueMutation(() => this.#markRead(id, context));
+  }
+
+  async markAllRead(): Promise<void> {
+    if (this.unreadCount === 0) {
+      return;
+    }
+
+    const context = this.#sessionContext();
+    if (context === null) {
+      return;
+    }
+    const ids = new Set(this.items.filter((item) => item.read_at === null).map((item) => item.id));
+    return this.#enqueueMutation(() => this.#markAllRead(ids, context));
+  }
+
+  #enqueueMutation(operation: () => Promise<void>): Promise<void> {
+    const result = this.#mutationQueue.then(operation);
+    this.#mutationQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  async #markRead(id: string, context: SessionContext): Promise<void> {
+    if (!this.#isCurrent(context)) {
+      return;
+    }
+    const signal = context.controller.signal;
+    const notification = this.items.find((item) => item.id === id);
+    if (!notification || notification.read_at !== null) {
+      return;
+    }
+    const previousReadAt = notification.read_at;
+    const previousCount = this.unreadCount;
+    const readAt = new Date().toISOString();
     this.items = this.items.map((item) => (item.id === id ? { ...item, read_at: readAt } : item));
     this.unreadCount = Math.max(0, this.unreadCount - 1);
     this.error = null;
@@ -187,46 +246,40 @@ class NotificationsStore {
         authenticated: true,
         signal,
       });
-      if (this.#isCurrent(generation, authGeneration)) {
+      if (this.#isCurrent(context)) {
         this.items = this.items.map((item) =>
           item.id === id ? { ...item, read_at: readAt } : item,
         );
         this.unreadCount = result.unread_count;
       }
     } catch (cause) {
-      if (this.#isCurrent(generation, authGeneration)) {
-        this.items = previousItems;
+      if (this.#isCurrent(context)) {
+        this.items = this.items.map((item) =>
+          item.id === id ? { ...item, read_at: previousReadAt } : item,
+        );
         this.unreadCount = previousCount;
-        if (!signal?.aborted) {
-          const message = toMessage(cause);
-          await this.reconcile("recovery");
-          if (this.#isCurrent(generation, authGeneration)) {
-            this.error = message;
-          }
+        const message = toMessage(cause);
+        await this.#reconcileForSession("recovery", context);
+        if (this.#isCurrent(context)) {
+          this.error = message;
         }
       }
       throw cause;
     }
   }
 
-  async markAllRead(): Promise<void> {
-    if (this.unreadCount === 0) {
+  async #markAllRead(ids: Set<string>, context: SessionContext): Promise<void> {
+    if (!this.#isCurrent(context) || ids.size === 0) {
       return;
     }
-
-    const generation = this.#generation;
-    const authGeneration = auth.generation;
-    const signal = this.#controller?.signal;
-    const previousItems = this.items;
+    const signal = context.controller.signal;
+    const previousReadAt = new Map(
+      this.items.filter((item) => ids.has(item.id)).map((item) => [item.id, item.read_at]),
+    );
     const previousCount = this.unreadCount;
     const readAt = new Date().toISOString();
-    if (!this.#isCurrent(generation, authGeneration)) {
-      return;
-    }
-    this.items = this.items.map((item) =>
-      item.read_at === null ? { ...item, read_at: readAt } : item,
-    );
-    this.unreadCount = 0;
+    this.items = this.items.map((item) => (ids.has(item.id) ? { ...item, read_at: readAt } : item));
+    this.unreadCount = Math.max(0, this.unreadCount - previousReadAt.size);
     this.error = null;
 
     try {
@@ -235,22 +288,24 @@ class NotificationsStore {
         authenticated: true,
         signal,
       });
-      if (this.#isCurrent(generation, authGeneration)) {
+      if (this.#isCurrent(context)) {
         this.items = this.items.map((item) =>
-          item.read_at === null ? { ...item, read_at: readAt } : item,
+          ids.has(item.id) ? { ...item, read_at: readAt } : item,
         );
         this.unreadCount = result.unread_count;
       }
     } catch (cause) {
-      if (this.#isCurrent(generation, authGeneration)) {
-        this.items = previousItems;
+      if (this.#isCurrent(context)) {
+        this.items = this.items.map((item) =>
+          previousReadAt.has(item.id)
+            ? { ...item, read_at: previousReadAt.get(item.id) ?? null }
+            : item,
+        );
         this.unreadCount = previousCount;
-        if (!signal?.aborted) {
-          const message = toMessage(cause);
-          await this.reconcile("recovery");
-          if (this.#isCurrent(generation, authGeneration)) {
-            this.error = message;
-          }
+        const message = toMessage(cause);
+        await this.#reconcileForSession("recovery", context);
+        if (this.#isCurrent(context)) {
+          this.error = message;
         }
       }
       throw cause;
@@ -270,22 +325,11 @@ class NotificationsStore {
     return this.#activityVersions[accountId] ?? 0;
   }
 
-  #handleVisibility = (): void => {
-    if (document.visibilityState === "visible") {
-      this.#queueReconcile("visibility");
-    }
-  };
-
-  async #runReconciliations(
-    firstReason: ReconcileReason,
-    generation: number,
-    authGeneration: number,
-    signal?: AbortSignal,
-  ): Promise<void> {
+  async #runReconciliations(firstReason: ReconcileReason, context: SessionContext): Promise<void> {
     let reason: ReconcileReason | null = firstReason;
-    while (reason !== null && this.#isCurrent(generation, authGeneration)) {
-      await this.#reconcileOnce(reason, generation, authGeneration, signal);
-      if (!this.#isCurrent(generation, authGeneration)) {
+    while (reason !== null && this.#isCurrent(context)) {
+      await this.#reconcileOnce(reason, context);
+      if (!this.#isCurrent(context)) {
         return;
       }
       reason = this.#queuedReason;
@@ -293,15 +337,11 @@ class NotificationsStore {
     }
   }
 
-  async #reconcileOnce(
-    reason: ReconcileReason,
-    generation: number,
-    authGeneration: number,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    if (!this.#isCurrent(generation, authGeneration)) {
+  async #reconcileOnce(reason: ReconcileReason, context: SessionContext): Promise<void> {
+    if (!this.#isCurrent(context)) {
       return;
     }
+    const signal = context.controller.signal;
     const initial = this.items.length === 0;
     if (initial) {
       this.loading = true;
@@ -315,13 +355,14 @@ class NotificationsStore {
         authenticated: true,
         signal,
       });
-      if (!this.#isCurrent(generation, authGeneration)) {
+      if (!this.#isCurrent(context)) {
         return;
       }
 
-      const newlyDiscovered = page.notifications.filter(
-        (notification) => !this.#knownIds.has(notification.id),
-      );
+      const establishingBaseline = !this.#hasBaseline;
+      const newlyDiscovered = establishingBaseline
+        ? []
+        : page.notifications.filter((notification) => !this.#knownIds.has(notification.id));
       this.items = [
         ...page.notifications,
         ...this.items.filter(
@@ -330,6 +371,7 @@ class NotificationsStore {
       ];
       this.unreadCount = page.unread_count;
       this.nextCursor = page.next_cursor;
+      this.#hasBaseline = true;
 
       if (reason !== "initial" && newlyDiscovered.length > 0) {
         const versions = { ...this.#activityVersions };
@@ -339,9 +381,9 @@ class NotificationsStore {
         this.#activityVersions = versions;
       }
 
-      for (const notification of newlyDiscovered) {
+      for (const notification of page.notifications) {
         this.#knownIds.add(notification.id);
-        if (reason === "live") {
+        if (!establishingBaseline && reason === "live" && newlyDiscovered.includes(notification)) {
           this.#pendingLive.set(notification.id, notification);
         }
       }
@@ -352,26 +394,26 @@ class NotificationsStore {
       } catch {
         accountsApplied = false;
       }
-      if (!this.#isCurrent(generation, authGeneration)) {
+      if (!this.#isCurrent(context)) {
         return;
       }
       if (accountsApplied) {
-        this.#publishPendingToasts(generation, authGeneration);
+        this.#publishPendingToasts(context);
       }
     } catch (cause) {
-      if (this.#isCurrent(generation, authGeneration) && !signal?.aborted) {
+      if (this.#isCurrent(context)) {
         this.error = toMessage(cause);
       }
     } finally {
-      if (this.#isCurrent(generation, authGeneration)) {
+      if (this.#isCurrent(context)) {
         this.loading = false;
         this.refreshing = false;
       }
     }
   }
 
-  #publishPendingToasts(generation: number, authGeneration: number): void {
-    if (!this.#isCurrent(generation, authGeneration) || this.#pendingLive.size === 0) {
+  #publishPendingToasts(context: SessionContext): void {
+    if (!this.#isCurrent(context) || this.#pendingLive.size === 0) {
       return;
     }
     const additions = [...this.#pendingLive.values()].map((notification) => ({
@@ -383,7 +425,7 @@ class NotificationsStore {
 
     for (const toast of additions) {
       const timer = setTimeout(() => {
-        if (this.#isCurrent(generation, authGeneration)) {
+        if (this.#isCurrent(context)) {
           this.dismissToast(toast.id);
         }
       }, 5_000);
@@ -391,39 +433,36 @@ class NotificationsStore {
     }
   }
 
-  #queueReconcile(reason: ReconcileReason): void {
-    void this.reconcile(reason);
+  #queueReconcile(reason: ReconcileReason, context: SessionContext): void {
+    void this.#reconcileForSession(reason, context);
   }
 
   #mergeQueuedReason(current: ReconcileReason | null, next: ReconcileReason): ReconcileReason {
     return current === "live" || next === "live" ? "live" : next;
   }
 
-  async #streamLoop(
-    generation: number,
-    authGeneration: number,
-    signal: AbortSignal,
-  ): Promise<void> {
+  async #streamLoop(context: SessionContext): Promise<void> {
+    const signal = context.controller.signal;
     let reconnectIndex = 0;
-    while (this.#isCurrent(generation, authGeneration) && !signal.aborted) {
+    while (this.#isCurrent(context)) {
       try {
         const response = await requestResponse("/notifications/stream", {
           authenticated: true,
           signal,
         });
-        if (!this.#isCurrent(generation, authGeneration)) {
+        if (!this.#isCurrent(context)) {
           return;
         }
         reconnectIndex = 0;
-        await this.reconcile("connected");
-        await consumeEventStream(response, () => this.#queueReconcile("live"), signal);
+        await this.#reconcileForSession("connected", context);
+        await consumeEventStream(response, () => this.#queueReconcile("live", context), signal);
       } catch {
-        if (!this.#isCurrent(generation, authGeneration) || signal.aborted) {
+        if (!this.#isCurrent(context)) {
           return;
         }
       }
 
-      if (!this.#isCurrent(generation, authGeneration) || signal.aborted) {
+      if (!this.#isCurrent(context)) {
         return;
       }
 
@@ -451,8 +490,33 @@ class NotificationsStore {
     });
   }
 
-  #isCurrent(generation: number, authGeneration: number): boolean {
-    return this.#generation === generation && auth.generation === authGeneration;
+  #sessionContext(): SessionContext | null {
+    if (this.#controller === null && this.#sessionAuthGeneration === null) {
+      this.#controller = new AbortController();
+      this.#sessionAuthGeneration = auth.generation;
+    }
+    if (
+      this.#controller === null ||
+      this.#controller.signal.aborted ||
+      this.#sessionAuthGeneration !== auth.generation
+    ) {
+      return null;
+    }
+    return {
+      generation: this.#generation,
+      authGeneration: this.#sessionAuthGeneration,
+      controller: this.#controller,
+    };
+  }
+
+  #isCurrent(context: SessionContext): boolean {
+    return (
+      this.#generation === context.generation &&
+      this.#sessionAuthGeneration === context.authGeneration &&
+      auth.generation === context.authGeneration &&
+      this.#controller === context.controller &&
+      !context.controller.signal.aborted
+    );
   }
 }
 

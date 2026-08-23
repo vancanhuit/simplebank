@@ -23,6 +23,7 @@ vi.mock("./accounts.svelte", () => ({
 }));
 
 import { notifications } from "./notifications.svelte";
+import { auth } from "./auth.svelte";
 
 const sent: Notification = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -140,6 +141,36 @@ describe("NotificationsStore", () => {
 
     await vi.advanceTimersByTimeAsync(5_000);
     expect(notifications.toasts).toEqual([]);
+  });
+
+  it("establishes a failed stream baseline without replaying historical toasts", async () => {
+    let streamInvalidation!: () => void;
+    mocks.request
+      .mockRejectedValueOnce(new Error("initial history failed"))
+      .mockRejectedValueOnce(new Error("connected history failed"))
+      .mockResolvedValueOnce(page([sent]))
+      .mockResolvedValueOnce(page([received, sent]));
+    mocks.requestResponse.mockResolvedValue(new Response("stream"));
+    mocks.consumeEventStream.mockImplementation(
+      (_response: Response, onEvent: () => void, signal?: AbortSignal) => {
+        streamInvalidation = onEvent;
+        return new Promise<void>((resolve) =>
+          signal?.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+
+    notifications.start();
+    await vi.waitFor(() => expect(mocks.consumeEventStream).toHaveBeenCalled());
+    streamInvalidation();
+    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
+
+    expect(notifications.items).toEqual([sent]);
+    expect(notifications.toasts).toEqual([]);
+
+    streamInvalidation();
+    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(4));
+    expect(notifications.toasts.map((toast) => toast.notification.id)).toEqual([received.id]);
   });
 
   it("reconnects with bounded backoff and resets delay after connection", async () => {
@@ -284,6 +315,80 @@ describe("NotificationsStore", () => {
 
     await notifications.markAllRead();
     expect(notifications.unreadCount).toBe(7);
+  });
+
+  it("serializes mutations and limits mark-all to its captured rows", async () => {
+    const firstMutation = deferred<{ unread_count: number }>();
+    const secondMutation = deferred<{ unread_count: number }>();
+    mocks.request.mockImplementation((path: string) => {
+      if (path === "/notifications?size=20") {
+        return Promise.resolve(
+          mocks.request.mock.calls.filter(([calledPath]) => calledPath === path).length === 1
+            ? page([sent, received], 2)
+            : page([anotherSent, sent, received], 3),
+        );
+      }
+      if (path === `/notifications/${sent.id}/read`) {
+        return firstMutation.promise;
+      }
+      if (path === "/notifications/read-all") {
+        return secondMutation.promise;
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+    await notifications.reconcile("initial");
+
+    const markOne = notifications.markRead(sent.id);
+    const markAll = notifications.markAllRead();
+    await flush();
+    expect(
+      mocks.request.mock.calls.filter(
+        ([path]) => path === `/notifications/${sent.id}/read` || path === "/notifications/read-all",
+      ),
+    ).toHaveLength(1);
+
+    firstMutation.resolve({ unread_count: 2 });
+    await markOne;
+    await flush();
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/notifications/read-all",
+      expect.objectContaining({ method: "PUT" }),
+    );
+
+    await notifications.reconcile("live");
+    secondMutation.resolve({ unread_count: 1 });
+    await markAll;
+
+    expect(notifications.unreadCount).toBe(1);
+    expect(notifications.items.find((item) => item.id === sent.id)?.read_at).not.toBeNull();
+    expect(notifications.items.find((item) => item.id === received.id)?.read_at).not.toBeNull();
+    expect(notifications.items.find((item) => item.id === anotherSent.id)?.read_at).toBeNull();
+  });
+
+  it("rejects stale session callbacks after the auth generation changes", async () => {
+    let streamInvalidation!: () => void;
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    mocks.request.mockResolvedValue(page([]));
+    mocks.requestResponse.mockResolvedValue(new Response("stream"));
+    mocks.consumeEventStream.mockImplementation(
+      (_response: Response, onEvent: () => void, signal?: AbortSignal) => {
+        streamInvalidation = onEvent;
+        return new Promise<void>((resolve) =>
+          signal?.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    notifications.start();
+    await vi.waitFor(() => expect(mocks.consumeEventStream).toHaveBeenCalled());
+    mocks.request.mockClear();
+
+    auth.clear();
+    streamInvalidation();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(notifications.items).toEqual([]);
   });
 
   it("increments activity only for affected account ids", async () => {
