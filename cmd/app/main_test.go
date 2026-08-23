@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -142,6 +145,31 @@ func TestRunServicesOrdersStartupAndShutdown(t *testing.T) {
 	assertShutdownContext(t, listener)
 	if worker.stopDone == listener.stopDone {
 		t.Fatal("worker and listener received the same shutdown context")
+	}
+}
+
+func TestRunServicesLogsShutdownOrder(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	events := []string{}
+	listener := &fakeServiceLifecycle{name: "listener", events: &events}
+	worker := &fakeServiceLifecycle{name: "worker", events: &events}
+
+	if err := runServices(t.Context(), listener, worker, func(context.Context) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	output := logs.String()
+	httpIndex := strings.Index(output, "http server shut down")
+	workerIndex := strings.Index(output, "worker shutting down")
+	listenerIndex := strings.Index(output, "notification listener shutting down")
+	if httpIndex < 0 || workerIndex < 0 || listenerIndex < 0 {
+		t.Fatalf("shutdown logs = %q, want HTTP, worker, and listener messages", output)
+	}
+	if httpIndex >= workerIndex || workerIndex >= listenerIndex {
+		t.Fatalf("shutdown logs out of order: %q", output)
 	}
 }
 

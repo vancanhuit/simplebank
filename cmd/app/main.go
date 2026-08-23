@@ -184,7 +184,10 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	defer app.pool.Close()
+	defer func() {
+		app.pool.Close()
+		slog.Info("database pool closed")
+	}()
 
 	maker, err := token.NewJWTMaker(app.cfg.JWTSecret)
 	if err != nil {
@@ -240,6 +243,7 @@ func runServices(
 	slog.Info("worker started")
 
 	serverErr := serve(ctx)
+	slog.Info("http server shut down", "cause", context.Cause(ctx))
 	slog.Info("worker shutting down", "cause", context.Cause(ctx))
 	workerShutdownCtx, cancelWorkerShutdown := context.WithTimeout(lifecycleCtx, 10*time.Second)
 	workerErr := worker.Stop(workerShutdownCtx)
