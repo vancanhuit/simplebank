@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { auth } from "./lib/stores/auth.svelte";
   import { accounts } from "./lib/stores/accounts.svelte";
   import { navigate, router } from "./lib/router.svelte";
@@ -13,11 +13,23 @@
   import NotFoundPage from "./lib/pages/NotFoundPage.svelte";
   import VerifyEmailPage from "./lib/pages/VerifyEmailPage.svelte";
   import AccountHistoryPage from "./lib/pages/AccountHistoryPage.svelte";
+  import NotificationsPage from "./lib/pages/NotificationsPage.svelte";
+  import NotificationToasts from "./lib/components/NotificationToasts.svelte";
+  import { notifications } from "./lib/stores/notifications.svelte";
 
   onMount(() => auth.init());
+  onDestroy(() => notifications.reset());
 
+  let notificationAuthGeneration: number | null = null;
   $effect(() => {
-    if (!auth.initializing && !auth.isAuthenticated) {
+    if (!auth.initializing && auth.isAuthenticated) {
+      if (notificationAuthGeneration !== auth.generation) {
+        notificationAuthGeneration = auth.generation;
+        notifications.start();
+      }
+    } else if (!auth.initializing) {
+      notificationAuthGeneration = null;
+      notifications.reset();
       accounts.reset();
     }
   });
@@ -45,6 +57,8 @@
         return { component: TransferPage, chrome: true, label: "Send money" };
       case "/accounts/new":
         return { component: NewAccountPage, chrome: true, label: "New account" };
+      case "/notifications":
+        return { component: NotificationsPage, chrome: true, label: "Notifications" };
       default:
         // /accounts/:id (any id other than the reserved "new") shows account
         // activity; everything else is a 404.
@@ -125,6 +139,7 @@
       </a>
 
       <AppHeader />
+      <NotificationToasts />
 
       <main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:py-12">
         <Page />

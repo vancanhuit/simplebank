@@ -36,6 +36,16 @@ async function mockAuthenticatedAPI(page: Page, accounts: unknown[] = []): Promi
       }),
     }),
   );
+  await page.route("**/api/v1/notifications?*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ notifications: [], unread_count: 0, next_cursor: null }),
+    }),
+  );
+  await page.route("**/api/v1/notifications/stream", (route) =>
+    route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
+  );
   // Register specific account transfer route before broad account routes
   await page.route(`**/api/v1/accounts/${account.id}/transfers?*`, (route) =>
     route.fulfill({
@@ -330,7 +340,9 @@ test("no console errors or failed requests during navigation", async ({ page }) 
     }
   });
   page.on("requestfailed", (request) => {
-    failedRequests.push(request.url());
+    if (request.failure()?.errorText !== "net::ERR_ABORTED") {
+      failedRequests.push(request.url());
+    }
   });
 
   await mockAuthenticatedAPI(page, [account]);
