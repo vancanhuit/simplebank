@@ -3,6 +3,8 @@
 package store
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -43,12 +45,17 @@ func TestCreateNotificationDerivesTransferData(t *testing.T) {
 	from := createTestAccount(t, sender.Username)
 	to := createTestAccount(t, recipient.Username)
 
-	result, err := testStore.TransferTx(t.Context(), TransferTxParams{
+	transfer, err := testStore.CreateTransfer(t.Context(), sqlcdb.CreateTransferParams{
 		FromAccountID:  from.ID,
 		ToAccountID:    to.ID,
 		Amount:         25,
-		Currency:       "USD",
 		IdempotencyKey: uuid.New(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedFrom, err := testStore.AddAccountBalance(t.Context(), sqlcdb.AddAccountBalanceParams{
+		ID: from.ID, Amount: -25,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +63,7 @@ func TestCreateNotificationDerivesTransferData(t *testing.T) {
 
 	notification, err := testStore.CreateNotification(t.Context(), sqlcdb.CreateNotificationParams{
 		Direction:  "sent",
-		TransferID: result.Transfer.ID,
+		TransferID: transfer.ID,
 		AccountID:  from.ID,
 	})
 	if err != nil {
@@ -69,8 +76,8 @@ func TestCreateNotificationDerivesTransferData(t *testing.T) {
 	if notification.AccountID != from.ID {
 		t.Errorf("account_id = %s, want %s", notification.AccountID, from.ID)
 	}
-	if notification.TransferID != result.Transfer.ID {
-		t.Errorf("transfer_id = %s, want %s", notification.TransferID, result.Transfer.ID)
+	if notification.TransferID != transfer.ID {
+		t.Errorf("transfer_id = %s, want %s", notification.TransferID, transfer.ID)
 	}
 	if notification.Direction != "sent" {
 		t.Errorf("direction = %q, want sent", notification.Direction)
@@ -81,11 +88,121 @@ func TestCreateNotificationDerivesTransferData(t *testing.T) {
 	if notification.Currency != "USD" {
 		t.Errorf("currency = %q, want USD", notification.Currency)
 	}
-	if notification.Balance != 975 {
-		t.Errorf("balance = %d, want 975", notification.Balance)
+	if notification.Balance != updatedFrom.Balance {
+		t.Errorf("balance = %d, want %d", notification.Balance, updatedFrom.Balance)
 	}
 	if notification.ReadAt.Valid {
 		t.Error("new notification is already read")
+	}
+}
+
+func TestNotificationPublishIsCommitGated(t *testing.T) {
+	listener, err := testPool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Release()
+	if _, err := listener.Exec(t.Context(), `LISTEN balance_notifications`); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := testPool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries := sqlcdb.New(tx)
+	if err := queries.PublishNotification(t.Context(), sqlcdb.PublishNotificationParams{
+		NotificationID: uuid.New(),
+		Owner:          "rolled-back-owner",
+	}); err != nil {
+		_ = tx.Rollback(t.Context())
+		t.Fatal(err)
+	}
+	if err := tx.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	rollbackCtx, cancelRollback := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	_, err = listener.Conn().WaitForNotification(rollbackCtx)
+	cancelRollback()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("notification after rollback error = %v, want deadline exceeded", err)
+	}
+
+	sender := createTestUser(t)
+	recipient := createTestUser(t)
+	from := createTestAccount(t, sender.Username)
+	to := createTestAccount(t, recipient.Username)
+	arg := TransferTxParams{
+		FromAccountID:  from.ID,
+		ToAccountID:    to.ID,
+		Amount:         25,
+		Currency:       "USD",
+		IdempotencyKey: uuid.New(),
+	}
+	result, err := testStore.TransferTx(t.Context(), arg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	senderRows, err := testStore.ListNotifications(t.Context(), sqlcdb.ListNotificationsParams{
+		Owner: sender.Username, PageLimit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipientRows, err := testStore.ListNotifications(t.Context(), sqlcdb.ListNotificationsParams{
+		Owner: recipient.Username, PageLimit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(senderRows) != 1 || len(recipientRows) != 1 ||
+		senderRows[0].TransferID != result.Transfer.ID || recipientRows[0].TransferID != result.Transfer.ID {
+		t.Fatalf("durable transfer notifications = %v and %v, want one per owner", senderRows, recipientRows)
+	}
+
+	type notificationPayload struct {
+		ID    uuid.UUID `json:"id"`
+		Owner string    `json:"owner"`
+	}
+	wantOwners := map[string]bool{sender.Username: false, recipient.Username: false}
+	wantIDs := map[uuid.UUID]bool{senderRows[0].ID: false, recipientRows[0].ID: false}
+	for range 2 {
+		waitCtx, cancelWait := context.WithTimeout(t.Context(), 2*time.Second)
+		notification, err := listener.Conn().WaitForNotification(waitCtx)
+		cancelWait()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(notification.Payload), &fields); err != nil {
+			t.Fatalf("decode payload %q: %v", notification.Payload, err)
+		}
+		if len(fields) != 2 || fields["id"] == nil || fields["owner"] == nil {
+			t.Fatalf("payload fields = %v, want exactly id and owner", fields)
+		}
+		var payload notificationPayload
+		if err := json.Unmarshal([]byte(notification.Payload), &payload); err != nil {
+			t.Fatalf("decode payload %q: %v", notification.Payload, err)
+		}
+		if _, ok := wantIDs[payload.ID]; !ok || wantIDs[payload.ID] {
+			t.Fatalf("unexpected or duplicate notification id %s", payload.ID)
+		}
+		wantIDs[payload.ID] = true
+		if _, ok := wantOwners[payload.Owner]; !ok || wantOwners[payload.Owner] {
+			t.Fatalf("unexpected or duplicate notification owner %q", payload.Owner)
+		}
+		wantOwners[payload.Owner] = true
+	}
+
+	if _, err := testStore.TransferTx(t.Context(), arg); err != nil {
+		t.Fatal(err)
+	}
+	replayCtx, cancelReplay := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	_, err = listener.Conn().WaitForNotification(replayCtx)
+	cancelReplay()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("notification after idempotent replay error = %v, want deadline exceeded", err)
 	}
 }
 

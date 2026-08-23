@@ -54,6 +54,15 @@ func TestTransferTxIdempotent(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("want exactly 1 transfer row for the key, got %d", count)
 	}
+	var notificationCount int
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM notifications WHERE transfer_id = $1`, first.Transfer.ID,
+	).Scan(&notificationCount); err != nil {
+		t.Fatal(err)
+	}
+	if notificationCount != 2 {
+		t.Fatalf("notifications = %d, want 2", notificationCount)
+	}
 
 	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
 	if err != nil {
@@ -135,6 +144,15 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 	}
 	if transferCount != 1 || entryCount != 2 {
 		t.Fatalf("persisted rows = %d transfers and %d entries, want 1 and 2", transferCount, entryCount)
+	}
+	var notificationCount int
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM notifications WHERE transfer_id = $1`, transferID,
+	).Scan(&notificationCount); err != nil {
+		t.Fatal(err)
+	}
+	if notificationCount != 2 {
+		t.Fatalf("notifications = %d, want 2", notificationCount)
 	}
 
 	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)
