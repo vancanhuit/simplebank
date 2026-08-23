@@ -317,6 +317,29 @@ describe("NotificationsStore", () => {
     expect(notifications.unreadCount).toBe(7);
   });
 
+  it("marks unloaded unread history when loaded rows are already read", async () => {
+    const readSent = { ...sent, read_at: "2026-08-23T11:00:00Z" };
+    mocks.request.mockImplementation((path: string) => {
+      if (path === "/notifications?size=20") {
+        return Promise.resolve(page([readSent], 4));
+      }
+      if (path === "/notifications/read-all") {
+        return Promise.resolve({ unread_count: 0 });
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+    await notifications.reconcile("initial");
+
+    await notifications.markAllRead();
+
+    expect(mocks.request).toHaveBeenLastCalledWith(
+      "/notifications/read-all",
+      expect.objectContaining({ method: "PUT", authenticated: true }),
+    );
+    expect(notifications.items).toEqual([readSent]);
+    expect(notifications.unreadCount).toBe(0);
+  });
+
   it("serializes mutations and limits mark-all to its captured rows", async () => {
     const firstMutation = deferred<{ unread_count: number }>();
     const secondMutation = deferred<{ unread_count: number }>();

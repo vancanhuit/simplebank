@@ -269,7 +269,7 @@ class NotificationsStore {
   }
 
   async #markAllRead(ids: Set<string>, context: SessionContext): Promise<void> {
-    if (!this.#isCurrent(context) || ids.size === 0) {
+    if (!this.#isCurrent(context)) {
       return;
     }
     const signal = context.controller.signal;
