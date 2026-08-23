@@ -60,6 +60,8 @@ const emptyNotifications: NotificationPage = {
 export interface AuthenticatedApiMock {
   setAccounts(accounts: Account[]): void;
   setNotifications(page: NotificationPage): void;
+  connectionGeneration(): Promise<number>;
+  waitForConnectionAfter(previous: number): Promise<number>;
   emitNotification(id: string): Promise<void>;
   closeStream(): Promise<void>;
 }
@@ -74,6 +76,7 @@ export async function mockAuthenticatedAPI(
   await page.addInitScript(() => {
     const state = window as typeof window & {
       __notificationStreamController?: ReadableStreamDefaultController<Uint8Array>;
+      __notificationStreamGeneration?: number;
     };
     const originalFetch = window.fetch.bind(window);
     const encoder = new TextEncoder();
@@ -87,6 +90,7 @@ export async function mockAuthenticatedAPI(
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
           state.__notificationStreamController = controller;
+          state.__notificationStreamGeneration = (state.__notificationStreamGeneration ?? 0) + 1;
           controller.enqueue(encoder.encode(": connected\n\n"));
         },
         cancel() {
@@ -220,6 +224,22 @@ export async function mockAuthenticatedAPI(
     },
     setNotifications(nextPage) {
       notificationPage = nextPage;
+    },
+    connectionGeneration() {
+      return page.evaluate(() => {
+        const state = window as typeof window & { __notificationStreamGeneration?: number };
+        return state.__notificationStreamGeneration ?? 0;
+      });
+    },
+    async waitForConnectionAfter(previous) {
+      await page.waitForFunction((oldGeneration) => {
+        const state = window as typeof window & { __notificationStreamGeneration?: number };
+        return (state.__notificationStreamGeneration ?? 0) > oldGeneration;
+      }, previous);
+      return page.evaluate(() => {
+        const state = window as typeof window & { __notificationStreamGeneration?: number };
+        return state.__notificationStreamGeneration ?? 0;
+      });
     },
     emitNotification(id) {
       return evaluateStream("emit", id);

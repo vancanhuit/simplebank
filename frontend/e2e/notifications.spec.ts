@@ -97,7 +97,12 @@ for (const scenario of [
     const markReleased = new Promise<void>((resolve) => {
       releaseMark = resolve;
     });
+    let signalMarkReached!: () => void;
+    const markReached = new Promise<void>((resolve) => {
+      signalMarkReached = resolve;
+    });
     await page.route(`**/api/v1/notifications/${scenario.item.id}/read`, async (route) => {
+      signalMarkReached();
       await markReleased;
       await route.fulfill({
         status: 200,
@@ -110,6 +115,7 @@ for (const scenario of [
         response.url().endsWith(`/notifications/${scenario.item.id}/read`) && response.ok(),
     );
     const activation = item.click();
+    await markReached;
     await expect(page).toHaveURL("/");
     releaseMark();
     await activation;
@@ -160,10 +166,42 @@ test("a burst coalesces to one follow-up reconciliation and deduplicates toast i
 test("reconnect reconciliation restores durable state without replaying a toast", async ({
   page,
 }) => {
+  let historyRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/notifications?size=20")) {
+      historyRequests += 1;
+    }
+  });
   const api = await openDashboard(page);
+  await expect.poll(() => historyRequests).toBe(2);
+  const previousConnection = await api.connectionGeneration();
+  const previousHistoryRequests = historyRequests;
+  let signalRecoveryRequest!: () => void;
+  const recoveryRequestReached = new Promise<void>((resolve) => {
+    signalRecoveryRequest = resolve;
+  });
+  let releaseRecoveryRequest!: () => void;
+  const recoveryRequestReleased = new Promise<void>((resolve) => {
+    releaseRecoveryRequest = resolve;
+  });
+  await page.route("**/api/v1/notifications?*", async (route) => {
+    signalRecoveryRequest();
+    await recoveryRequestReleased;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(notificationPage([received])),
+    });
+  });
+
   await api.closeStream();
+  const reconnected = await api.waitForConnectionAfter(previousConnection);
+  expect(reconnected).toBeGreaterThan(previousConnection);
+  await recoveryRequestReached;
+  expect(historyRequests).toBeGreaterThan(previousHistoryRequests);
   api.setAccounts([withBalance(received.balance)]);
   api.setNotifications(notificationPage([received]));
+  releaseRecoveryRequest();
 
   await expect(page.getByText("$1,290.00", { exact: true }).first()).toBeVisible({
     timeout: 2_000,
