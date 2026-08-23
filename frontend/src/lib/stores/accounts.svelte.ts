@@ -18,7 +18,7 @@ class AccountsStore {
   /** Account id to preselect on the transfer form (set from an account card). */
   transferFromId = $state<string | null>(null);
 
-  async load(): Promise<void> {
+  async load(signal?: AbortSignal): Promise<boolean> {
     const generation = this.#generation;
     const sequence = ++this.#loadSequence;
     this.loading = true;
@@ -28,16 +28,21 @@ class AccountsStore {
       // personal set of accounts without pagination UI.
       const items = await request<Account[]>("/accounts?page=1&size=100", {
         authenticated: true,
+        signal,
       });
-      if (this.#generation !== generation || this.#loadSequence !== sequence) {
-        return;
+      if (signal?.aborted || this.#generation !== generation || this.#loadSequence !== sequence) {
+        return false;
       }
       this.items = items;
       this.loaded = true;
+      return true;
     } catch (err) {
       if (this.#generation === generation && this.#loadSequence === sequence) {
-        this.error = toMessage(err);
+        if (!signal?.aborted) {
+          this.error = toMessage(err);
+        }
       }
+      return false;
     } finally {
       if (this.#generation === generation && this.#loadSequence === sequence) {
         this.loading = false;

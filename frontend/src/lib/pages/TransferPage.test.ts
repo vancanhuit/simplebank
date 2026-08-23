@@ -64,8 +64,8 @@ describe("TransferPage", () => {
     accounts.loaded = false;
     accounts.items = [];
     accounts.transferFromId = "acct-eur";
-    let resolveInitialLoad!: () => void;
-    const initialLoad = new Promise<void>((resolve) => {
+    let resolveInitialLoad!: (applied: boolean) => void;
+    const initialLoad = new Promise<boolean>((resolve) => {
       resolveInitialLoad = resolve;
     });
     const loadSpy = vi
@@ -90,7 +90,7 @@ describe("TransferPage", () => {
           },
         ];
         accounts.loaded = true;
-        return Promise.resolve();
+        return Promise.resolve(true);
       });
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
 
@@ -104,7 +104,7 @@ describe("TransferPage", () => {
     });
 
     accounts.error = "offline";
-    resolveInitialLoad();
+    resolveInitialLoad(false);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't load your accounts. offline",
@@ -148,6 +148,7 @@ describe("TransferPage", () => {
           },
         ];
         accounts.loading = false;
+        return true;
       });
     });
 

@@ -147,4 +147,44 @@ describe("AccountsStore", () => {
     expect(accounts.error).toBeNull();
     expect(accounts.loading).toBe(false);
   });
+
+  it("preserves loaded accounts when a refresh fails", async () => {
+    let resolveRefresh!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, [freshAccount]))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(accounts.load()).resolves.toBe(true);
+    const refreshing = accounts.load();
+    expect(accounts.items).toEqual([freshAccount]);
+    expect(accounts.loaded).toBe(true);
+
+    resolveRefresh(jsonResponse(503, { error: "temporarily unavailable" }));
+    await expect(refreshing).resolves.toBe(false);
+
+    expect(accounts.items).toEqual([freshAccount]);
+    expect(accounts.loaded).toBe(true);
+    expect(accounts.error).toBe("temporarily unavailable");
+  });
+
+  it("treats an aborted load as cancellation without a user-visible error", async () => {
+    const resolveFetches = deferredFetches();
+    const controller = new AbortController();
+
+    const load = accounts.load(controller.signal);
+    controller.abort();
+    resolveFetches[0](jsonResponse(200, [freshAccount]));
+
+    await expect(load).resolves.toBe(false);
+    expect(accounts.items).toEqual([]);
+    expect(accounts.error).toBeNull();
+    expect(accounts.loading).toBe(false);
+  });
 });

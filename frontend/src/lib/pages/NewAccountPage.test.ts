@@ -65,8 +65,8 @@ describe("NewAccountPage", () => {
   it("gates creation on account inventory and initializes available currency after retry", async () => {
     accounts.loaded = false;
     accounts.items = [];
-    let resolveInitialLoad!: () => void;
-    const initialLoad = new Promise<void>((resolve) => {
+    let resolveInitialLoad!: (applied: boolean) => void;
+    const initialLoad = new Promise<boolean>((resolve) => {
       resolveInitialLoad = resolve;
     });
     const loadSpy = vi
@@ -84,7 +84,7 @@ describe("NewAccountPage", () => {
           },
         ];
         accounts.loaded = true;
-        return Promise.resolve();
+        return Promise.resolve(true);
       });
 
     render(NewAccountPage);
@@ -97,7 +97,7 @@ describe("NewAccountPage", () => {
     });
 
     accounts.error = "offline";
-    resolveInitialLoad();
+    resolveInitialLoad(false);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't load your accounts. offline",
@@ -139,6 +139,7 @@ describe("NewAccountPage", () => {
           },
         ];
         accounts.loading = false;
+        return true;
       });
     });
 
@@ -205,8 +206,8 @@ describe("NewAccountPage", () => {
 
   it("fetches opening policy before account load completes and corrects currency after", async () => {
     accounts.loaded = false;
-    let resolveAccounts!: () => void;
-    const accountsPromise = new Promise<void>((resolve) => {
+    let resolveAccounts!: (applied: boolean) => void;
+    const accountsPromise = new Promise<boolean>((resolve) => {
       resolveAccounts = resolve;
     });
     const loadSpy = vi.spyOn(accounts, "load").mockReturnValue(accountsPromise);
@@ -232,7 +233,7 @@ describe("NewAccountPage", () => {
         created_at: "2026-01-01T00:00:00Z",
       },
     ];
-    resolveAccounts();
+    resolveAccounts(true);
 
     // EUR becomes checked after accounts resolve.
     await waitFor(() => {
