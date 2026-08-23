@@ -1,5 +1,6 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SvelteMap } from "svelte/reactivity";
 import type { Account, Transfer } from "../api/types";
 import { navigate, router } from "../router.svelte";
 import { accounts } from "../stores/accounts.svelte";
@@ -8,19 +9,15 @@ import AccountHistoryPage from "./AccountHistoryPage.svelte";
 
 const requestMock = vi.hoisted(() => vi.fn());
 const notificationsMock = vi.hoisted(() => ({
-  versions: new Map<string, number>(),
-  activityVersion: vi.fn((id: string) => notificationsMock.versions.get(id) ?? 0),
+  versions: new Map<string, import("svelte/reactivity").SvelteMap<string, number>>(),
+  activityVersion: vi.fn((id: string) => notificationsMock.versions.get(id)?.get("value") ?? 0),
 }));
 
 vi.mock("../api/client", () => ({
   request: requestMock,
   toMessage: () => "request failed",
 }));
-vi.mock("../stores/notifications.svelte", async () => {
-  const { SvelteMap } = await import("svelte/reactivity");
-  notificationsMock.versions = new SvelteMap<string, number>();
-  return { notifications: notificationsMock };
-});
+vi.mock("../stores/notifications.svelte", () => ({ notifications: notificationsMock }));
 
 const accountA = "11111111-1111-1111-1111-111111111111";
 const accountB = "22222222-2222-2222-2222-222222222222";
@@ -31,6 +28,11 @@ function expectRequest(path: string) {
   const options = call?.[1] as { authenticated?: boolean; signal?: AbortSignal } | undefined;
   expect(options?.authenticated).toBe(true);
   expect(options?.signal).toBeInstanceOf(AbortSignal);
+}
+
+function bumpActivity(id: string) {
+  const version = notificationsMock.versions.get(id);
+  version?.set("value", (version.get("value") ?? 0) + 1);
 }
 
 function account(id: string): Account {
@@ -60,7 +62,10 @@ describe("AccountHistoryPage", () => {
     router.path = `/accounts/${accountA}`;
     accounts.reset();
     requestMock.mockReset();
-    notificationsMock.versions.clear();
+    notificationsMock.versions = new Map([
+      [accountA, new SvelteMap([["value", 0]])],
+      [accountB, new SvelteMap([["value", 0]])],
+    ]);
     requestMock.mockImplementation((path: string) => {
       const id = path.includes(accountB) ? accountB : accountA;
       return Promise.resolve(path.includes("/transfers") ? [] : account(id));
@@ -139,7 +144,12 @@ describe("AccountHistoryPage", () => {
     expect(await screen.findByText(accountA)).toBeInTheDocument();
     requestMock.mockClear();
 
-    notificationsMock.versions.set(accountA, 1);
+    bumpActivity(accountB);
+
+    await Promise.resolve();
+    expect(requestMock).not.toHaveBeenCalled();
+
+    bumpActivity(accountA);
 
     await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(2));
     expectRequest(`/accounts/${accountA}`);
@@ -159,7 +169,7 @@ describe("AccountHistoryPage", () => {
         : new Promise<Account>((resolve) => (resolveAccount = resolve)),
     );
 
-    notificationsMock.versions.set(accountA, 1);
+    bumpActivity(accountA);
 
     await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(4));
     expect(screen.getByText(accountA)).toBeInTheDocument();
@@ -176,12 +186,28 @@ describe("AccountHistoryPage", () => {
     expect(await screen.findByText("Sent")).toBeInTheDocument();
     requestMock.mockRejectedValue(new Error("refresh failed"));
 
-    notificationsMock.versions.set(accountA, 1);
+    bumpActivity(accountA);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("request failed");
     expect(screen.getByText(accountA)).toBeInTheDocument();
     expect(screen.getByText("Sent")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("shows initial loading again when retrying without successful data", async () => {
+    requestMock.mockRejectedValueOnce(new Error("initial failure"));
+    render(AccountHistoryPage);
+    expect(await screen.findByRole("alert")).toHaveTextContent("request failed");
+    const nextAccount = new Promise<Account>(() => undefined);
+    const nextTransfers = new Promise<Transfer[]>(() => undefined);
+    requestMock
+      .mockImplementationOnce(() => nextAccount)
+      .mockImplementationOnce(() => nextTransfers);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(screen.getByLabelText("Loading activity")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("ignores a stale refresh response after the auth generation changes", async () => {
@@ -196,7 +222,7 @@ describe("AccountHistoryPage", () => {
         ? Promise.resolve([transfer("tx-stale", accountB, accountA)])
         : new Promise<Account>((resolve) => (resolveAccount = resolve)),
     );
-    notificationsMock.versions.set(accountA, 1);
+    bumpActivity(accountA);
     await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(4));
 
     auth.clear();

@@ -20,6 +20,10 @@ interface SessionContext {
   controller: AbortController;
 }
 
+class ActivityVersion {
+  value = $state(0);
+}
+
 class NotificationsStore {
   items = $state.raw<Notification[]>([]);
   unreadCount = $state(0);
@@ -44,7 +48,7 @@ class NotificationsStore {
   #reconcilePromise: Promise<void> | null = null;
   #queuedReason: ReconcileReason | null = null;
   #mutationQueue: Promise<void> = Promise.resolve();
-  #activityVersions = $state.raw<Record<string, number>>({});
+  #activityVersions = new Map<string, ActivityVersion>();
 
   get recent(): Notification[] {
     return this.items.slice(0, 5);
@@ -118,7 +122,10 @@ class NotificationsStore {
     this.loadMoreError = null;
     this.nextCursor = null;
     this.toasts = [];
-    this.#activityVersions = {};
+    for (const version of this.#activityVersions.values()) {
+      version.value += 1;
+    }
+    this.#activityVersions.clear();
   }
 
   reconcile(reason: ReconcileReason = "manual"): Promise<void> {
@@ -322,7 +329,16 @@ class NotificationsStore {
   }
 
   activityVersion(accountId: string): number {
-    return this.#activityVersions[accountId] ?? 0;
+    return this.#activityVersion(accountId).value;
+  }
+
+  #activityVersion(accountId: string): ActivityVersion {
+    let version = this.#activityVersions.get(accountId);
+    if (version === undefined) {
+      version = new ActivityVersion();
+      this.#activityVersions.set(accountId, version);
+    }
+    return version;
   }
 
   async #runReconciliations(firstReason: ReconcileReason, context: SessionContext): Promise<void> {
@@ -374,11 +390,9 @@ class NotificationsStore {
       this.#hasBaseline = true;
 
       if (reason !== "initial" && newlyDiscovered.length > 0) {
-        const versions = { ...this.#activityVersions };
         for (const notification of newlyDiscovered) {
-          versions[notification.account_id] = (versions[notification.account_id] ?? 0) + 1;
+          this.#activityVersion(notification.account_id).value += 1;
         }
-        this.#activityVersions = versions;
       }
 
       for (const notification of page.notifications) {

@@ -39,3 +39,12 @@ Implemented the protected notification history route, authenticated notification
 ## Concerns
 
 - None material. Autofixer advisories are false positives for effects whose purpose is external lifecycle, routing, focus, and cancellable fetching.
+
+## Fix Round 1/5
+
+- RED: account-history regression showed changing account B's activity invalidated account A; initial-failure retry regression showed a blank state instead of loading.
+- GREEN: notification activity versions now use per-account reactive holder instances, so only the affected account invalidates. Reset increments existing holders before clearing them so active readers leave the old session safely.
+- GREEN: account history tracks the route of the last successful load. Retries without successful data use the initial loading state; retained-data retries continue preserving visible data.
+- Focused proof: `mise run frontend:test -- src/lib/stores/notifications.svelte.test.ts src/lib/pages/AccountHistoryPage.test.ts src/lib/pages/NotificationsPage.test.ts src/App.test.ts` — 4 files, 36 tests passed.
+- Autofixer: `AccountHistoryPage.svelte` had no issues; only the expected advisory for its required cancellable network effect.
+- Quality gates: `mise run frontend:check`, `mise run frontend:lint`, and `mise run frontend:format:check` all passed; Svelte check reported 0 errors and 0 warnings.

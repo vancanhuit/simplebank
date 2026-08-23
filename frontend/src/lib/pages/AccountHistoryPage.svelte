@@ -19,7 +19,7 @@
   let refreshing = $state(false);
   let error = $state<string | null>(null);
   let loadGeneration = 0;
-  let loadedRouteId: string | null = null;
+  let successfulRouteId: string | null = null;
   let retryVersion = $state(0);
 
   $effect(() => {
@@ -28,8 +28,7 @@
     const authGeneration = auth.generation;
     void activityVersion;
     void retryVersion;
-    const preserveVisibleData = loadedRouteId === id;
-    loadedRouteId = id;
+    const preserveVisibleData = successfulRouteId === id;
     const controller = new AbortController();
     void load(id, ++loadGeneration, authGeneration, controller.signal, preserveVisibleData);
     return () => controller.abort();
@@ -65,6 +64,7 @@
       }
       account = nextAccount;
       transfers = nextTransfers;
+      successfulRouteId = id;
     } catch (err) {
       if (current()) {
         error = toMessage(err);

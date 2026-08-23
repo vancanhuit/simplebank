@@ -143,6 +143,21 @@ describe("NotificationsStore", () => {
     expect(notifications.toasts).toEqual([]);
   });
 
+  it("increments only the account that received new activity", async () => {
+    mocks.request
+      .mockResolvedValueOnce(page([]))
+      .mockResolvedValueOnce(page([received]))
+      .mockResolvedValueOnce(page([sent, received]));
+    await notifications.reconcile("initial");
+    await notifications.reconcile("live");
+    expect(notifications.activityVersion(sent.account_id)).toBe(0);
+    expect(notifications.activityVersion(received.account_id)).toBe(1);
+
+    await notifications.reconcile("live");
+    expect(notifications.activityVersion(sent.account_id)).toBe(1);
+    expect(notifications.activityVersion(received.account_id)).toBe(1);
+  });
+
   it("establishes a failed stream baseline without replaying historical toasts", async () => {
     let streamInvalidation!: () => void;
     mocks.request
