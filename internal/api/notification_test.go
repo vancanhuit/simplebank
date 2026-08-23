@@ -130,6 +130,40 @@ func TestNotificationStreamUnsubscribesOnDisconnect(t *testing.T) {
 	}
 }
 
+type fakeDeadlineResponseWriter struct {
+	*httptest.ResponseRecorder
+	err error
+}
+
+func (writer *fakeDeadlineResponseWriter) SetWriteDeadline(time.Time) error {
+	return writer.err
+}
+
+func TestNotificationStreamWriteDeadlineFailureUnsubscribes(t *testing.T) {
+	s, _, _ := newNotificationStreamServer(t, time.Hour)
+	unsubscribed := false
+	s.subscribeNotifications = func(string) (<-chan guuid.UUID, func()) {
+		return make(chan guuid.UUID), func() { unsubscribed = true }
+	}
+	tokens := mustIssueTokenPair(t, "alice")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/stream", nil)
+	req.Header.Set("Authorization", "Bearer "+tokens.access)
+	deadlineErr := errors.New("setting write deadline")
+	writer := &fakeDeadlineResponseWriter{ResponseRecorder: httptest.NewRecorder(), err: deadlineErr}
+
+	s.Handler().ServeHTTP(writer, req)
+
+	if writer.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", writer.Code)
+	}
+	if strings.Contains(writer.Body.String(), ": connected") {
+		t.Fatalf("body = %q, want no connected stream frame", writer.Body.String())
+	}
+	if !unsubscribed {
+		t.Fatal("write-deadline failure did not unsubscribe")
+	}
+}
+
 func newNotificationStreamServer(t *testing.T, keepalive time.Duration) (*Server, token.Maker, *notification.Hub) {
 	t.Helper()
 	maker, err := token.NewJWTMaker(testSecret)

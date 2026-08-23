@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	guuid "github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -26,14 +27,14 @@ import (
 const headerXForwardedHost = "X-Forwarded-Host"
 
 type Server struct {
-	config                config.Config
-	store                 store.Store
-	tokenMaker            token.Maker
-	riverClient           *river.Client[pgx.Tx]
-	notificationHub       *notification.Hub
-	notificationKeepalive time.Duration
-	readiness             func(context.Context) error
-	router                *echo.Echo
+	config                 config.Config
+	store                  store.Store
+	tokenMaker             token.Maker
+	riverClient            *river.Client[pgx.Tx]
+	subscribeNotifications func(string) (<-chan guuid.UUID, func())
+	notificationKeepalive  time.Duration
+	readiness              func(context.Context) error
+	router                 *echo.Echo
 }
 
 func NewServer(
@@ -75,14 +76,14 @@ func NewServer(
 	}))
 
 	s := &Server{
-		config:                cfg,
-		store:                 st,
-		tokenMaker:            maker,
-		riverClient:           riverClient,
-		notificationHub:       notificationHub,
-		notificationKeepalive: 15 * time.Second,
-		readiness:             readiness,
-		router:                e,
+		config:                 cfg,
+		store:                  st,
+		tokenMaker:             maker,
+		riverClient:            riverClient,
+		subscribeNotifications: notificationHub.Subscribe,
+		notificationKeepalive:  15 * time.Second,
+		readiness:              readiness,
+		router:                 e,
 	}
 	s.registerRoutes()
 	return s, nil

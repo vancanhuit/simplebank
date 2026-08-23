@@ -4,10 +4,12 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
@@ -80,6 +82,23 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 	u2 := createTestUser(t)
 	acc1 := createTestAccount(t, u1.Username)
 	acc2 := createTestAccount(t, u2.Username)
+	listener, err := pgx.ConnectConfig(t.Context(), testPool.Config().ConnConfig.Copy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancelCleanup()
+		if _, unlistenErr := listener.Exec(cleanupCtx, `UNLISTEN balance_notifications`); unlistenErr != nil {
+			t.Errorf("unlisten balance notifications: %v", unlistenErr)
+		}
+		if closeErr := listener.Close(cleanupCtx); closeErr != nil {
+			t.Errorf("close notification listener: %v", closeErr)
+		}
+	}()
+	if _, err := listener.Exec(t.Context(), `LISTEN balance_notifications`); err != nil {
+		t.Fatal(err)
+	}
 
 	key := uuid.New()
 	amount := int64(100)
@@ -153,6 +172,31 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 	}
 	if notificationCount != 2 {
 		t.Fatalf("notifications = %d, want 2", notificationCount)
+	}
+	wantOwners := map[string]bool{u1.Username: false, u2.Username: false}
+	for range 2 {
+		waitCtx, cancelWait := context.WithTimeout(t.Context(), 2*time.Second)
+		message, waitErr := listener.WaitForNotification(waitCtx)
+		cancelWait()
+		if waitErr != nil {
+			t.Fatal(waitErr)
+		}
+		var payload struct {
+			Owner string `json:"owner"`
+		}
+		if err := json.Unmarshal([]byte(message.Payload), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if seen, ok := wantOwners[payload.Owner]; !ok || seen {
+			t.Fatalf("unexpected or duplicate notification owner %q", payload.Owner)
+		}
+		wantOwners[payload.Owner] = true
+	}
+	extraCtx, cancelExtra := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	_, err = listener.WaitForNotification(extraCtx)
+	cancelExtra()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("third concurrent same-key notification error = %v, want deadline exceeded", err)
 	}
 
 	updated1, err := testStore.GetAccount(t.Context(), acc1.ID)

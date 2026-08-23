@@ -55,7 +55,7 @@ func (s *Server) streamNotifications(c *echo.Context) error {
 
 	streamCtx, cancel := context.WithDeadline(c.Request().Context(), payload.ExpiresAt.Time)
 	defer cancel()
-	events, unsubscribe := s.notificationHub.Subscribe(payload.Username)
+	events, unsubscribe := s.subscribeNotifications(payload.Username)
 	defer unsubscribe()
 
 	header := c.Response().Header()

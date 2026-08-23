@@ -229,12 +229,12 @@ func runServices(
 	serve func(context.Context) error,
 ) error {
 	lifecycleCtx := context.WithoutCancel(ctx)
-	if err := listener.Start(lifecycleCtx); err != nil {
+	if err := listener.Start(ctx); err != nil {
 		return fmt.Errorf("starting notification listener: %w", err)
 	}
 	slog.Info("notification listener started")
 
-	if err := worker.Start(lifecycleCtx); err != nil {
+	if err := worker.Start(ctx); err != nil {
 		shutdownCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
 		listenerErr := listener.Stop(shutdownCtx)
 		cancel()

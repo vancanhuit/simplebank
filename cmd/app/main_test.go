@@ -27,6 +27,7 @@ type fakeServiceLifecycle struct {
 	startErr        error
 	stopErr         error
 	startContextErr error
+	startAction     func()
 	stopContextErr  error
 	stopDone        <-chan struct{}
 	stopDeadline    time.Time
@@ -36,6 +37,12 @@ type fakeServiceLifecycle struct {
 func (service *fakeServiceLifecycle) Start(ctx context.Context) error {
 	*service.events = append(*service.events, service.name+":start")
 	service.startContextErr = ctx.Err()
+	if service.startAction != nil {
+		service.startAction()
+	}
+	if service.startErr == nil && service.startContextErr != nil {
+		return service.startContextErr
+	}
 	return service.startErr
 }
 
@@ -69,9 +76,8 @@ func TestNewCommandExposesOnlySupportedCommands(t *testing.T) {
 }
 
 func TestRunServicesListenerStartFailurePreventsWorkerAndHTTP(t *testing.T) {
-	startErr := errors.New("start listener")
 	events := []string{}
-	listener := &fakeServiceLifecycle{name: "listener", events: &events, startErr: startErr}
+	listener := &fakeServiceLifecycle{name: "listener", events: &events}
 	worker := &fakeServiceLifecycle{name: "worker", events: &events}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -81,18 +87,41 @@ func TestRunServicesListenerStartFailurePreventsWorkerAndHTTP(t *testing.T) {
 		return nil
 	})
 
-	if !errors.Is(err, startErr) {
-		t.Fatalf("runServices error = %v, want wrapped %v", err, startErr)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("runServices error = %v, want wrapped context canceled", err)
 	}
-	if got, want := err.Error(), "starting notification listener: start listener"; got != want {
+	if got, want := err.Error(), "starting notification listener: context canceled"; got != want {
 		t.Fatalf("runServices error = %q, want %q", got, want)
 	}
 	if want := []string{"listener:start"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
-	if listener.startContextErr != nil {
-		t.Fatalf("listener start context error = %v, want nil", listener.startContextErr)
+	if !errors.Is(listener.startContextErr, context.Canceled) {
+		t.Fatalf("listener start context error = %v, want context canceled", listener.startContextErr)
 	}
+}
+
+func TestRunServicesCanceledWorkerStartupPreventsHTTP(t *testing.T) {
+	events := []string{}
+	ctx, cancel := context.WithCancel(t.Context())
+	listener := &fakeServiceLifecycle{name: "listener", events: &events, startAction: cancel}
+	worker := &fakeServiceLifecycle{name: "worker", events: &events}
+
+	err := runServices(ctx, listener, worker, func(context.Context) error {
+		events = append(events, "http:serve")
+		return nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("runServices error = %v, want context canceled", err)
+	}
+	if want := []string{"listener:start", "worker:start", "listener:stop"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+	if !errors.Is(worker.startContextErr, context.Canceled) {
+		t.Fatalf("worker start context error = %v, want context canceled", worker.startContextErr)
+	}
+	assertShutdownContext(t, listener)
 }
 
 func TestRunServicesWorkerStartFailureStopsListener(t *testing.T) {
@@ -101,10 +130,7 @@ func TestRunServicesWorkerStartFailureStopsListener(t *testing.T) {
 	events := []string{}
 	listener := &fakeServiceLifecycle{name: "listener", events: &events, stopErr: stopErr}
 	worker := &fakeServiceLifecycle{name: "worker", events: &events, startErr: startErr}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	err := runServices(ctx, listener, worker, func(context.Context) error {
+	err := runServices(t.Context(), listener, worker, func(context.Context) error {
 		events = append(events, "http:serve")
 		return nil
 	})
@@ -181,10 +207,10 @@ func TestRunServicesPreservesServerWorkerAndListenerErrors(t *testing.T) {
 	listener := &fakeServiceLifecycle{name: "listener", events: &events, stopErr: listenerErr}
 	worker := &fakeServiceLifecycle{name: "worker", events: &events, stopErr: workerErr}
 	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
 
 	err := runServices(ctx, listener, worker, func(context.Context) error {
 		events = append(events, "http:serve")
+		cancel()
 		return serverErr
 	})
 

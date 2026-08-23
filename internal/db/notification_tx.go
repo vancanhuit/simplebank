@@ -40,6 +40,9 @@ func (s *SQLStore) ListNotificationsPage(
 		if err != nil {
 			return ClassifyError(err)
 		}
+		if s.afterListNotifications != nil {
+			s.afterListNotifications()
+		}
 
 		result.UnreadCount, err = q.CountUnreadNotifications(ctx, arg.Owner)
 		if err != nil {

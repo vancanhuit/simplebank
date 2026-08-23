@@ -48,6 +48,7 @@ class NotificationsStore {
   #reconcilePromise: Promise<void> | null = null;
   #queuedReason: ReconcileReason | null = null;
   #mutationQueue: Promise<void> = Promise.resolve();
+  #mutationEpoch = 0;
   #activityVersions = new Map<string, ActivityVersion>();
 
   get recent(): Notification[] {
@@ -112,6 +113,7 @@ class NotificationsStore {
     this.#reconcilePromise = null;
     this.#queuedReason = null;
     this.#mutationQueue = Promise.resolve();
+    this.#mutationEpoch = 0;
 
     this.items = [];
     this.unreadCount = 0;
@@ -166,6 +168,7 @@ class NotificationsStore {
       return;
     }
     const signal = context.controller.signal;
+    const mutationEpoch = this.#mutationEpoch;
     if (!this.#isCurrent(context)) {
       return;
     }
@@ -178,6 +181,10 @@ class NotificationsStore {
         { authenticated: true, signal },
       );
       if (!this.#isCurrent(context)) {
+        return;
+      }
+      if (mutationEpoch !== this.#mutationEpoch) {
+        this.#queueReconcile("recovery", context);
         return;
       }
       const ids = new Set(this.items.map((notification) => notification.id));
@@ -254,6 +261,7 @@ class NotificationsStore {
         signal,
       });
       if (this.#isCurrent(context)) {
+        this.#mutationEpoch += 1;
         this.items = this.items.map((item) =>
           item.id === id ? { ...item, read_at: readAt } : item,
         );
@@ -296,6 +304,7 @@ class NotificationsStore {
         signal,
       });
       if (this.#isCurrent(context)) {
+        this.#mutationEpoch += 1;
         this.items = this.items.map((item) =>
           ids.has(item.id) ? { ...item, read_at: readAt } : item,
         );
@@ -358,6 +367,7 @@ class NotificationsStore {
       return;
     }
     const signal = context.controller.signal;
+    const mutationEpoch = this.#mutationEpoch;
     const initial = this.items.length === 0;
     if (initial) {
       this.loading = true;
@@ -372,6 +382,10 @@ class NotificationsStore {
         signal,
       });
       if (!this.#isCurrent(context)) {
+        return;
+      }
+      if (mutationEpoch !== this.#mutationEpoch) {
+        this.#queuedReason = this.#mergeQueuedReason(this.#queuedReason, "recovery");
         return;
       }
 

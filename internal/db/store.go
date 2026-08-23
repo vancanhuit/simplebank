@@ -25,7 +25,8 @@ type Store interface {
 
 type SQLStore struct {
 	*sqlcdb.Queries
-	connPool *pgxpool.Pool
+	connPool               *pgxpool.Pool
+	afterListNotifications func()
 }
 
 func New(pool *pgxpool.Pool) Store {

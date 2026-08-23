@@ -101,7 +101,14 @@ func TestNotificationPublishIsCommitGated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Release()
+	defer func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancelCleanup()
+		if _, unlistenErr := listener.Exec(cleanupCtx, `UNLISTEN balance_notifications`); unlistenErr != nil {
+			t.Errorf("unlisten balance notifications: %v", unlistenErr)
+		}
+		listener.Release()
+	}()
 	if _, err := listener.Exec(t.Context(), `LISTEN balance_notifications`); err != nil {
 		t.Fatal(err)
 	}
@@ -446,6 +453,50 @@ func TestListNotificationsPageReturnsSnapshotAndHasMore(t *testing.T) {
 		if notification.Owner != owner.Username {
 			t.Errorf("notification owner = %q, want %q", notification.Owner, owner.Username)
 		}
+	}
+}
+
+func TestListNotificationsPageUsesOneRepeatableReadSnapshot(t *testing.T) {
+	owner := createTestUser(t)
+	otherOwner := createTestUser(t)
+	account := createTestAccount(t, owner.Username)
+	otherAccount := createTestAccount(t, otherOwner.Username)
+	ctx := t.Context()
+
+	createNotification := func() {
+		transfer, err := testStore.CreateTransfer(ctx, sqlcdb.CreateTransferParams{
+			FromAccountID: account.ID, ToAccountID: otherAccount.ID, Amount: 25, IdempotencyKey: uuid.New(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := testStore.CreateNotification(ctx, sqlcdb.CreateNotificationParams{
+			Direction: "sent", TransferID: transfer.ID, AccountID: account.ID,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	createNotification()
+
+	snapshotStore := &SQLStore{Queries: sqlcdb.New(testPool), connPool: testPool}
+	snapshotStore.afterListNotifications = createNotification
+	page, err := snapshotStore.ListNotificationsPage(ctx, ListNotificationsPageParams{
+		Owner: owner.Username,
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Notifications) != 1 || page.UnreadCount != 1 {
+		t.Fatalf("snapshot page has %d rows and unread count %d, want 1 and 1", len(page.Notifications), page.UnreadCount)
+	}
+
+	unreadAfterCommit, err := testStore.CountUnreadNotifications(ctx, owner.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unreadAfterCommit != 2 {
+		t.Fatalf("unread count after concurrent commit = %d, want 2", unreadAfterCommit)
 	}
 }
 

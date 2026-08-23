@@ -332,6 +332,49 @@ describe("NotificationsStore", () => {
     expect(notifications.unreadCount).toBe(7);
   });
 
+  it("discards a first-page response that crosses a successful mark-read", async () => {
+    const staleReconciliation = deferred<NotificationPage>();
+    const readSent = { ...sent, read_at: "2026-08-23T11:00:00Z" };
+    mocks.request
+      .mockResolvedValueOnce(page([sent], 1))
+      .mockImplementationOnce(() => staleReconciliation.promise)
+      .mockResolvedValueOnce({ unread_count: 0 })
+      .mockResolvedValueOnce(page([readSent], 0));
+    await notifications.reconcile("initial");
+
+    const reconciliation = notifications.reconcile("manual");
+    await flush();
+    await notifications.markRead(sent.id);
+    staleReconciliation.resolve(page([sent], 1));
+    await reconciliation;
+
+    expect(mocks.request).toHaveBeenCalledTimes(4);
+    expect(notifications.items).toEqual([readSent]);
+    expect(notifications.unreadCount).toBe(0);
+  });
+
+  it("discards a pagination response that crosses a successful mark-all", async () => {
+    const stalePage = deferred<NotificationPage>();
+    const readSent = { ...sent, read_at: "2026-08-23T11:00:00Z" };
+    mocks.request
+      .mockResolvedValueOnce(page([sent], 2, "next"))
+      .mockImplementationOnce(() => stalePage.promise)
+      .mockResolvedValueOnce({ unread_count: 0 })
+      .mockResolvedValueOnce(page([readSent], 0));
+    await notifications.reconcile("initial");
+
+    const pagination = notifications.loadMore();
+    await flush();
+    await notifications.markAllRead();
+    stalePage.resolve(page([received], 2));
+    await pagination;
+    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(4));
+
+    expect(notifications.items).toEqual([readSent]);
+    expect(notifications.unreadCount).toBe(0);
+    expect(notifications.nextCursor).toBeNull();
+  });
+
   it("marks unloaded unread history when loaded rows are already read", async () => {
     const readSent = { ...sent, read_at: "2026-08-23T11:00:00Z" };
     mocks.request.mockImplementation((path: string) => {
