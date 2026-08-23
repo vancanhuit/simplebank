@@ -31,19 +31,22 @@ const (
 // method panics, which is the desired signal for an unexpected store access.
 type fakeStore struct {
 	store.Store
-	createUserTx    func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
-	getAccount      func(context.Context, uuid.UUID) (sqlcdb.Account, error)
-	transferTx      func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
-	getUser         func(context.Context, string) (sqlcdb.User, error)
-	getUserByEmail  func(context.Context, string) (sqlcdb.User, error)
-	createSession   func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
-	getSession      func(context.Context, uuid.UUID) (sqlcdb.Session, error)
-	rotateSessionTx func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error)
-	blockSession    func(context.Context, uuid.UUID) (sqlcdb.Session, error)
-	verifyEmailTx   func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
-	listAccounts    func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
-	createAccountTx func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
-	listTransfers   func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
+	createUserTx               func(context.Context, store.CreateUserTxParams) (sqlcdb.User, error)
+	getAccount                 func(context.Context, uuid.UUID) (sqlcdb.Account, error)
+	transferTx                 func(context.Context, store.TransferTxParams) (store.TransferTxResult, error)
+	getUser                    func(context.Context, string) (sqlcdb.User, error)
+	getUserByEmail             func(context.Context, string) (sqlcdb.User, error)
+	createSession              func(context.Context, sqlcdb.CreateSessionParams) (sqlcdb.Session, error)
+	getSession                 func(context.Context, uuid.UUID) (sqlcdb.Session, error)
+	rotateSessionTx            func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error)
+	blockSession               func(context.Context, uuid.UUID) (sqlcdb.Session, error)
+	verifyEmailTx              func(context.Context, store.VerifyEmailTxParams) (store.VerifyEmailTxResult, error)
+	listAccounts               func(context.Context, sqlcdb.ListAccountsParams) ([]sqlcdb.Account, error)
+	createAccountTx            func(context.Context, sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
+	listTransfers              func(context.Context, sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error)
+	listNotificationsPage      func(context.Context, store.ListNotificationsPageParams) (store.ListNotificationsPageResult, error)
+	markNotificationReadTx     func(context.Context, string, uuid.UUID) (int64, error)
+	markAllNotificationsReadTx func(context.Context, string) (int64, error)
 }
 
 func (f fakeStore) CreateUserTx(ctx context.Context, arg store.CreateUserTxParams) (sqlcdb.User, error) {
@@ -96,6 +99,18 @@ func (f fakeStore) CreateAccountTx(ctx context.Context, arg sqlcdb.CreateAccount
 
 func (f fakeStore) ListTransfersByAccount(ctx context.Context, arg sqlcdb.ListTransfersByAccountParams) ([]sqlcdb.Transfer, error) {
 	return f.listTransfers(ctx, arg)
+}
+
+func (f fakeStore) ListNotificationsPage(ctx context.Context, arg store.ListNotificationsPageParams) (store.ListNotificationsPageResult, error) {
+	return f.listNotificationsPage(ctx, arg)
+}
+
+func (f fakeStore) MarkNotificationReadTx(ctx context.Context, owner string, id uuid.UUID) (int64, error) {
+	return f.markNotificationReadTx(ctx, owner, id)
+}
+
+func (f fakeStore) MarkAllNotificationsReadTx(ctx context.Context, owner string) (int64, error) {
+	return f.markAllNotificationsReadTx(ctx, owner)
 }
 
 func newTestServer(t *testing.T) *Server {
