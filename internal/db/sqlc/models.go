@@ -7,6 +7,7 @@ package db
 import (
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"uuid"
 )
 
@@ -23,6 +24,19 @@ type Entry struct {
 	AccountID uuid.UUID `json:"account_id"`
 	Amount    int64     `json:"amount"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Notification struct {
+	ID         uuid.UUID          `json:"id"`
+	Owner      string             `json:"owner"`
+	AccountID  uuid.UUID          `json:"account_id"`
+	TransferID uuid.UUID          `json:"transfer_id"`
+	Direction  string             `json:"direction"`
+	Amount     int64              `json:"amount"`
+	Currency   string             `json:"currency"`
+	Balance    int64              `json:"balance"`
+	ReadAt     pgtype.Timestamptz `json:"read_at"`
+	CreatedAt  time.Time          `json:"created_at"`
 }
 
 type Session struct {

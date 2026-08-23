@@ -24,6 +24,7 @@ import (
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	"github.com/vancanhuit/simplebank/internal/mail"
+	"github.com/vancanhuit/simplebank/internal/notification"
 	"github.com/vancanhuit/simplebank/internal/token"
 	"github.com/vancanhuit/simplebank/internal/worker"
 )
@@ -120,15 +121,17 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 
 // appDeps holds the service dependencies. The caller owns closing the pool.
 type appDeps struct {
-	cfg         config.Config
-	pool        *pgxpool.Pool
-	store       store.Store
-	mailer      mail.Mailer
-	riverClient *river.Client[pgx.Tx]
+	cfg                  config.Config
+	pool                 *pgxpool.Pool
+	store                store.Store
+	mailer               mail.Mailer
+	riverClient          *river.Client[pgx.Tx]
+	notificationHub      *notification.Hub
+	notificationListener *notification.Listener
 }
 
 // buildApp assembles dependencies in the required order: open the pool, run
-// migrations, then construct the store, mailer, and river client. On any error
+// migrations, then construct the store and long-lived services. On any error
 // the pool is closed before returning so the caller does not leak it.
 func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 	cfg, err := mustConfig(cmd)
@@ -151,6 +154,8 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 		return nil, err
 	}
 	st := store.New(pool)
+	hub := notification.NewHub()
+	listener := notification.NewListener(pool.Config().ConnConfig, hub)
 	mailer, err := mail.NewSMTPMailer(cfg)
 	if err != nil {
 		return nil, err
@@ -161,7 +166,15 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 		return nil, err
 	}
 
-	deps := &appDeps{cfg: cfg, pool: pool, store: st, mailer: mailer, riverClient: riverClient}
+	deps := &appDeps{
+		cfg:                  cfg,
+		pool:                 pool,
+		store:                st,
+		mailer:               mailer,
+		riverClient:          riverClient,
+		notificationHub:      hub,
+		notificationListener: listener,
+	}
 	pool = nil // success: hand the open pool to the caller
 	return deps, nil
 }
@@ -171,14 +184,24 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	defer app.pool.Close()
+	defer func() {
+		app.pool.Close()
+		slog.Info("database pool closed")
+	}()
 
 	maker, err := token.NewJWTMaker(app.cfg.JWTSecret)
 	if err != nil {
 		return err
 	}
 
-	server, err := api.NewServer(app.cfg, app.store, maker, app.riverClient, app.pool.Ping)
+	server, err := api.NewServer(
+		app.cfg,
+		app.store,
+		maker,
+		app.riverClient,
+		app.notificationHub,
+		app.pool.Ping,
+	)
 	if err != nil {
 		return err
 	}
@@ -189,32 +212,49 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	}
 	server.RegisterSPA(dist)
 
-	return runServices(ctx, app.riverClient, func(ctx context.Context) error {
+	return runServices(ctx, app.notificationListener, app.riverClient, func(ctx context.Context) error {
 		return startServer(ctx, app.cfg, server.Handler())
 	})
 }
 
-type workerLifecycle interface {
+type serviceLifecycle interface {
 	Start(context.Context) error
 	Stop(context.Context) error
 }
 
 func runServices(
 	ctx context.Context,
-	worker workerLifecycle,
+	listener serviceLifecycle,
+	worker serviceLifecycle,
 	serve func(context.Context) error,
 ) error {
 	lifecycleCtx := context.WithoutCancel(ctx)
-	if err := worker.Start(lifecycleCtx); err != nil {
-		return fmt.Errorf("starting worker: %w", err)
+	if err := listener.Start(ctx); err != nil {
+		return fmt.Errorf("starting notification listener: %w", err)
+	}
+	slog.Info("notification listener started")
+
+	if err := worker.Start(ctx); err != nil {
+		shutdownCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
+		listenerErr := listener.Stop(shutdownCtx)
+		cancel()
+		return errors.Join(fmt.Errorf("starting worker: %w", err), listenerErr)
 	}
 	slog.Info("worker started")
 
 	serverErr := serve(ctx)
+	slog.Info("http server shut down", "cause", context.Cause(ctx))
 	slog.Info("worker shutting down", "cause", context.Cause(ctx))
-	shutdownCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
-	defer cancel()
-	return errors.Join(serverErr, worker.Stop(shutdownCtx))
+	workerShutdownCtx, cancelWorkerShutdown := context.WithTimeout(lifecycleCtx, 10*time.Second)
+	workerErr := worker.Stop(workerShutdownCtx)
+	cancelWorkerShutdown()
+
+	slog.Info("notification listener shutting down", "cause", context.Cause(ctx))
+	listenerShutdownCtx, cancelListenerShutdown := context.WithTimeout(lifecycleCtx, 10*time.Second)
+	listenerErr := listener.Stop(listenerShutdownCtx)
+	cancelListenerShutdown()
+
+	return errors.Join(serverErr, workerErr, listenerErr)
 }
 
 // startServer runs the HTTP server with hardened timeouts and graceful

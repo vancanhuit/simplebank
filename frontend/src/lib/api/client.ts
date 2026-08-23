@@ -68,12 +68,11 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   });
 }
 
-/**
- * Perform an API request and decode the JSON response. On a 401 for an
- * authenticated request, it transparently refreshes the access token once and
- * retries, so an expired access token is invisible to callers.
- */
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/** Perform an API request without consuming a successful response body. */
+export async function requestResponse(
+  path: string,
+  options: RequestOptions = {},
+): Promise<Response> {
   const generation = auth.generation;
   let response = await send(path, options);
 
@@ -84,12 +83,33 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
   }
 
-  return decode<T>(response);
+  if (!response.ok) {
+    await decode(response);
+  }
+  return response;
+}
+
+/**
+ * Perform an API request and decode the JSON response. On a 401 for an
+ * authenticated request, it transparently refreshes the access token once and
+ * retries, so an expired access token is invisible to callers.
+ */
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return decode<T>(await requestResponse(path, options));
 }
 
 async function decode<T>(response: Response): Promise<T> {
   const text = await response.text();
-  const data: unknown = text ? JSON.parse(text) : undefined;
+  let data: unknown;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      if (response.ok) {
+        throw error;
+      }
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 429) {

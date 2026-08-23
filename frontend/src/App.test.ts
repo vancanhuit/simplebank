@@ -13,6 +13,27 @@ const accountsMock = vi.hoisted(() => ({
   reset: vi.fn(),
 }));
 
+const notificationsMock = vi.hoisted(() => ({
+  items: [],
+  recent: [],
+  unreadCount: 0,
+  loading: false,
+  refreshing: false,
+  error: null,
+  loadingMore: false,
+  loadMoreError: null,
+  nextCursor: null,
+  hasMore: false,
+  toasts: [],
+  start: vi.fn(),
+  reset: vi.fn(),
+  reconcile: vi.fn().mockResolvedValue(undefined),
+  loadMore: vi.fn().mockResolvedValue(undefined),
+  markRead: vi.fn().mockResolvedValue(undefined),
+  markAllRead: vi.fn().mockResolvedValue(undefined),
+  activityVersion: vi.fn().mockReturnValue(0),
+}));
+
 const user = {
   username: "alice",
   full_name: "Alice Smith",
@@ -29,6 +50,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 vi.mock("./lib/stores/accounts.svelte", () => ({ accounts: accountsMock }));
+vi.mock("./lib/stores/notifications.svelte", () => ({ notifications: notificationsMock }));
 
 describe("App routing", () => {
   beforeEach(() => {
@@ -39,6 +61,8 @@ describe("App routing", () => {
     auth.initializing = false;
     vi.spyOn(auth, "init").mockResolvedValue();
     accountsMock.reset.mockClear();
+    notificationsMock.start.mockClear();
+    notificationsMock.reset.mockClear();
   });
   afterEach(() => {
     cleanup();
@@ -67,6 +91,71 @@ describe("App routing", () => {
     auth.initializing = false;
 
     await waitFor(() => expect(accountsMock.reset).toHaveBeenCalledOnce());
+    expect(notificationsMock.reset).toHaveBeenCalledOnce();
+  });
+
+  it("starts one notification session for an authenticated auth generation", async () => {
+    history.replaceState({}, "", "/");
+    router.path = "/";
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(App);
+
+    await waitFor(() => expect(notificationsMock.start).toHaveBeenCalledOnce());
+
+    auth.accessToken = "refreshed-access-token";
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(() => expect(notificationsMock.start).toHaveBeenCalledOnce());
+  });
+
+  it("protects the notifications route and publishes its title and announcement", async () => {
+    history.replaceState({}, "", "/");
+    router.path = "/";
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(App);
+
+    navigate("/notifications");
+
+    expect(await screen.findByRole("heading", { name: "Notifications" })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("Notifications · SimpleBank"));
+    expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("Notifications");
+
+    auth.clear();
+
+    expect(await screen.findByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
+    await waitFor(() => expect(router.path).toBe("/login"));
+  });
+
+  it("mounts persistent notification toasts only in authenticated chrome", async () => {
+    const signedOut = render(App);
+    expect(document.querySelector(".toast[aria-live='polite']")).not.toBeInTheDocument();
+    signedOut.unmount();
+
+    history.replaceState({}, "", "/");
+    router.path = "/";
+    auth.user = user;
+    auth.accessToken = "access-token";
+    render(App);
+
+    expect(
+      await waitFor(() => document.querySelector(".toast[aria-live='polite']")),
+    ).toBeInTheDocument();
+  });
+
+  it("resets notification resources when the root unmounts", async () => {
+    history.replaceState({}, "", "/");
+    router.path = "/";
+    auth.user = user;
+    auth.accessToken = "access-token";
+    const app = render(App);
+    await waitFor(() => expect(notificationsMock.start).toHaveBeenCalledOnce());
+    notificationsMock.reset.mockClear();
+
+    app.unmount();
+
+    expect(notificationsMock.reset).toHaveBeenCalledOnce();
   });
 
   it("shows one-shot server logout failure feedback after local sign-out", async () => {

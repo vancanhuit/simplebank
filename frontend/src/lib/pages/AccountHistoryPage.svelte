@@ -1,7 +1,8 @@
 <script lang="ts">
   import { request, toMessage } from "../api/client";
   import type { Account, Transfer } from "../api/types";
-  import { accounts } from "../stores/accounts.svelte";
+  import { auth } from "../stores/auth.svelte";
+  import { notifications } from "../stores/notifications.svelte";
   import { router } from "../router.svelte";
   import { formatMoney, formatSignedMoney } from "../money";
   import Alert from "../components/Alert.svelte";
@@ -15,40 +16,69 @@
   let account = $state<Account | null>(null);
   let transfers = $state<Transfer[]>([]);
   let loading = $state(true);
+  let refreshing = $state(false);
   let error = $state<string | null>(null);
   let loadGeneration = 0;
+  let successfulRouteId: string | null = null;
+  let retryVersion = $state(0);
 
   $effect(() => {
-    void load(accountId, ++loadGeneration);
+    const id = accountId;
+    const activityVersion = notifications.activityVersion(id);
+    const authGeneration = auth.generation;
+    void activityVersion;
+    void retryVersion;
+    const preserveVisibleData = successfulRouteId === id;
+    const controller = new AbortController();
+    void load(id, ++loadGeneration, authGeneration, controller.signal, preserveVisibleData);
+    return () => controller.abort();
   });
 
-  async function load(id = accountId, generation = ++loadGeneration): Promise<void> {
-    loading = true;
+  async function load(
+    id: string,
+    generation: number,
+    authGeneration: number,
+    signal: AbortSignal,
+    preserveVisibleData: boolean,
+  ): Promise<void> {
+    if (preserveVisibleData) {
+      refreshing = true;
+    } else {
+      loading = true;
+      account = null;
+      transfers = [];
+    }
     error = null;
-    account = null;
-    transfers = [];
+    const current = () =>
+      loadGeneration === generation && auth.generation === authGeneration && !signal.aborted;
     try {
-      // Reuse the cached account when available (arriving from the dashboard),
-      // otherwise fetch it so deep links and refreshes still resolve.
-      const nextAccount =
-        accounts.get(id) ?? (await request<Account>(`/accounts/${id}`, { authenticated: true }));
-      const nextTransfers = await request<Transfer[]>(`/accounts/${id}/transfers?page=1&size=50`, {
-        authenticated: true,
-      });
-      if (loadGeneration !== generation) {
+      const [nextAccount, nextTransfers] = await Promise.all([
+        request<Account>(`/accounts/${id}`, { authenticated: true, signal }),
+        request<Transfer[]>(`/accounts/${id}/transfers?page=1&size=50`, {
+          authenticated: true,
+          signal,
+        }),
+      ]);
+      if (!current()) {
         return;
       }
       account = nextAccount;
       transfers = nextTransfers;
+      successfulRouteId = id;
     } catch (err) {
-      if (loadGeneration === generation) {
+      if (current()) {
         error = toMessage(err);
       }
     } finally {
-      if (loadGeneration === generation) {
+      if (current()) {
         loading = false;
+        refreshing = false;
       }
     }
+  }
+
+  function retry() {
+    retryVersion += 1;
   }
 
   // Describe a transfer relative to this account: outgoing transfers are debits
@@ -89,22 +119,29 @@
     </div>
   {/if}
 
-  {#if error}
+  {#if error && account}
     <div class="mt-6">
       <Alert variant="error">
         {error}
-        <button type="button" class="btn btn-link ml-2 min-h-11" onclick={() => void load()}
-          >Retry</button
-        >
+        <button type="button" class="btn btn-link ml-2 min-h-11" onclick={retry}>Retry</button>
       </Alert>
     </div>
-  {:else if loading}
+  {:else if error}
+    <div class="mt-6">
+      <Alert variant="error">
+        {error}
+        <button type="button" class="btn btn-link ml-2 min-h-11" onclick={retry}>Retry</button>
+      </Alert>
+    </div>
+  {:else if loading && !account}
     <div class="mt-6 flex flex-col gap-3" aria-busy="true" aria-label="Loading activity">
       {#each [0, 1, 2, 3] as placeholder (placeholder)}
         <div class="skeleton h-20"></div>
       {/each}
     </div>
-  {:else if transfers.length === 0}
+  {/if}
+
+  {#if account && transfers.length === 0 && !loading}
     <div class="card mt-6 border border-dashed border-base-300 bg-base-100 text-center">
       <div class="card-body items-center px-6 py-12">
         <h2 class="card-title text-base">No activity yet</h2>
@@ -116,8 +153,11 @@
         </div>
       </div>
     </div>
-  {:else if account}
-    <ul class="list mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm">
+  {:else if account && transfers.length > 0}
+    <ul
+      class="list mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm"
+      aria-busy={refreshing}
+    >
       {#each transfers as transfer (transfer.id)}
         {@const r = row(transfer)}
         <li class="list-row items-center">

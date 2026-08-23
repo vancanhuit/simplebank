@@ -1,5 +1,11 @@
-import { AxeBuilder } from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import {
+  account,
+  expectNoAccessibilityViolations,
+  mockAuthenticatedAPI,
+  type Notification,
+  user,
+} from "./support/mock-api.js";
 
 const viewports = [
   { width: 320, height: 800 },
@@ -8,65 +14,52 @@ const viewports = [
   { width: 1440, height: 1000 },
 ];
 
-const user = {
-  username: "alexandria",
-  full_name: "Alexandria Montgomery-Worthington Alexandria Montgomery-Worthington",
-  email: "alexandria@example.com",
-  is_email_verified: true,
-  created_at: "2026-01-01T00:00:00Z",
-};
-
-const account = {
-  id: "11111111-2222-3333-4444-555566667777",
-  owner: user.username,
-  balance: 125_000,
+const notification: Notification = {
+  id: "0198d94d-9380-7d00-8000-000000000101",
+  account_id: account.id,
+  transfer_id: "0198d94d-9380-7d00-8000-000000000111",
+  direction: "received",
+  amount: 40_00,
   currency: "USD",
-  created_at: "2026-01-15T10:00:00Z",
+  balance: 129_000,
+  read_at: null,
+  created_at: "2026-08-23T11:01:00Z",
 };
 
-async function mockAuthenticatedAPI(page: Page, accounts: unknown[] = []): Promise<void> {
-  await page.route("**/api/v1/tokens/renew", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        access_token: "test-token",
-        access_token_expires_at: "2026-01-01T01:00:00Z",
-        user,
-      }),
-    }),
-  );
-  // Register specific account transfer route before broad account routes
-  await page.route(`**/api/v1/accounts/${account.id}/transfers?*`, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-          from_account_id: account.id,
-          to_account_id: "99999999-8888-7777-6666-555544443333",
-          amount: 25_00,
-          idempotency_key: "11111111-aaaa-bbbb-cccc-222222222222",
-          created_at: "2026-01-16T10:00:00Z",
-        },
-      ]),
-    }),
-  );
-  await page.route(`**/api/v1/accounts/${account.id}`, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(account) }),
-  );
-  await page.route("**/api/v1/accounts?*", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(accounts) }),
-  );
-  await page.route("**/api/v1/transfer-limits", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-  );
+async function expectNoHorizontalOverflow(page: import("@playwright/test").Page): Promise<void> {
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 }
 
-async function expectNoAccessibilityViolations(page: Page): Promise<void> {
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(results.violations).toEqual([]);
+async function expectMinimumInteractiveTargets(
+  page: import("@playwright/test").Page,
+  selector: string,
+): Promise<void> {
+  await expect
+    .poll(() =>
+      page.locator(selector).evaluateAll((elements) =>
+        elements
+          .filter((element) => {
+            const style = getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden";
+          })
+          .map((element) => {
+            const rectangle = element.getBoundingClientRect();
+            return {
+              label: element.getAttribute("aria-label") ?? element.textContent,
+              width: rectangle.width,
+              height: rectangle.height,
+            };
+          })
+          // Chromium can report a 44px CSS target a few thousandths under 44
+          // due to subpixel layout. Keep the tolerance far below a pixel.
+          .filter(({ width, height }) => width < 43.9 || height < 43.9),
+      ),
+    )
+    .toEqual([]);
 }
 
 test("theme selection is accessible, persisted, and valid after reload", async ({ page }) => {
@@ -146,6 +139,7 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
           [
             menu,
             page.getByRole("link", { name: "SimpleBank" }),
+            page.getByRole("button", { name: /Notifications, \d+ unread/ }),
             page.getByRole("button", { name: /switch to (dark|light) theme/i }),
             page.getByRole("button", { name: "Sign out" }),
           ].map((control) => control.boundingBox()),
@@ -187,6 +181,73 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
       }
     }
   }
+});
+
+test("notification popover and history remain accessible and responsive in both themes", async ({
+  page,
+}) => {
+  const api = await mockAuthenticatedAPI(page, [account]);
+  api.setNotifications({ notifications: [notification], unread_count: 1, next_cursor: null });
+  await page.goto("/");
+
+  for (const viewport of [
+    { width: 320, height: 800 },
+    { width: 1440, height: 1000 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const theme of ["simplebank-light", "simplebank-dark"] as const) {
+      await page.evaluate(({ key, value }) => localStorage.setItem(key, value), {
+        key: "simplebank-theme",
+        value: theme,
+      });
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
+      await bell.focus();
+      await page.keyboard.press("Enter");
+      const popover = page.getByRole("region", { name: "Recent notifications" });
+      await expect(popover).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await expectMinimumInteractiveTargets(
+        page,
+        "#notification-preview button, #notification-preview a",
+      );
+      await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => animation.playState !== "running"),
+      );
+      await expectNoAccessibilityViolations(page);
+
+      await page.keyboard.press("Escape");
+      await expect(popover).toBeHidden();
+      await expect(bell).toBeFocused();
+
+      await bell.click();
+      await page.getByRole("link", { name: "View all notifications" }).click();
+      await expect(page).toHaveURL("/notifications");
+      await expect(popover).toBeHidden();
+      await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => animation.playState !== "running"),
+      );
+      await expectNoHorizontalOverflow(page);
+      await expectMinimumInteractiveTargets(page, "main button, main a");
+      await expectNoAccessibilityViolations(page);
+    }
+  }
+});
+
+test("live notification toast does not steal keyboard focus", async ({ page }) => {
+  const api = await mockAuthenticatedAPI(page, [account]);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Notifications, 0 unread" })).toBeVisible();
+  const themeToggle = page.getByRole("button", { name: /Switch to .* theme/ });
+  await themeToggle.focus();
+
+  api.setAccounts([{ ...account, balance: notification.balance }]);
+  api.setNotifications({ notifications: [notification], unread_count: 1, next_cursor: null });
+  await api.emitNotification(notification.id);
+
+  await expect(page.locator(".toast").getByText(/Received\s*\+\$40\.00\s*USD/)).toBeVisible();
+  await expect(themeToggle).toBeFocused();
 });
 
 test("long identity stays within the desktop header", async ({ page }) => {
@@ -330,7 +391,9 @@ test("no console errors or failed requests during navigation", async ({ page }) 
     }
   });
   page.on("requestfailed", (request) => {
-    failedRequests.push(request.url());
+    if (request.failure()?.errorText !== "net::ERR_ABORTED") {
+      failedRequests.push(request.url());
+    }
   });
 
   await mockAuthenticatedAPI(page, [account]);

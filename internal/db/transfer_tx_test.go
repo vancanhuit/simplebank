@@ -219,6 +219,59 @@ func TestTransferTxConcurrent(t *testing.T) {
 	}
 }
 
+func TestTransferTxCreatesNotifications(t *testing.T) {
+	sender := createTestUser(t)
+	recipient := createTestUser(t)
+	from := createTestAccount(t, sender.Username)
+	to := createTestAccount(t, recipient.Username)
+	amount := int64(25)
+
+	result, err := testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  from.ID,
+		ToAccountID:    to.ID,
+		Amount:         amount,
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	senderRows, err := testStore.ListNotifications(t.Context(), sqlcdb.ListNotificationsParams{
+		Owner: sender.Username, PageLimit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(senderRows) != 1 {
+		t.Fatalf("sender notifications = %d, want 1", len(senderRows))
+	}
+	sent := senderRows[0]
+	if sent.ID == uuid.Nil() || sent.Owner != sender.Username || sent.AccountID != from.ID ||
+		sent.TransferID != result.Transfer.ID || sent.Direction != "sent" ||
+		sent.Amount != amount || sent.Currency != currency.USD ||
+		sent.Balance != result.FromAccount.Balance || sent.ReadAt.Valid || sent.CreatedAt.IsZero() {
+		t.Fatalf("unexpected sender notification: %+v", sent)
+	}
+
+	recipientRows, err := testStore.ListNotifications(t.Context(), sqlcdb.ListNotificationsParams{
+		Owner: recipient.Username, PageLimit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recipientRows) != 1 {
+		t.Fatalf("recipient notifications = %d, want 1", len(recipientRows))
+	}
+	received := recipientRows[0]
+	if received.ID == uuid.Nil() || received.Owner != recipient.Username || received.AccountID != to.ID ||
+		received.TransferID != result.Transfer.ID || received.Direction != "received" ||
+		received.Amount != amount || received.Currency != currency.USD ||
+		received.Balance != result.ToAccount.Balance || received.ReadAt.Valid || received.CreatedAt.IsZero() {
+		t.Fatalf("unexpected recipient notification: %+v", received)
+	}
+}
+
 // TestTransferTxDeadlockPrevention drives transfers in both directions
 // concurrently so both branches of the UUID-ordered locking run. The net
 // effect is zero, so both balances must return to their starting value.
@@ -315,6 +368,17 @@ func TestTransferTxInsufficientBalance(t *testing.T) {
 	}
 	if updated2.Balance != 1000 {
 		t.Errorf("acc2 balance changed after failed transfer: %d, want 1000", updated2.Balance)
+	}
+
+	var notificationCount int
+	if err := testPool.QueryRow(t.Context(),
+		`SELECT count(*) FROM notifications WHERE account_id = $1 OR account_id = $2`,
+		acc1.ID, acc2.ID,
+	).Scan(&notificationCount); err != nil {
+		t.Fatal(err)
+	}
+	if notificationCount != 0 {
+		t.Fatalf("notifications after failed transfer = %d, want 0", notificationCount)
 	}
 }
 

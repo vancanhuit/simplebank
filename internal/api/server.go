@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	guuid "github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
+	"github.com/vancanhuit/simplebank/internal/notification"
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
@@ -25,12 +27,14 @@ import (
 const headerXForwardedHost = "X-Forwarded-Host"
 
 type Server struct {
-	config      config.Config
-	store       store.Store
-	tokenMaker  token.Maker
-	riverClient *river.Client[pgx.Tx]
-	readiness   func(context.Context) error
-	router      *echo.Echo
+	config                 config.Config
+	store                  store.Store
+	tokenMaker             token.Maker
+	riverClient            *river.Client[pgx.Tx]
+	subscribeNotifications func(string) (<-chan guuid.UUID, func())
+	notificationKeepalive  time.Duration
+	readiness              func(context.Context) error
+	router                 *echo.Echo
 }
 
 func NewServer(
@@ -38,8 +42,12 @@ func NewServer(
 	st store.Store,
 	maker token.Maker,
 	riverClient *river.Client[pgx.Tx],
+	notificationHub *notification.Hub,
 	readiness func(context.Context) error,
 ) (*Server, error) {
+	if notificationHub == nil {
+		notificationHub = notification.NewHub()
+	}
 	if readiness == nil {
 		readiness = func(context.Context) error { return nil }
 	}
@@ -60,15 +68,22 @@ func NewServer(
 	e.Use(requestLogger())
 	e.Use(securityHeaders())
 	e.Use(middleware.BodyLimit(1 << 20))
-	e.Use(middleware.ContextTimeout(30 * time.Second))
+	e.Use(middleware.ContextTimeoutWithConfig(middleware.ContextTimeoutConfig{
+		Timeout: 30 * time.Second,
+		Skipper: func(c *echo.Context) bool {
+			return c.Request().URL.Path == "/api/v1/notifications/stream"
+		},
+	}))
 
 	s := &Server{
-		config:      cfg,
-		store:       st,
-		tokenMaker:  maker,
-		riverClient: riverClient,
-		readiness:   readiness,
-		router:      e,
+		config:                 cfg,
+		store:                  st,
+		tokenMaker:             maker,
+		riverClient:            riverClient,
+		subscribeNotifications: notificationHub.Subscribe,
+		notificationKeepalive:  15 * time.Second,
+		readiness:              readiness,
+		router:                 e,
 	}
 	s.registerRoutes()
 	return s, nil

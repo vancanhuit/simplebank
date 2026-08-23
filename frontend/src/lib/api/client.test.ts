@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { request, ApiError, toMessage } from "./client";
+import { request, requestResponse, ApiError, toMessage } from "./client";
 import { auth } from "../stores/auth.svelte";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -208,6 +208,77 @@ describe("request", () => {
     expect(result2).toEqual({ id: "b" });
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("requestResponse", () => {
+  beforeEach(() => {
+    auth.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns an authenticated successful response with its body unread", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "a1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    auth.accessToken = "access-token";
+
+    const response = await requestResponse("/accounts/a1", { authenticated: true });
+
+    expect(response.bodyUsed).toBe(false);
+    expect(await response.json()).toEqual({ id: "a1" });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      headers: { Authorization: "Bearer access-token" },
+    });
+  });
+
+  it("refreshes once after a 401 and returns the retry body unread", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { error: "token has expired" }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    auth.accessToken = "expired-token";
+    const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(() => {
+      auth.accessToken = "refreshed-token";
+      return Promise.resolve(true);
+    });
+
+    const response = await requestResponse("/accounts", { authenticated: true });
+
+    expect(response.bodyUsed).toBe(false);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      headers: { Authorization: "Bearer refreshed-token" },
+    });
+  });
+
+  it("throws ApiError after decoding a final non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(422, { error: "insufficient balance" })),
+    );
+
+    await expect(requestResponse("/transfers", { method: "POST", body: {} })).rejects.toMatchObject(
+      {
+        status: 422,
+        message: "insufficient balance",
+      } satisfies Partial<ApiError>,
+    );
+  });
+
+  it("throws ApiError with the fallback message for a non-JSON error response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 })));
+
+    await expect(requestResponse("/accounts", { authenticated: true })).rejects.toMatchObject({
+      status: 502,
+      message: "Request failed (502)",
+    } satisfies Partial<ApiError>);
   });
 });
 

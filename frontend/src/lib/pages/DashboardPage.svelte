@@ -70,7 +70,7 @@
       >
         {#each totals as total (total.currency)}
           <div class="stat">
-            <dt class="stat-title text-neutral-content/60">{total.currency} balance</dt>
+            <dt class="stat-title text-neutral-content/70">{total.currency} balance</dt>
             <dd
               class="stat-value text-2xl tracking-tight text-neutral-content tabular-nums sm:text-3xl"
             >

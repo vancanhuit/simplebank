@@ -122,6 +122,36 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 		if err != nil {
 			return mapBalanceError(err)
 		}
+
+		fromNotification, err := q.CreateNotification(ctx, sqlcdb.CreateNotificationParams{
+			Direction:  "sent",
+			TransferID: result.Transfer.ID,
+			AccountID:  result.FromAccount.ID,
+		})
+		if err != nil {
+			return ClassifyError(err)
+		}
+		if err := q.PublishNotification(ctx, sqlcdb.PublishNotificationParams{
+			NotificationID: fromNotification.ID,
+			Owner:          fromNotification.Owner,
+		}); err != nil {
+			return ClassifyError(err)
+		}
+
+		toNotification, err := q.CreateNotification(ctx, sqlcdb.CreateNotificationParams{
+			Direction:  "received",
+			TransferID: result.Transfer.ID,
+			AccountID:  result.ToAccount.ID,
+		})
+		if err != nil {
+			return ClassifyError(err)
+		}
+		if err := q.PublishNotification(ctx, sqlcdb.PublishNotificationParams{
+			NotificationID: toNotification.ID,
+			Owner:          toNotification.Owner,
+		}); err != nil {
+			return ClassifyError(err)
+		}
 		return nil
 	})
 

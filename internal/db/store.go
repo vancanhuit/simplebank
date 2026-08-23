@@ -18,11 +18,15 @@ type Store interface {
 	CreateAccountTx(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
 	ReconcileAccount(ctx context.Context, id uuid.UUID) (Reconciliation, error)
 	RotateSessionTx(ctx context.Context, arg RotateSessionTxParams) (sqlcdb.Session, error)
+	ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) (ListNotificationsPageResult, error)
+	MarkNotificationReadTx(ctx context.Context, owner string, id uuid.UUID) (int64, error)
+	MarkAllNotificationsReadTx(ctx context.Context, owner string) (int64, error)
 }
 
 type SQLStore struct {
 	*sqlcdb.Queries
-	connPool *pgxpool.Pool
+	connPool               *pgxpool.Pool
+	afterListNotifications func()
 }
 
 func New(pool *pgxpool.Pool) Store {
@@ -33,7 +37,15 @@ func New(pool *pgxpool.Pool) Store {
 }
 
 func (s *SQLStore) execTx(ctx context.Context, fn func(*sqlcdb.Queries) error) error {
-	return pgx.BeginFunc(ctx, s.connPool, func(tx pgx.Tx) error {
+	return s.execTxOptions(ctx, pgx.TxOptions{}, fn)
+}
+
+func (s *SQLStore) execTxOptions(
+	ctx context.Context,
+	opts pgx.TxOptions,
+	fn func(*sqlcdb.Queries) error,
+) error {
+	return pgx.BeginTxFunc(ctx, s.connPool, opts, func(tx pgx.Tx) error {
 		return fn(sqlcdb.New(tx))
 	})
 }

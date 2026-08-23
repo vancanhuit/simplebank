@@ -54,11 +54,11 @@
   <div class="card-body gap-5 p-5 sm:p-6">
     <div class="flex items-center justify-between gap-3">
       <span class="badge badge-outline font-semibold">{account.currency}</span>
-      <span class="text-xs text-base-content/55">Opened {created}</span>
+      <span class="text-xs text-base-content/70">Opened {created}</span>
     </div>
 
     <div>
-      <p class="text-xs font-medium tracking-wide text-base-content/55 uppercase">
+      <p class="text-xs font-medium tracking-wide text-base-content/70 uppercase">
         Available balance
       </p>
       <p class="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
@@ -67,7 +67,7 @@
     </div>
 
     <div class="rounded-box bg-base-200 p-3">
-      <p class="text-xs font-medium text-base-content/55">Account number</p>
+      <p class="text-xs font-medium text-base-content/70">Account number</p>
       <code class="mt-1 block font-mono text-xs break-all">{account.id}</code>
       <button
         type="button"
