@@ -134,7 +134,7 @@ func newTestServerWithConfig(t *testing.T, st store.Store, cfg config.Config) *S
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := NewServer(cfg, st, maker, nil, nil)
+	s, err := NewServer(cfg, st, maker, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

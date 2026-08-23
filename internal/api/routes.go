@@ -42,6 +42,7 @@ func (s *Server) registerRoutes() {
 	auth.GET("/accounts", s.listAccounts)
 	auth.GET("/accounts/:id/transfers", s.listTransfers)
 	auth.POST("/transfers", s.createTransfer)
+	auth.GET("/notifications/stream", s.streamNotifications)
 	auth.GET("/notifications", s.listNotifications)
 	auth.PUT("/notifications/:id/read", s.markNotificationRead)
 	auth.PUT("/notifications/read-all", s.markAllNotificationsRead)

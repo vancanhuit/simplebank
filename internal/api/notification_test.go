@@ -1,21 +1,211 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	guuid "github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"uuid"
 
+	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
+	"github.com/vancanhuit/simplebank/internal/notification"
+	"github.com/vancanhuit/simplebank/internal/token"
 )
+
+func TestNotificationStreamRequiresAuthentication(t *testing.T) {
+	s, _, _ := newNotificationStreamServer(t, time.Hour)
+	testServer := httptest.NewServer(s.Handler())
+	t.Cleanup(testServer.Close)
+
+	resp, err := testServer.Client().Get(testServer.URL + "/api/v1/notifications/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestNotificationStreamFiltersAuthenticatedOwner(t *testing.T) {
+	s, maker, hub := newNotificationStreamServer(t, time.Hour)
+	testServer := httptest.NewServer(s.Handler())
+	t.Cleanup(testServer.Close)
+
+	resp, cancel := openNotificationStream(t, testServer, maker, "alice", time.Minute)
+	defer cancel()
+	defer func() { _ = resp.Body.Close() }()
+	assertNotificationStreamHeaders(t, resp)
+	reader := bufio.NewReader(resp.Body)
+	if got := readSSEFrame(t, reader); got != ": connected\n\n" {
+		t.Fatalf("initial frame = %q, want connected comment", got)
+	}
+
+	hub.Publish("bob", guuid.MustParse("0198d94d-9380-7d00-8000-000000000001"))
+	aliceID := guuid.MustParse("0198d94d-9380-7d00-8000-000000000002")
+	hub.Publish("alice", aliceID)
+	if got, want := readSSEFrame(t, reader), "event: notification\ndata: "+aliceID.String()+"\n\n"; got != want {
+		t.Fatalf("notification frame = %q, want %q", got, want)
+	}
+}
+
+func TestNotificationStreamEmitsKeepalive(t *testing.T) {
+	s, maker, _ := newNotificationStreamServer(t, 10*time.Millisecond)
+	testServer := httptest.NewServer(s.Handler())
+	t.Cleanup(testServer.Close)
+
+	resp, cancel := openNotificationStream(t, testServer, maker, "alice", time.Minute)
+	defer cancel()
+	defer func() { _ = resp.Body.Close() }()
+	reader := bufio.NewReader(resp.Body)
+	if got := readSSEFrame(t, reader); got != ": connected\n\n" {
+		t.Fatalf("initial frame = %q, want connected comment", got)
+	}
+	if got := readSSEFrame(t, reader); got != ": keepalive\n\n" {
+		t.Fatalf("keepalive frame = %q, want keepalive comment", got)
+	}
+}
+
+func TestNotificationStreamStopsAtTokenExpiry(t *testing.T) {
+	s, maker, _ := newNotificationStreamServer(t, time.Hour)
+	testServer := httptest.NewServer(s.Handler())
+	t.Cleanup(testServer.Close)
+
+	resp, cancel := openNotificationStream(t, testServer, maker, "alice", 1500*time.Millisecond)
+	defer cancel()
+	defer func() { _ = resp.Body.Close() }()
+	reader := bufio.NewReader(resp.Body)
+	if got := readSSEFrame(t, reader); got != ": connected\n\n" {
+		t.Fatalf("initial frame = %q, want connected comment", got)
+	}
+
+	expired := make(chan error, 1)
+	go func() {
+		_, err := reader.ReadString('\n')
+		expired <- err
+	}()
+	select {
+	case err := <-expired:
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("stream expiry error = %v, want EOF", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream remained open after access token expiry")
+	}
+}
+
+func TestNotificationStreamUnsubscribesOnDisconnect(t *testing.T) {
+	s, maker, _ := newNotificationStreamServer(t, time.Hour)
+	testServer := httptest.NewServer(s.Handler())
+
+	resp, cancel := openNotificationStream(t, testServer, maker, "alice", time.Minute)
+	reader := bufio.NewReader(resp.Body)
+	if got := readSSEFrame(t, reader); got != ": connected\n\n" {
+		t.Fatalf("initial frame = %q, want connected comment", got)
+	}
+	cancel()
+	_ = resp.Body.Close()
+
+	closed := make(chan struct{})
+	go func() {
+		testServer.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not stop and clean up after disconnect")
+	}
+}
+
+func newNotificationStreamServer(t *testing.T, keepalive time.Duration) (*Server, token.Maker, *notification.Hub) {
+	t.Helper()
+	maker, err := token.NewJWTMaker(testSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := notification.NewHub()
+	s, err := NewServer(config.Config{JWTSecret: testSecret}, fakeStore{}, maker, nil, hub, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.notificationKeepalive = keepalive
+	return s, maker, hub
+}
+
+func openNotificationStream(
+	t *testing.T,
+	testServer *httptest.Server,
+	maker token.Maker,
+	username string,
+	tokenTTL time.Duration,
+) (*http.Response, context.CancelFunc) {
+	t.Helper()
+	accessToken, _, err := maker.CreateToken(username, roleDepositor, token.Access, tokenTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testServer.URL+"/api/v1/notifications/stream", nil)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := testServer.Client().Do(req)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		cancel()
+		defer func() { _ = resp.Body.Close() }()
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 (%s)", resp.StatusCode, raw)
+	}
+	return resp, cancel
+}
+
+func assertNotificationStreamHeaders(t *testing.T, resp *http.Response) {
+	t.Helper()
+	for name, want := range map[string]string{
+		"Content-Type":      "text/event-stream",
+		"Cache-Control":     "no-store",
+		"Connection":        "keep-alive",
+		"X-Accel-Buffering": "no",
+	} {
+		if got := resp.Header.Get(name); got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func readSSEFrame(t *testing.T, reader *bufio.Reader) string {
+	t.Helper()
+	var frame strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("reading SSE frame: %v", err)
+		}
+		frame.WriteString(line)
+		if line == "\n" {
+			return frame.String()
+		}
+	}
+}
 
 func TestNotificationEndpointsRequireAuthentication(t *testing.T) {
 	t.Parallel()

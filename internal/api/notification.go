@@ -2,9 +2,11 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -44,6 +46,58 @@ type notificationCursor struct {
 }
 
 var errInvalidNotificationCursor = errors.New("invalid notification cursor")
+
+func (s *Server) streamNotifications(c *echo.Context) error {
+	payload, err := authPayload(c)
+	if err != nil || payload.ExpiresAt == nil {
+		return echo.ErrUnauthorized
+	}
+
+	streamCtx, cancel := context.WithDeadline(c.Request().Context(), payload.ExpiresAt.Time)
+	defer cancel()
+	events, unsubscribe := s.notificationHub.Subscribe(payload.Username)
+	defer unsubscribe()
+
+	header := c.Response().Header()
+	header.Set(echo.HeaderContentType, "text/event-stream")
+	header.Set(echo.HeaderCacheControl, "no-store")
+	header.Set(echo.HeaderConnection, "keep-alive")
+	header.Set("X-Accel-Buffering", "no")
+
+	response := c.Response()
+	controller := http.NewResponseController(response)
+	writeFrame := func(format string, args ...any) error {
+		if deadlineErr := controller.SetWriteDeadline(time.Now().Add(30 * time.Second)); deadlineErr != nil && !errors.Is(deadlineErr, http.ErrNotSupported) {
+			return deadlineErr
+		}
+		if _, writeErr := fmt.Fprintf(response, format, args...); writeErr != nil {
+			return writeErr
+		}
+		return controller.Flush()
+	}
+	if err = writeFrame(": connected\n\n"); err != nil {
+		if unwrapped, _ := echo.UnwrapResponse(response); unwrapped != nil && unwrapped.Committed {
+			return nil
+		}
+		return err
+	}
+
+	keepalive := time.NewTicker(s.notificationKeepalive)
+	defer keepalive.Stop()
+	for {
+		select {
+		case <-streamCtx.Done():
+			return nil
+		case id := <-events:
+			err = writeFrame("event: notification\ndata: %s\n\n", id)
+		case <-keepalive.C:
+			err = writeFrame(": keepalive\n\n")
+		}
+		if err != nil {
+			return nil
+		}
+	}
+}
 
 func (s *Server) listNotifications(c *echo.Context) error {
 	size, err := echo.QueryParamOr[int32](c, "size", 20)

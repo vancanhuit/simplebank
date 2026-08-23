@@ -19,7 +19,7 @@ func newHealthServer(t *testing.T, readiness func(context.Context) error) *Serve
 		t.Fatal(err)
 	}
 	cfg := config.Config{JWTSecret: testSecret, AccessTTL: time.Minute, RefreshTTL: time.Hour}
-	s, err := NewServer(cfg, nil, maker, nil, readiness)
+	s, err := NewServer(cfg, nil, maker, nil, nil, readiness)
 	if err != nil {
 		t.Fatal(err)
 	}

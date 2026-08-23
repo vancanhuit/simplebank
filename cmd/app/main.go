@@ -178,7 +178,7 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	server, err := api.NewServer(app.cfg, app.store, maker, app.riverClient, app.pool.Ping)
+	server, err := api.NewServer(app.cfg, app.store, maker, app.riverClient, nil, app.pool.Ping)
 	if err != nil {
 		return err
 	}
