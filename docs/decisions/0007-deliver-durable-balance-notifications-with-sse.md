@@ -18,9 +18,9 @@ balance changes. PostgreSQL `NOTIFY` is commit-gated acceleration for live
 delivery, never the source of truth.
 
 Every replica opens a dedicated PostgreSQL `LISTEN` connection and publishes
-received notification IDs through a bounded, local, owner-scoped hub. This
-allows cross-replica delivery without sticky sessions while preventing one
-owner or slow subscriber from creating unbounded in-memory state.
+received notification IDs through a local, owner-scoped hub. This allows
+cross-replica delivery without sticky sessions. Bounded per-subscriber queues
+prevent slow subscribers from accumulating unbounded events.
 
 Authenticated fetch-based SSE carries notification IDs only. On initial load
 and reconnect, clients reconcile through authoritative REST notification and
