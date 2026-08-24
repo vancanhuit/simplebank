@@ -14,6 +14,8 @@
 
 <svelte:boundary onerror={reportError}>
   <Content />
+  <!-- The error is intentionally redacted; only the positional reset callback is used. -->
+  <!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
   {#snippet failed(_error, reset)}
     <AppErrorFallback {reset} />
   {/snippet}

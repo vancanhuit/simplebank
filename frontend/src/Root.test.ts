@@ -13,6 +13,8 @@ describe("Root", () => {
     expect(alert).toHaveTextContent("We couldn't display SimpleBank.");
     expect(alert).not.toHaveTextContent("database password leaked");
 
+    // Type-aware ESLint cannot resolve named module exports from a .svelte fixture.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     allowRender();
     await fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
