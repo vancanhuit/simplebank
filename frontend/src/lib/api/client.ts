@@ -29,15 +29,19 @@ function refreshAccessToken(generation: number): Promise<boolean> {
   return attempt.promise;
 }
 
-/** Error thrown for any non-2xx API response. Carries the HTTP status and the
- *  server's client-safe `{"error": "..."}` message. */
-export class ApiError extends Error {
-  readonly status: number;
+export type ApiErrorKind =
+  "api" | "network" | "invalid_response" | "aborted" | "session_unavailable";
 
-  constructor(status: number, message: string) {
-    super(message);
+/** Classified API client failure. Server and native error text is never retained. */
+export class ApiError extends Error {
+  constructor(
+    readonly kind: ApiErrorKind,
+    readonly status: number | null = null,
+    readonly code: string | null = null,
+    readonly retryAfterSeconds: number | null = null,
+  ) {
+    super(code ?? kind);
     this.name = "ApiError";
-    this.status = status;
   }
 }
 
@@ -58,14 +62,22 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   if (options.authenticated && auth.accessToken) {
     headers["Authorization"] = `Bearer ${auth.accessToken}`;
   }
-  return fetch(`${BASE_URL}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    credentials: "same-origin",
-    cache: "no-store",
-    signal: options.signal,
-  });
+  try {
+    return await fetch(`${BASE_URL}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: options.signal,
+    });
+  } catch (error) {
+    const kind =
+      typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
+        ? "aborted"
+        : "network";
+    throw new ApiError(kind);
+  }
 }
 
 /** Perform an API request without consuming a successful response body. */
@@ -99,50 +111,136 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 }
 
 async function decode<T>(response: Response): Promise<T> {
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    throw new ApiError("invalid_response", response.status);
+  }
+
   let data: unknown;
   if (text) {
     try {
       data = JSON.parse(text);
-    } catch (error) {
+    } catch {
       if (response.ok) {
-        throw error;
+        throw new ApiError("invalid_response", response.status);
       }
     }
   }
 
   if (!response.ok) {
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("Retry-After");
-      const seconds = retryAfter === null ? 0 : Number.parseInt(retryAfter, 10);
-      const wait =
-        seconds > 0
-          ? ` Try again in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`
-          : " Please try again later.";
-      throw new ApiError(response.status, `Too many attempts.${wait}`);
-    }
-    throw new ApiError(response.status, errorMessage(data, response.status));
+    const code = apiCode(data);
+    const retryAfterSeconds =
+      response.status === 429 ? parseRetryAfter(response.headers.get("Retry-After")) : null;
+    throw new ApiError("api", response.status, code, retryAfterSeconds);
   }
   return data as T;
 }
 
-function errorMessage(data: unknown, status: number): string {
-  if (data && typeof data === "object" && "error" in data) {
-    const value = data.error;
-    if (typeof value === "string" && value.length > 0) {
-      return value;
+function apiCode(data: unknown): string | null {
+  if (data && typeof data === "object" && "code" in data) {
+    const code = data.code;
+    if (typeof code === "string" && code.trim().length > 0) {
+      return code;
     }
   }
-  return `Request failed (${status})`;
+  return null;
+}
+
+function parseRetryAfter(value: string | null): number | null {
+  if (value === null) {
+    return null;
+  }
+  const seconds = Number.parseInt(value, 10);
+  return seconds > 0 ? seconds : null;
 }
 
 /** Extract a user-facing message from any thrown value. */
 export function toMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
+  if (!(error instanceof ApiError)) {
+    return "Something went wrong. Please try again.";
   }
-  if (error instanceof Error) {
-    return error.message;
+
+  switch (error.code) {
+    case "invalid_credentials":
+      return "The username or password is incorrect.";
+    case "email_verification_required":
+      return "Verify your email address before signing in.";
+    case "username_exists":
+      return "That username is already taken.";
+    case "email_exists":
+      return "An account with that email address already exists.";
+    case "insufficient_balance":
+      return "You don't have enough money in this account.";
+    case "destination_balance_limit_exceeded":
+      return "The destination account cannot receive this amount.";
+    case "currency_mismatch":
+      return "Transfers require accounts with the same currency.";
+    case "daily_limit_exceeded":
+      return "This transfer would exceed your daily transfer limit.";
+    case "transfer_limit_exceeded":
+      return "This amount exceeds the limit for a single transfer.";
+    case "same_account_transfer":
+      return "Choose two different accounts for this transfer.";
+    case "idempotency_conflict":
+      return "This transfer request conflicts with an earlier request.";
+    case "invalid_verification_link":
+      return "This verification link is invalid or has expired.";
+    case "not_found":
+      return "The requested resource was not found.";
+    case "forbidden":
+      return "You don't have permission to do that.";
   }
-  return "Something went wrong. Please try again.";
+
+  switch (error.kind) {
+    case "network":
+      return "We couldn't reach SimpleBank. Check your connection and try again.";
+    case "invalid_response":
+      return "SimpleBank returned an unexpected response. Please try again.";
+    case "aborted":
+      return "The request was canceled.";
+    case "session_unavailable":
+      return "Your session could not be restored. Please try again.";
+    case "api":
+      if (error.status === 429) {
+        return error.retryAfterSeconds === null
+          ? "Too many attempts. Please try again later."
+          : `Too many attempts. Try again in ${error.retryAfterSeconds} ${error.retryAfterSeconds === 1 ? "second" : "seconds"}.`;
+      }
+      if (error.status !== null && error.status >= 500) {
+        return "SimpleBank is temporarily unavailable. Please try again.";
+      }
+      if (error.status === 408) {
+        return "The request timed out. Please try again.";
+      }
+      if (error.status === 401) {
+        return "Your session has expired. Please sign in again.";
+      }
+      if (error.status === 403) {
+        return "You don't have permission to do that.";
+      }
+      if (error.status === 404) {
+        return "The requested resource was not found.";
+      }
+      return "We couldn't complete your request. Please check your details and try again.";
+  }
+}
+
+/** Whether retrying the classified failure may succeed without changing the request. */
+export function isRetryable(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  if (
+    error.kind === "network" ||
+    error.kind === "invalid_response" ||
+    error.kind === "session_unavailable"
+  ) {
+    return true;
+  }
+  return (
+    error.kind === "api" &&
+    (error.status === 408 || error.status === 429 || (error.status !== null && error.status >= 500))
+  );
 }

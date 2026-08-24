@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { request, requestResponse, ApiError, toMessage } from "./client";
+import { request, requestResponse, ApiError, isRetryable, toMessage } from "./client";
 import { auth } from "../stores/auth.svelte";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -30,39 +30,123 @@ describe("request", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/accounts/a1");
   });
 
-  it("throws ApiError with the server message on failure", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(422, { error: "insufficient balance" })),
-    );
-
-    await expect(request("/transfers", { method: "POST", body: {} })).rejects.toMatchObject({
-      status: 422,
-      message: "insufficient balance",
-    } satisfies Partial<ApiError>);
-  });
-
-  it("turns rate-limit metadata into an actionable message", async () => {
+  it("classifies API failures by status and code", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: "rate limit exceeded" }), {
+        jsonResponse(422, {
+          code: "insufficient_balance",
+          error: "database password leaked",
+        }),
+      ),
+    );
+
+    await expect(request("/transfers", { method: "POST", body: {} })).rejects.toMatchObject({
+      kind: "api",
+      status: 422,
+      code: "insufficient_balance",
+    } satisfies Partial<ApiError>);
+  });
+
+  it("redacts server text when formatting an API failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(422, {
+          code: "insufficient_balance",
+          error: "database password leaked",
+        }),
+      ),
+    );
+
+    const error = await request("/transfers", { method: "POST", body: {} }).catch(
+      (reason: unknown) => reason,
+    );
+
+    expect(toMessage(error)).toBe("You don't have enough money in this account.");
+  });
+
+  it("formats unknown API codes by status instead of server text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(503, { code: "internal_detail", error: "database password leaked" }),
+        ),
+    );
+
+    const error = await request("/accounts").catch((reason: unknown) => reason);
+
+    expect(toMessage(error)).toBe("SimpleBank is temporarily unavailable. Please try again.");
+  });
+
+  it("classifies fetch rejections without exposing native messages", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch secret host")));
+
+    const error = await request("/accounts").catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ kind: "network", status: null, code: null });
+    expect(toMessage(error)).toBe(
+      "We couldn't reach SimpleBank. Check your connection and try again.",
+    );
+  });
+
+  it("classifies aborts without exposing their messages", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("private abort detail", "AbortError")),
+    );
+
+    const error = await request("/accounts").catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ kind: "aborted", status: null, code: null });
+    expect(toMessage(error)).toBe("The request was canceled.");
+    expect(toMessage(error)).not.toContain("private abort detail");
+  });
+
+  it("classifies malformed successful JSON without exposing parser text", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
+
+    const error = await request("/accounts").catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ kind: "invalid_response", status: 200, code: null });
+    expect(toMessage(error)).toBe("SimpleBank returned an unexpected response. Please try again.");
+  });
+
+  it("preserves no-content success as undefined", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+
+    await expect(request("/users/logout", { method: "POST" })).resolves.toBeUndefined();
+  });
+
+  it("stores rate-limit metadata and formats an actionable message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: "rate_limit_exceeded", error: "private detail" }), {
           status: 429,
           headers: { "Content-Type": "application/json", "Retry-After": "5" },
         }),
       ),
     );
 
-    await expect(request("/users/login", { method: "POST", body: {} })).rejects.toMatchObject({
+    const error = await request("/users/login", { method: "POST", body: {} }).catch(
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toMatchObject({
+      kind: "api",
       status: 429,
-      message: "Too many attempts. Try again in 5 seconds.",
+      retryAfterSeconds: 5,
     } satisfies Partial<ApiError>);
+    expect(toMessage(error)).toBe("Too many attempts. Try again in 5 seconds.");
   });
 
   it("refreshes the token once and retries after a 401", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { error: "token has expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     auth.accessToken = "expired-token";
@@ -85,7 +169,9 @@ describe("request", () => {
   });
 
   it("does not retry when the refresh fails", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: "token has expired" }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(401, { code: "token_expired", error: "expired" }));
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
 
@@ -111,7 +197,7 @@ describe("request", () => {
     const pending = request("/transfers", { method: "POST", authenticated: true, body: {} });
     auth.clear();
     auth.accessToken = "new-token";
-    resolveFirst(jsonResponse(401, { error: "expired" }));
+    resolveFirst(jsonResponse(401, { code: "token_expired", error: "expired" }));
 
     await expect(pending).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -121,8 +207,8 @@ describe("request", () => {
   it("shares one refresh across concurrent 401 responses", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "a" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -141,8 +227,8 @@ describe("request", () => {
   it("does not share a refresh across auth generations", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }));
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }));
     vi.stubGlobal("fetch", fetchMock);
     auth.accessToken = "old-token";
 
@@ -172,8 +258,8 @@ describe("request", () => {
   it("does not retry when concurrent refresh fails", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }));
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }));
     vi.stubGlobal("fetch", fetchMock);
     const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
 
@@ -194,9 +280,9 @@ describe("request", () => {
   it("starts a new refresh for independent 401 cycles", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "a" }))
-      .mockResolvedValueOnce(jsonResponse(401, { error: "expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
     vi.stubGlobal("fetch", fetchMock);
     const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
@@ -238,7 +324,7 @@ describe("requestResponse", () => {
   it("refreshes once after a 401 and returns the retry body unread", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { error: "token has expired" }))
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     auth.accessToken = "expired-token";
@@ -261,33 +347,93 @@ describe("requestResponse", () => {
   it("throws ApiError after decoding a final non-2xx response", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(422, { error: "insufficient balance" })),
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(422, { code: "insufficient_balance", error: "private detail" }),
+        ),
     );
 
     await expect(requestResponse("/transfers", { method: "POST", body: {} })).rejects.toMatchObject(
       {
+        kind: "api",
         status: 422,
-        message: "insufficient balance",
+        code: "insufficient_balance",
       } satisfies Partial<ApiError>,
     );
   });
 
-  it("throws ApiError with the fallback message for a non-JSON error response", async () => {
+  it("classifies a non-JSON error response without retaining its text", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 })));
 
-    await expect(requestResponse("/accounts", { authenticated: true })).rejects.toMatchObject({
+    const error = await requestResponse("/accounts", { authenticated: true }).catch(
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toMatchObject({
+      kind: "api",
       status: 502,
-      message: "Request failed (502)",
+      code: null,
     } satisfies Partial<ApiError>);
+    expect(toMessage(error)).toBe("SimpleBank is temporarily unavailable. Please try again.");
   });
 });
 
 describe("toMessage", () => {
-  it("uses the ApiError message", () => {
-    expect(toMessage(new ApiError(404, "resource not found"))).toBe("resource not found");
+  it.each([
+    ["invalid_credentials", "The username or password is incorrect."],
+    ["email_verification_required", "Verify your email address before signing in."],
+    ["username_exists", "That username is already taken."],
+    ["email_exists", "An account with that email address already exists."],
+    ["insufficient_balance", "You don't have enough money in this account."],
+    ["destination_balance_limit_exceeded", "The destination account cannot receive this amount."],
+    ["currency_mismatch", "Transfers require accounts with the same currency."],
+    ["daily_limit_exceeded", "This transfer would exceed your daily transfer limit."],
+    ["transfer_limit_exceeded", "This amount exceeds the limit for a single transfer."],
+    ["same_account_transfer", "Choose two different accounts for this transfer."],
+    ["idempotency_conflict", "This transfer request conflicts with an earlier request."],
+    ["invalid_verification_link", "This verification link is invalid or has expired."],
+    ["not_found", "The requested resource was not found."],
+    ["forbidden", "You don't have permission to do that."],
+  ])("formats the %s code safely", (code, message) => {
+    expect(toMessage(new ApiError("api", 422, code))).toBe(message);
+  });
+
+  it("formats status fallbacks without using unknown code text", () => {
+    expect(toMessage(new ApiError("api", 503, "database_password_leaked"))).toBe(
+      "SimpleBank is temporarily unavailable. Please try again.",
+    );
+  });
+
+  it("does not expose arbitrary Error messages", () => {
+    expect(toMessage(new Error("private path"))).toBe("Something went wrong. Please try again.");
   });
 
   it("falls back for unknown values", () => {
     expect(toMessage("boom")).toBe("Something went wrong. Please try again.");
+  });
+});
+
+describe("isRetryable", () => {
+  it.each([
+    new ApiError("network"),
+    new ApiError("invalid_response", 200),
+    new ApiError("session_unavailable"),
+    new ApiError("api", 408),
+    new ApiError("api", 429),
+    new ApiError("api", 500),
+    new ApiError("api", 503),
+  ])("returns true for retryable failures", (error) => {
+    expect(isRetryable(error)).toBe(true);
+  });
+
+  it.each([
+    new ApiError("aborted"),
+    new ApiError("api", 400),
+    new ApiError("api", 401),
+    new ApiError("api", 422),
+    new Error("network-like text"),
+  ])("returns false for non-retryable failures", (error) => {
+    expect(isRetryable(error)).toBe(false);
   });
 });
