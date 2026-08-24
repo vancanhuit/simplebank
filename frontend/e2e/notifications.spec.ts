@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   account,
+  apiErrors,
   mockAuthenticatedAPI,
   type Account,
   type Notification,
@@ -229,7 +230,7 @@ test("history supports pagination, retained-data errors, mark-all, keyboard acti
         await route.fulfill({
           status: 503,
           contentType: "application/json",
-          body: JSON.stringify({ error: "History temporarily unavailable" }),
+          body: JSON.stringify(apiErrors.internal),
         });
         return;
       }
@@ -248,7 +249,9 @@ test("history supports pagination, retained-data errors, mark-all, keyboard acti
   await expect(page.getByRole("button", { name: /Received.*unread/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Load more" }).click();
-  await expect(page.getByRole("alert")).toContainText("History temporarily unavailable");
+  await expect(page.getByRole("alert")).toContainText(
+    "We couldn't load more notifications. SimpleBank is temporarily unavailable. Please try again.",
+  );
   await expect(page.getByRole("button", { name: /Received.*unread/ })).toBeVisible();
   failOlder = false;
   await page.getByRole("button", { name: "Retry" }).click();

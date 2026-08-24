@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { apiErrors } from "./support/mock-api.js";
 
 test("login explains when another attempt is allowed", async ({ page }) => {
   await page.route("**/api/v1/tokens/renew", (route) => route.fulfill({ status: 204 }));
@@ -7,7 +8,7 @@ test("login explains when another attempt is allowed", async ({ page }) => {
       status: 429,
       contentType: "application/json",
       headers: { "Retry-After": "5" },
-      body: JSON.stringify({ error: "rate limit exceeded" }),
+      body: JSON.stringify(apiErrors.rateLimited),
     }),
   );
 

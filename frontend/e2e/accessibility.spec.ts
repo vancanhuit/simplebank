@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   account,
+  apiErrors,
   expectNoAccessibilityViolations,
   mockAuthenticatedAPI,
   type Notification,
@@ -291,21 +292,63 @@ test("validation focuses and announces the first invalid field", async ({ page }
 
 test("transfer account-load failure exposes an accessible retry state at 320", async ({ page }) => {
   await mockAuthenticatedAPI(page);
-  await page.route("**/api/v1/accounts?*", (route) =>
-    route.fulfill({
+  let accountsUnavailable = true;
+  await page.route("**/api/v1/accounts?*", (route) => {
+    if (!accountsUnavailable) {
+      return route.fallback();
+    }
+    return route.fulfill({
       status: 503,
       contentType: "application/json",
-      body: JSON.stringify({ error: "Service unavailable" }),
-    }),
-  );
+      body: JSON.stringify(apiErrors.internal),
+    });
+  });
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto("/transfer");
 
-  await expect(page.getByRole("alert")).toContainText(
-    "Couldn't load your accounts. Service unavailable",
+  const alert = page.getByRole("alert");
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(alert).toContainText(
+    "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
   );
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(retry).toBeVisible();
   await expectNoAccessibilityViolations(page);
+
+  accountsUnavailable = false;
+  await retry.click();
+  await expect(alert).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Send money" })).toBeVisible();
+  await expectNoAccessibilityViolations(page);
+});
+
+test("startup session restore recovers on the requested transfer page", async ({ page }) => {
+  await mockAuthenticatedAPI(page, [account]);
+  let renewalUnavailable = true;
+  await page.route("**/api/v1/tokens/renew", (route) => {
+    if (!renewalUnavailable) {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify(apiErrors.internal),
+    });
+  });
+
+  await page.goto("/transfer");
+
+  await expect(
+    page.getByRole("heading", { name: "We couldn't restore your session." }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeHidden();
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+
+  renewalUnavailable = false;
+  await retry.click();
+
+  await expect(page).toHaveURL("/transfer");
+  await expect(page.getByRole("heading", { name: "Send money" })).toBeVisible();
 });
 
 test("browser history restores dashboard title and focus", async ({ page }) => {

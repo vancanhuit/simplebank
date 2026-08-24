@@ -51,6 +51,11 @@ export const account: Account = {
   created_at: "2026-01-15T10:00:00Z",
 };
 
+export const apiErrors = {
+  rateLimited: { code: "rate_limited", error: "rate limit exceeded" },
+  internal: { code: "internal_error", error: "internal server error" },
+} as const;
+
 const emptyNotifications: NotificationPage = {
   notifications: [],
   unread_count: 0,
