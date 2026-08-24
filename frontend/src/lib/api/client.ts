@@ -4,31 +4,6 @@ import { auth, type RefreshOutcome } from "../stores/auth.svelte";
  *  dev server proxies it to the Go backend (see vite.config.ts). */
 const BASE_URL = "/api/v1";
 
-interface RefreshAttempt {
-  generation: number;
-  promise: Promise<RefreshOutcome>;
-}
-
-let refreshAttempt: RefreshAttempt | null = null;
-
-function refreshAccessToken(generation: number): Promise<RefreshOutcome> {
-  if (refreshAttempt?.generation === generation) {
-    return refreshAttempt.promise;
-  }
-
-  const attempt: RefreshAttempt = {
-    generation,
-    promise: Promise.resolve("stale"),
-  };
-  attempt.promise = auth.tryRefresh().finally(() => {
-    if (refreshAttempt === attempt) {
-      refreshAttempt = null;
-    }
-  });
-  refreshAttempt = attempt;
-  return attempt.promise;
-}
-
 export type ApiErrorKind =
   "api" | "network" | "invalid_response" | "aborted" | "session_unavailable";
 
@@ -89,7 +64,7 @@ export async function requestResponse(
   let response = await send(path, options);
 
   if (response.status === 401 && options.authenticated && auth.generation === generation) {
-    const outcome = await refreshAccessToken(generation);
+    const outcome: RefreshOutcome = await auth.tryRefresh();
     if (outcome === "refreshed" && auth.generation === generation) {
       response = await send(path, options);
     } else if (outcome === "unavailable") {

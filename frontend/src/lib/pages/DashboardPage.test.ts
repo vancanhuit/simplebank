@@ -59,4 +59,26 @@ describe("DashboardPage", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(load).toHaveBeenCalledOnce();
   });
+
+  it("keeps cached account cards visible when refresh fails", () => {
+    accounts.items = [
+      {
+        id: "11111111-2222-3333-4444-555566667777",
+        owner: "alice",
+        balance: 48235,
+        currency: "USD",
+        created_at: "2026-01-15T10:00:00Z",
+      },
+    ];
+    accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
+
+    render(DashboardPage);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your accounts.");
+    expect(screen.getByText("11111111-2222-3333-4444-555566667777")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Activity" })).toHaveAttribute(
+      "href",
+      "/accounts/11111111-2222-3333-4444-555566667777",
+    );
+  });
 });

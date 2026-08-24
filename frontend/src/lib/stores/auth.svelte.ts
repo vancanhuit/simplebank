@@ -10,6 +10,39 @@ import { replaceNavigation } from "../router.svelte";
 
 export type RefreshOutcome = "refreshed" | "no_session" | "expired" | "unavailable" | "stale";
 
+interface RefreshAttempt {
+  generation: number;
+  promise: Promise<RefreshOutcome>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isUser(value: unknown): value is User {
+  return (
+    isRecord(value) &&
+    typeof value.username === "string" &&
+    typeof value.full_name === "string" &&
+    typeof value.email === "string" &&
+    typeof value.is_email_verified === "boolean" &&
+    typeof value.created_at === "string"
+  );
+}
+
+function isRenewResponse(value: unknown): value is RenewResponse {
+  return (
+    isRecord(value) &&
+    typeof value.access_token === "string" &&
+    typeof value.access_token_expires_at === "string" &&
+    isUser(value.user)
+  );
+}
+
+function isLoginResponse(value: unknown): value is LoginResponse {
+  return isRecord(value) && isRenewResponse(value) && typeof value.session_id === "string";
+}
+
 /**
  * Authentication state backed by httpOnly cookie sessions. The access token
  * stays in memory only; the refresh token never touches the browser.
@@ -25,6 +58,7 @@ class AuthStore {
   sessionExpired = $state(false);
   /** Monotonic generation to prevent race conditions. */
   #generation = 0;
+  #refreshAttempt: RefreshAttempt | null = null;
 
   get generation(): number {
     return this.#generation;
@@ -56,10 +90,13 @@ class AuthStore {
     }
     this.#resetRefreshState();
     const gen = ++this.#generation;
-    const res = await request<LoginResponse>("/users/login", {
+    const res: unknown = await request("/users/login", {
       method: "POST",
       body: { username, password },
     });
+    if (!isLoginResponse(res)) {
+      throw new ApiError("invalid_response", 200);
+    }
     // Only apply response if no logout or newer login occurred during request.
     if (this.#generation === gen) {
       this.user = res.user;
@@ -72,10 +109,28 @@ class AuthStore {
   }
 
   /** Exchange the httpOnly refresh cookie for a fresh access token. */
-  async tryRefresh(): Promise<RefreshOutcome> {
+  tryRefresh(): Promise<RefreshOutcome> {
     const gen = this.#generation;
+    if (this.#refreshAttempt?.generation === gen) {
+      return this.#refreshAttempt.promise;
+    }
+
+    const attempt: RefreshAttempt = {
+      generation: gen,
+      promise: Promise.resolve("stale"),
+    };
+    attempt.promise = this.#performRefresh(gen).finally(() => {
+      if (this.#refreshAttempt === attempt) {
+        this.#refreshAttempt = null;
+      }
+    });
+    this.#refreshAttempt = attempt;
+    return attempt.promise;
+  }
+
+  async #performRefresh(gen: number): Promise<RefreshOutcome> {
     try {
-      const res = await request<RenewResponse | undefined>("/tokens/renew", {
+      const res: unknown = await request("/tokens/renew", {
         method: "POST",
       });
       if (this.#generation !== gen) {
@@ -84,6 +139,9 @@ class AuthStore {
       if (!res) {
         this.#invalidateSession();
         return "no_session";
+      }
+      if (!isRenewResponse(res)) {
+        throw new ApiError("invalid_response", 200);
       }
 
       this.accessToken = res.access_token;

@@ -9,6 +9,20 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+const verifiedUser = {
+  username: "alice",
+  full_name: "Alice Smith",
+  email: "alice@example.com",
+  is_email_verified: true,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+const validRenewResponse = {
+  access_token: "refreshed-token",
+  access_token_expires_at: "2026-01-01T01:00:00Z",
+  user: verifiedUser,
+};
+
 describe("request", () => {
   beforeEach(() => {
     auth.clear();
@@ -197,6 +211,64 @@ describe("request", () => {
     });
   });
 
+  it.each(["automatic-first", "manual-first"] as const)(
+    "coalesces %s automatic and manual refresh attempts",
+    async (order) => {
+      const renewResolvers: Array<(response: Response) => void> = [];
+      let accountRequests = 0;
+      const fetchMock = vi.fn((input: string | URL | Request) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.endsWith("/tokens/renew")) {
+          return new Promise<Response>((resolve) => renewResolvers.push(resolve));
+        }
+        if (url.endsWith("/accounts")) {
+          accountRequests += 1;
+          return Promise.resolve(
+            accountRequests === 1
+              ? jsonResponse(401, { code: "token_expired", error: "expired" })
+              : jsonResponse(200, { ok: true }),
+          );
+        }
+        return Promise.reject(new Error(`Unexpected URL: ${url}`));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      auth.user = verifiedUser;
+      auth.accessToken = "expired-token";
+
+      let automatic!: Promise<{ ok: boolean }>;
+      let manual!: Promise<import("../stores/auth.svelte").RefreshOutcome>;
+      if (order === "automatic-first") {
+        automatic = request<{ ok: boolean }>("/accounts", { authenticated: true });
+        await vi.waitFor(() => expect(renewResolvers).toHaveLength(1));
+        manual = auth.retryRefresh();
+      } else {
+        manual = auth.retryRefresh();
+        await vi.waitFor(() => expect(renewResolvers).toHaveLength(1));
+        automatic = request<{ ok: boolean }>("/accounts", { authenticated: true });
+        await vi.waitFor(() => expect(accountRequests).toBe(1));
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const renewRequests = fetchMock.mock.calls.filter(([input]) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return url.endsWith("/tokens/renew");
+      });
+      expect(renewRequests).toHaveLength(1);
+
+      for (const resolve of renewResolvers) {
+        resolve(jsonResponse(200, validRenewResponse));
+      }
+
+      await expect(manual).resolves.toBe("refreshed");
+      await expect(automatic).resolves.toEqual({ ok: true });
+      expect(auth.user).toEqual(verifiedUser);
+      expect(auth.accessToken).toBe("refreshed-token");
+      expect(auth.renewalUnavailable).toBe(false);
+    },
+  );
+
   it("reports session unavailability when refresh cannot complete", async () => {
     const fetchMock = vi
       .fn()
@@ -256,14 +328,22 @@ describe("request", () => {
   });
 
   it("shares one refresh across concurrent 401 responses", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
-      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
-      .mockResolvedValueOnce(jsonResponse(200, { id: "a" }))
-      .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
+    let renewRequests = 0;
+    const accountRequests = new Map<string, number>();
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/tokens/renew")) {
+        renewRequests += 1;
+        return Promise.resolve(jsonResponse(200, validRenewResponse));
+      }
+      const count = (accountRequests.get(url) ?? 0) + 1;
+      accountRequests.set(url, count);
+      if (count === 1) {
+        return Promise.resolve(jsonResponse(401, { code: "token_expired", error: "expired" }));
+      }
+      return Promise.resolve(jsonResponse(200, { id: url.endsWith("/a") ? "a" : "b" }));
+    });
     vi.stubGlobal("fetch", fetchMock);
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue("refreshed");
 
     const results = await Promise.all([
       request<{ id: string }>("/accounts/a", { authenticated: true }),
@@ -271,8 +351,8 @@ describe("request", () => {
     ]);
 
     expect(results).toEqual([{ id: "a" }, { id: "b" }]);
-    expect(refresh).toHaveBeenCalledOnce();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(renewRequests).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("does not share a refresh across auth generations", async () => {
@@ -307,12 +387,16 @@ describe("request", () => {
   });
 
   it("shares session unavailability across a coalesced refresh", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
-      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }));
+    let renewRequests = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/tokens/renew")) {
+        renewRequests += 1;
+        return Promise.reject(new Error("offline"));
+      }
+      return Promise.resolve(jsonResponse(401, { code: "token_expired", error: "expired" }));
+    });
     vi.stubGlobal("fetch", fetchMock);
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue("unavailable");
 
     const results = await Promise.all([
       request<{ id: string }>("/accounts/a", { authenticated: true }).catch(
@@ -328,8 +412,8 @@ describe("request", () => {
       expect.objectContaining({ kind: "session_unavailable" }),
       expect.objectContaining({ kind: "session_unavailable" }),
     ]);
-    expect(refresh).toHaveBeenCalledOnce();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(renewRequests).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("starts a new refresh for independent 401 cycles", async () => {

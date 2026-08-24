@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AuthStore } from "./auth.svelte";
 import { router } from "../router.svelte";
+import { ApiError, toMessage } from "../api/client";
 
 function jsonResponse(status: number, body: unknown): Response {
   // 204 No Content must not have a body.
@@ -17,6 +18,19 @@ const verifiedUser = {
   email: "alice@example.com",
   is_email_verified: true,
   created_at: "2026-01-01T00:00:00Z",
+};
+
+const validLoginResponse = {
+  access_token: "new-access",
+  access_token_expires_at: "2026-01-01T01:00:00Z",
+  session_id: "session-1",
+  user: verifiedUser,
+};
+
+const validRenewResponse = {
+  access_token: "new-access",
+  access_token_expires_at: "2026-01-01T01:00:00Z",
+  user: verifiedUser,
 };
 
 describe("AuthStore", () => {
@@ -66,10 +80,27 @@ describe("AuthStore", () => {
       jsonResponse(200, {
         access_token: "access",
         access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        session_id: "session-1",
         user: verifiedUser,
       }),
     );
     await loginTask;
+  });
+
+  it.each([
+    ["an empty object", {}],
+    ["wrong field types", { ...validLoginResponse, access_token: 42 }],
+  ])("rejects login success containing %s before applying auth state", async (_name, body) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
+    const store = new AuthStore();
+
+    const error = await store.login("alice", "password").catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ kind: "invalid_response", status: 200, code: null });
+    expect(toMessage(error)).toBe("SimpleBank returned an unexpected response. Please try again.");
+    expect(store.user).toBeNull();
+    expect(store.accessToken).toBeNull();
   });
 
   it("restores the access token from the refresh cookie", async () => {
@@ -90,6 +121,47 @@ describe("AuthStore", () => {
     expect(store.accessToken).toBe("new-access");
     expect(store.user).toEqual(verifiedUser);
     expect(store.renewalUnavailable).toBe(false);
+  });
+
+  it.each([
+    ["an empty object", {}],
+    ["wrong field types", { ...validRenewResponse, user: { ...verifiedUser, full_name: 42 } }],
+  ])("preserves auth when refresh success contains %s", async (_name, body) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "still-valid-access";
+    const generation = store.generation;
+
+    const outcome = await store.tryRefresh();
+
+    expect(outcome).toBe("unavailable");
+    expect(store.user).toEqual(verifiedUser);
+    expect(store.accessToken).toBe("still-valid-access");
+    expect(store.generation).toBe(generation);
+    expect(store.renewalUnavailable).toBe(true);
+  });
+
+  it("shares the same generation-scoped refresh promise", async () => {
+    let resolveRefresh!: (value: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new AuthStore();
+
+    const automatic = store.tryRefresh();
+    const manual = store.retryRefresh();
+
+    expect(manual).toBe(automatic);
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    resolveRefresh(jsonResponse(200, validRenewResponse));
+    await expect(automatic).resolves.toBe("refreshed");
+    await expect(manual).resolves.toBe("refreshed");
   });
 
   it("treats an absent refresh cookie as signed out", async () => {
@@ -153,6 +225,7 @@ describe("AuthStore", () => {
           jsonResponse(200, {
             access_token: "new-access",
             access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+            session_id: "session-1",
             user: verifiedUser,
           }),
         );
