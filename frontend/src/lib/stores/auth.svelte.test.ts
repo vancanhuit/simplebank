@@ -30,11 +30,15 @@ describe("AuthStore", () => {
 
   it("advances the auth generation when local auth is cleared", () => {
     const store = new AuthStore();
+    store.renewalUnavailable = true;
+    store.sessionExpired = true;
     const generation = store.generation;
 
     store.clear();
 
     expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
   });
 
   it("advances the auth generation when login starts", async () => {
@@ -49,11 +53,15 @@ describe("AuthStore", () => {
       ),
     );
     const store = new AuthStore();
+    store.renewalUnavailable = true;
+    store.sessionExpired = true;
     const generation = store.generation;
 
     const loginTask = store.login("alice", "password");
 
     expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
     resolveLogin(
       jsonResponse(200, {
         access_token: "access",
@@ -77,10 +85,11 @@ describe("AuthStore", () => {
     );
     const store = new AuthStore();
 
-    await store.init();
+    expect(await store.tryRefresh()).toBe("refreshed");
 
     expect(store.accessToken).toBe("new-access");
     expect(store.user).toEqual(verifiedUser);
+    expect(store.renewalUnavailable).toBe(false);
   });
 
   it("treats an absent refresh cookie as signed out", async () => {
@@ -90,12 +99,14 @@ describe("AuthStore", () => {
     store.accessToken = "stale-access";
     const generation = store.generation;
 
-    const refreshed = await store.tryRefresh();
+    const outcome = await store.tryRefresh();
 
-    expect(refreshed).toBe(false);
+    expect(outcome).toBe("no_session");
     expect(store.accessToken).toBeNull();
     expect(store.user).toBeNull();
     expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
   });
 
   it("invalidates local auth before server logout settles", async () => {
@@ -112,6 +123,8 @@ describe("AuthStore", () => {
     const store = new AuthStore();
     store.user = verifiedUser;
     store.accessToken = "access";
+    store.renewalUnavailable = true;
+    store.sessionExpired = true;
     const generation = store.generation;
 
     const logoutTask = store.logout();
@@ -119,6 +132,8 @@ describe("AuthStore", () => {
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();
     expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
     resolveLogout(jsonResponse(204, undefined));
     await logoutTask;
     expect(router.state).toEqual({});
@@ -198,19 +213,102 @@ describe("AuthStore", () => {
     expect(history.state).toEqual({ logoutFailed: true });
   });
 
-  it("advances the auth generation when refresh fails", async () => {
+  it("retains local auth when refresh cannot reach the server", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const store = new AuthStore();
     store.user = verifiedUser;
     store.accessToken = "stale-access";
     const generation = store.generation;
 
-    const refreshed = await store.tryRefresh();
+    const outcome = await store.tryRefresh();
 
-    expect(refreshed).toBe(false);
+    expect(outcome).toBe("unavailable");
+    expect(store.user).toEqual(verifiedUser);
+    expect(store.accessToken).toBe("stale-access");
+    expect(store.generation).toBe(generation);
+    expect(store.renewalUnavailable).toBe(true);
+    expect(store.sessionExpired).toBe(false);
+  });
+
+  it("retains local auth when refresh receives a server error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(503, {
+          code: "internal_error",
+          error: "temporarily unavailable",
+        }),
+      ),
+    );
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+    const generation = store.generation;
+
+    const outcome = await store.tryRefresh();
+
+    expect(outcome).toBe("unavailable");
+    expect(store.user).toEqual(verifiedUser);
+    expect(store.accessToken).toBe("stale-access");
+    expect(store.generation).toBe(generation);
+    expect(store.renewalUnavailable).toBe(true);
+    expect(store.sessionExpired).toBe(false);
+  });
+
+  it("expires local auth when refresh is unauthorized", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(401, {
+          code: "invalid_refresh_token",
+          error: "expired",
+        }),
+      ),
+    );
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+    const generation = store.generation;
+
+    const outcome = await store.tryRefresh();
+
+    expect(outcome).toBe("expired");
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();
     expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(true);
+    expect(store.consumeSessionExpired()).toBe(true);
+    expect(store.consumeSessionExpired()).toBe(false);
+  });
+
+  it("clears renewal unavailability after a successful retry", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce(
+          jsonResponse(200, {
+            access_token: "new-access",
+            access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+            user: verifiedUser,
+          }),
+        ),
+    );
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+    const generation = store.generation;
+
+    expect(await store.tryRefresh()).toBe("unavailable");
+    expect(store.renewalUnavailable).toBe(true);
+    expect(await store.retryRefresh()).toBe("refreshed");
+
+    expect(store.user).toEqual(verifiedUser);
+    expect(store.accessToken).toBe("new-access");
+    expect(store.generation).toBe(generation);
+    expect(store.renewalUnavailable).toBe(false);
   });
 
   it("purges legacy refresh token on init", async () => {
@@ -282,6 +380,8 @@ describe("AuthStore", () => {
     // Auth must remain cleared; the late refresh must not apply.
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();
-    expect(refreshResult).toBe(false);
+    expect(refreshResult).toBe("stale");
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
   });
 });

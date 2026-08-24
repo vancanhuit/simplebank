@@ -181,7 +181,7 @@ describe("request", () => {
     auth.accessToken = "expired-token";
     const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(() => {
       auth.accessToken = "refreshed-token";
-      return Promise.resolve(true);
+      return Promise.resolve("refreshed");
     });
 
     const data = await request<{ ok: boolean }>("/accounts", { authenticated: true });
@@ -197,16 +197,38 @@ describe("request", () => {
     });
   });
 
-  it("does not retry when the refresh fails", async () => {
+  it("reports session unavailability when refresh cannot complete", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(jsonResponse(401, { code: "token_expired", error: "expired" }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
+    vi.spyOn(auth, "tryRefresh").mockResolvedValue("unavailable");
 
-    await expect(request("/accounts", { authenticated: true })).rejects.toBeInstanceOf(ApiError);
+    await expect(request("/accounts", { authenticated: true })).rejects.toMatchObject({
+      kind: "session_unavailable",
+      status: null,
+      code: null,
+    } satisfies Partial<ApiError>);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it.each(["no_session", "expired", "stale"] as const)(
+    "decodes the original 401 after a %s refresh outcome",
+    async (outcome) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(jsonResponse(401, { code: "token_expired", error: "expired" }));
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(auth, "tryRefresh").mockResolvedValue(outcome);
+
+      await expect(request("/accounts", { authenticated: true })).rejects.toMatchObject({
+        kind: "api",
+        status: 401,
+        code: "token_expired",
+      } satisfies Partial<ApiError>);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
 
   it("does not retry a 401 after the auth generation changes", async () => {
     let resolveFirst!: (response: Response) => void;
@@ -221,7 +243,7 @@ describe("request", () => {
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     auth.accessToken = "old-token";
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue("refreshed");
 
     const pending = request("/transfers", { method: "POST", authenticated: true, body: {} });
     auth.clear();
@@ -241,7 +263,7 @@ describe("request", () => {
       .mockResolvedValueOnce(jsonResponse(200, { id: "a" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
     vi.stubGlobal("fetch", fetchMock);
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue("refreshed");
 
     const results = await Promise.all([
       request<{ id: string }>("/accounts/a", { authenticated: true }),
@@ -261,10 +283,10 @@ describe("request", () => {
     vi.stubGlobal("fetch", fetchMock);
     auth.accessToken = "old-token";
 
-    const resolveRefreshes: Array<(refreshed: boolean) => void> = [];
+    const resolveRefreshes: Array<(outcome: "unavailable") => void> = [];
     const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise<"unavailable">((resolve) => {
           resolveRefreshes.push(resolve);
         }),
     );
@@ -277,20 +299,20 @@ describe("request", () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    resolveRefreshes.forEach((resolve) => resolve(false));
-    await expect(oldRequest).rejects.toMatchObject({ status: 401 });
-    await expect(newRequest).rejects.toMatchObject({ status: 401 });
+    resolveRefreshes.forEach((resolve) => resolve("unavailable"));
+    await expect(oldRequest).rejects.toMatchObject({ kind: "session_unavailable" });
+    await expect(newRequest).rejects.toMatchObject({ kind: "session_unavailable" });
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry when concurrent refresh fails", async () => {
+  it("shares session unavailability across a coalesced refresh", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }));
     vi.stubGlobal("fetch", fetchMock);
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(false);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue("unavailable");
 
     const results = await Promise.all([
       request<{ id: string }>("/accounts/a", { authenticated: true }).catch(
@@ -302,6 +324,10 @@ describe("request", () => {
     ]);
 
     expect(results).toEqual([expect.any(ApiError), expect.any(ApiError)]);
+    expect(results).toEqual([
+      expect.objectContaining({ kind: "session_unavailable" }),
+      expect.objectContaining({ kind: "session_unavailable" }),
+    ]);
     expect(refresh).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -314,7 +340,7 @@ describe("request", () => {
       .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired", error: "expired" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "b" }));
     vi.stubGlobal("fetch", fetchMock);
-    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue(true);
+    const refresh = vi.spyOn(auth, "tryRefresh").mockResolvedValue("refreshed");
 
     const result1 = await request<{ id: string }>("/accounts/a", { authenticated: true });
     const result2 = await request<{ id: string }>("/accounts/b", { authenticated: true });
@@ -359,7 +385,7 @@ describe("requestResponse", () => {
     auth.accessToken = "expired-token";
     const refresh = vi.spyOn(auth, "tryRefresh").mockImplementation(() => {
       auth.accessToken = "refreshed-token";
-      return Promise.resolve(true);
+      return Promise.resolve("refreshed");
     });
 
     const response = await requestResponse("/accounts", { authenticated: true });

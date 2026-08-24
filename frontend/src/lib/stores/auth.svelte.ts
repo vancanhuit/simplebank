@@ -1,4 +1,4 @@
-import { request } from "../api/client";
+import { ApiError, request } from "../api/client";
 import type {
   LoginResponse,
   RegisterInput,
@@ -7,6 +7,8 @@ import type {
   User,
 } from "../api/types";
 import { replaceNavigation } from "../router.svelte";
+
+export type RefreshOutcome = "refreshed" | "no_session" | "expired" | "unavailable" | "stale";
 
 /**
  * Authentication state backed by httpOnly cookie sessions. The access token
@@ -19,6 +21,8 @@ class AuthStore {
   initializing = $state(true);
   /** True from local logout invalidation through server response handling and navigation. */
   loggingOut = $state(false);
+  renewalUnavailable = $state(false);
+  sessionExpired = $state(false);
   /** Monotonic generation to prevent race conditions. */
   #generation = 0;
 
@@ -50,6 +54,7 @@ class AuthStore {
     if (this.loggingOut) {
       throw new Error("Wait for sign-out to finish before signing in.");
     }
+    this.#resetRefreshState();
     const gen = ++this.#generation;
     const res = await request<LoginResponse>("/users/login", {
       method: "POST",
@@ -66,39 +71,55 @@ class AuthStore {
     return request<AcceptedResponse>("/users", { method: "POST", body: input });
   }
 
-  /** Exchange the httpOnly refresh cookie for a fresh access token. Returns success. */
-  async tryRefresh(): Promise<boolean> {
+  /** Exchange the httpOnly refresh cookie for a fresh access token. */
+  async tryRefresh(): Promise<RefreshOutcome> {
     const gen = this.#generation;
     try {
       const res = await request<RenewResponse | undefined>("/tokens/renew", {
         method: "POST",
       });
+      if (this.#generation !== gen) {
+        return "stale";
+      }
       if (!res) {
-        if (this.#generation === gen) {
-          this.clear();
-        }
-        return false;
+        this.#invalidateSession();
+        return "no_session";
       }
-      // Only apply response if no logout or newer login occurred during request.
-      if (this.#generation === gen) {
-        this.accessToken = res.access_token;
-        this.user = res.user;
-        return true;
+
+      this.accessToken = res.access_token;
+      this.user = res.user;
+      this.renewalUnavailable = false;
+      return "refreshed";
+    } catch (error) {
+      if (this.#generation !== gen) {
+        return "stale";
       }
-      return false;
-    } catch {
-      // Only clear if generation unchanged (logout may have already cleared).
-      if (this.#generation === gen) {
-        this.clear();
+      if (error instanceof ApiError && error.status === 401) {
+        this.#invalidateSession();
+        this.sessionExpired = true;
+        return "expired";
       }
-      return false;
+
+      this.renewalUnavailable = true;
+      return "unavailable";
     }
+  }
+
+  retryRefresh(): Promise<RefreshOutcome> {
+    return this.tryRefresh();
+  }
+
+  consumeSessionExpired(): boolean {
+    const expired = this.sessionExpired;
+    this.sessionExpired = false;
+    return expired;
   }
 
   async logout(): Promise<void> {
     this.loggingOut = true;
     ++this.#generation;
     this.#clearState();
+    this.#resetRefreshState();
     let logoutFailed = false;
     try {
       await request<void>("/users/logout", { method: "POST" });
@@ -115,9 +136,19 @@ class AuthStore {
     this.accessToken = null;
   }
 
-  clear(): void {
+  #resetRefreshState(): void {
+    this.renewalUnavailable = false;
+    this.sessionExpired = false;
+  }
+
+  #invalidateSession(): void {
     this.#generation += 1;
     this.#clearState();
+    this.#resetRefreshState();
+  }
+
+  clear(): void {
+    this.#invalidateSession();
   }
 }
 
