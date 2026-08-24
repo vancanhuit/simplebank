@@ -136,7 +136,7 @@ class AuthStore {
       if (this.#generation !== gen) {
         return "stale";
       }
-      if (!res) {
+      if (res === undefined) {
         this.#invalidateSession();
         return "no_session";
       }

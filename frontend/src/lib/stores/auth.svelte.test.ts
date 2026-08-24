@@ -142,6 +142,28 @@ describe("AuthStore", () => {
     expect(store.renewalUnavailable).toBe(true);
   });
 
+  it.each([
+    ["null", null],
+    ["false", false],
+    ["zero", 0],
+    ["an empty string", ""],
+  ])("preserves auth when refresh success contains %s", async (_name, body) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "still-valid-access";
+    const generation = store.generation;
+
+    const outcome = await store.tryRefresh();
+
+    expect(outcome).toBe("unavailable");
+    expect(store.user).toEqual(verifiedUser);
+    expect(store.accessToken).toBe("still-valid-access");
+    expect(store.generation).toBe(generation);
+    expect(store.renewalUnavailable).toBe(true);
+    expect(store.sessionExpired).toBe(false);
+  });
+
   it("shares the same generation-scoped refresh promise", async () => {
     let resolveRefresh!: (value: Response) => void;
     const fetchMock = vi.fn(
