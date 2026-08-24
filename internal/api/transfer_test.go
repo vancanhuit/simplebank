@@ -209,6 +209,9 @@ func TestCreateTransferCurrencyMismatch(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for currency mismatch, got %d (%s)", rec.Code, rec.Body.String())
 	}
+	if got := decodeErrorResponse(t, rec); got.Code != "currency_mismatch" {
+		t.Fatalf("code = %q, want currency_mismatch", got.Code)
+	}
 }
 
 func TestCreateTransferToAccountNotFound(t *testing.T) {

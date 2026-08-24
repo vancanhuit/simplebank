@@ -125,8 +125,12 @@ func TestRenewTokenBlockedSession(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	if rec := postRenew(t, s, tok); rec.Code != http.StatusUnauthorized {
+	rec := postRenew(t, s, tok)
+	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for blocked session, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_session" {
+		t.Fatalf("code = %q, want invalid_session", got.Code)
 	}
 }
 
