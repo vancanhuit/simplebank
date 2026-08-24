@@ -71,8 +71,12 @@ func TestVerifyEmailBadID(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	if rec := getVerifyEmail(t, s, "not-a-uuid", "code"); rec.Code != http.StatusBadRequest {
+	rec := getVerifyEmail(t, s, "not-a-uuid", "code")
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for malformed id, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_verification_link" {
+		t.Fatalf("code = %q, want invalid_verification_link", got.Code)
 	}
 }
 
@@ -86,8 +90,12 @@ func TestVerifyEmailEmptyCode(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	if rec := getVerifyEmail(t, s, uuid.New().String(), ""); rec.Code != http.StatusBadRequest {
+	rec := getVerifyEmail(t, s, uuid.New().String(), "")
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for empty code, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_verification_link" {
+		t.Fatalf("code = %q, want invalid_verification_link", got.Code)
 	}
 }
 
@@ -130,8 +138,12 @@ func TestVerifyEmailInvalidCode(t *testing.T) {
 	}
 	s := newTestServerWithStore(t, fake)
 
-	if rec := getVerifyEmail(t, s, uuid.New().String(), "wrong-code"); rec.Code != http.StatusBadRequest {
+	rec := getVerifyEmail(t, s, uuid.New().String(), "wrong-code")
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for invalid/expired code, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_verification_link" {
+		t.Fatalf("code = %q, want invalid_verification_link", got.Code)
 	}
 }
 

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { navigate, replaceNavigation, replaceNavigationState, router } from "./router.svelte";
+import {
+  navigate,
+  replaceNavigation,
+  replaceNavigationState,
+  router,
+  safeReturnPath,
+} from "./router.svelte";
 
 describe("router", () => {
   beforeEach(() => {
@@ -12,8 +18,38 @@ describe("router", () => {
     navigate("/transfer/", { source: "test" });
     expect(router.path).toBe("/transfer");
     expect(router.state).toEqual({ source: "test" });
-    expect(location.pathname).toBe("/transfer");
+    expect(location.pathname).toBe("/transfer/");
     expect(history.state).toEqual({ source: "test" });
+  });
+
+  it("writes the complete URL while matching only its normalized pathname", () => {
+    navigate("/accounts/abc?tab=activity#latest");
+
+    expect(`${location.pathname}${location.search}${location.hash}`).toBe(
+      "/accounts/abc?tab=activity#latest",
+    );
+    expect(router.path).toBe("/accounts/abc");
+  });
+
+  it.each([
+    ["/transfer", "/transfer"],
+    ["/accounts/abc?tab=activity", "/accounts/abc?tab=activity"],
+    ["/accounts/abc?tab=activity#latest", "/accounts/abc?tab=activity#latest"],
+  ])("accepts safe same-origin return path %s", (value, expected) => {
+    expect(safeReturnPath(value)).toBe(expected);
+  });
+
+  it.each([
+    "https://evil.example",
+    "//evil.example",
+    "/login",
+    "/login?returnTo=/transfer",
+    "/register",
+    "/transfer\n/hidden",
+    "/\\[::1",
+    42,
+  ])("rejects unsafe return path %s", (value) => {
+    expect(safeReturnPath(value)).toBeNull();
   });
 
   it("tracks browser history navigation", () => {
@@ -36,7 +72,7 @@ describe("router", () => {
     replaceNavigation("/login/", { logoutFailed: true });
 
     expect(history.length).toBe(historyLength);
-    expect(location.pathname).toBe("/login");
+    expect(location.pathname).toBe("/login/");
     expect(history.state).toEqual({ logoutFailed: true });
     expect(router.path).toBe("/login");
     expect(router.state).toEqual({ logoutFailed: true });

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v5"
@@ -20,10 +21,16 @@ func (s *Server) registerRoutes() {
 	credentialLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store:               middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{Rate: 0.2, Burst: 5, ExpiresIn: 15 * time.Minute}),
 		IdentifierExtractor: endpointClient,
+		DenyHandler: func(_ *echo.Context, _ string, _ error) error {
+			return newAPIError(http.StatusTooManyRequests, "rate_limited", "rate limit exceeded")
+		},
 	})
 	authLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store:               middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{Rate: 1, Burst: 5, ExpiresIn: 15 * time.Minute}),
 		IdentifierExtractor: endpointClient,
+		DenyHandler: func(_ *echo.Context, _ string, _ error) error {
+			return newAPIError(http.StatusTooManyRequests, "rate_limited", "rate limit exceeded")
+		},
 	})
 
 	v1.POST("/users", s.createUser, credentialLimiter)

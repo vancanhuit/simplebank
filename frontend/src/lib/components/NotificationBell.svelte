@@ -2,10 +2,12 @@
   import Bell from "@lucide/svelte/icons/bell";
   import type { Attachment } from "svelte/attachments";
   import type { Notification } from "../api/types";
+  import { toMessage } from "../api/client";
   import { navigate } from "../router.svelte";
   import { notifications } from "../stores/notifications.svelte";
   import Link from "./Link.svelte";
   import NotificationItem from "./NotificationItem.svelte";
+  import Alert from "./Alert.svelte";
 
   let popover: HTMLElement | undefined;
   let pending = $state(false);
@@ -37,7 +39,7 @@
       await operation();
       retryOperation = null;
     } catch (cause) {
-      operationError = cause instanceof Error ? cause.message : "Request failed";
+      operationError = toMessage(cause);
     } finally {
       pending = false;
     }
@@ -111,16 +113,18 @@
   </div>
 
   {#if operationError}
-    <div class="alert alert-error alert-soft m-3 py-2 text-sm">
-      <span class="min-w-0 flex-1">{operationError}</span>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm min-h-11"
-        disabled={pending}
-        onclick={retry}
-      >
-        Retry
-      </button>
+    <div class="m-3">
+      <Alert variant="error">
+        {operationError}
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm min-h-11"
+          disabled={pending}
+          onclick={retry}
+        >
+          Retry
+        </button>
+      </Alert>
     </div>
   {/if}
 

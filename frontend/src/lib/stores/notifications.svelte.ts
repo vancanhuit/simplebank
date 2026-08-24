@@ -252,8 +252,6 @@ class NotificationsStore {
     const readAt = new Date().toISOString();
     this.items = this.items.map((item) => (item.id === id ? { ...item, read_at: readAt } : item));
     this.unreadCount = Math.max(0, this.unreadCount - 1);
-    this.error = null;
-
     try {
       const result = await request<NotificationReadResponse>(`/notifications/${id}/read`, {
         method: "PUT",
@@ -273,11 +271,7 @@ class NotificationsStore {
           item.id === id ? { ...item, read_at: previousReadAt } : item,
         );
         this.unreadCount = previousCount;
-        const message = toMessage(cause);
         await this.#reconcileForSession("recovery", context);
-        if (this.#isCurrent(context)) {
-          this.error = message;
-        }
       }
       throw cause;
     }
@@ -295,8 +289,6 @@ class NotificationsStore {
     const readAt = new Date().toISOString();
     this.items = this.items.map((item) => (ids.has(item.id) ? { ...item, read_at: readAt } : item));
     this.unreadCount = Math.max(0, this.unreadCount - previousReadAt.size);
-    this.error = null;
-
     try {
       const result = await request<NotificationReadResponse>("/notifications/read-all", {
         method: "PUT",
@@ -318,11 +310,7 @@ class NotificationsStore {
             : item,
         );
         this.unreadCount = previousCount;
-        const message = toMessage(cause);
         await this.#reconcileForSession("recovery", context);
-        if (this.#isCurrent(context)) {
-          this.error = message;
-        }
       }
       throw cause;
     }

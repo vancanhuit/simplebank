@@ -6,12 +6,13 @@ const mocks = vi.hoisted(() => ({
   requestResponse: vi.fn(),
   consumeEventStream: vi.fn(),
   accountsLoad: vi.fn(),
+  toMessage: vi.fn(() => "Something went wrong. Please try again."),
 }));
 
 vi.mock("../api/client", () => ({
   request: mocks.request,
   requestResponse: mocks.requestResponse,
-  toMessage: (error: unknown) => (error instanceof Error ? error.message : "Request failed"),
+  toMessage: mocks.toMessage,
 }));
 
 vi.mock("../api/sse", () => ({
@@ -310,7 +311,7 @@ describe("NotificationsStore", () => {
 
     expect(notifications.items[0].read_at).toBeNull();
     expect(notifications.unreadCount).toBe(1);
-    expect(notifications.error).toBe("write failed");
+    expect(notifications.error).toBeNull();
     expect(mocks.request).toHaveBeenLastCalledWith(
       "/notifications?size=20",
       expect.objectContaining({ authenticated: true }),

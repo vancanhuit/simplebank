@@ -10,38 +10,84 @@ import (
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
-// errorCatalog maps each domain sentinel error to its HTTP status and
-// client-safe message. Keeping the mapping in one place means adding a new
-// error edits a single row instead of two parallel switches.
+type errorResponse struct {
+	Code  string `json:"code"`
+	Error string `json:"error"`
+}
+
+type apiError struct {
+	status  int
+	code    string
+	message string
+}
+
+func (e apiError) Error() string { return e.message }
+
+func newAPIError(status int, code, message string) error {
+	return apiError{status: status, code: code, message: message}
+}
+
+// errorCatalog maps each domain sentinel error to its HTTP status, stable code,
+// and client-safe message.
 var errorCatalog = []struct {
 	is      error
 	status  int
+	code    string
 	message string
 }{
-	{store.ErrRecordNotFound, http.StatusNotFound, "resource not found"},
-	{store.ErrUsernameExists, http.StatusConflict, "resource already exists"},
-	{store.ErrUniqueViolation, http.StatusConflict, "resource already exists"},
-	{store.ErrForeignKeyViolation, http.StatusConflict, "related resource not found"},
-	{store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient balance"},
-	{store.ErrBalanceLimitExceeded, http.StatusUnprocessableEntity, "destination balance exceeds the supported limit"},
-	{store.ErrCurrencyMismatch, http.StatusBadRequest, "currency mismatch"},
-	{store.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, "daily transfer limit exceeded"},
-	{store.ErrNumericOutOfRange, http.StatusUnprocessableEntity, "amount too large"},
-	{store.ErrIdempotencyConflict, http.StatusConflict, "idempotency key conflicts with an existing transfer"},
-	{store.ErrInvalidSession, http.StatusUnauthorized, "invalid session"},
-	{token.ErrExpiredToken, http.StatusUnauthorized, "token has expired"},
-	{token.ErrInvalidToken, http.StatusUnauthorized, "token is invalid"},
+	{store.ErrRecordNotFound, http.StatusNotFound, "not_found", "resource not found"},
+	{store.ErrUsernameExists, http.StatusConflict, "username_exists", "username already exists"},
+	{store.ErrEmailExists, http.StatusConflict, "email_exists", "email already exists"},
+	{store.ErrUniqueViolation, http.StatusConflict, "already_exists", "resource already exists"},
+	{store.ErrForeignKeyViolation, http.StatusConflict, "related_not_found", "related resource not found"},
+	{store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient_balance", "insufficient balance"},
+	{store.ErrBalanceLimitExceeded, http.StatusUnprocessableEntity, "destination_balance_limit_exceeded", "destination balance exceeds the supported limit"},
+	{store.ErrCurrencyMismatch, http.StatusBadRequest, "currency_mismatch", "currency mismatch"},
+	{store.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, "daily_limit_exceeded", "daily transfer limit exceeded"},
+	{store.ErrNumericOutOfRange, http.StatusUnprocessableEntity, "amount_too_large", "amount too large"},
+	{store.ErrIdempotencyConflict, http.StatusConflict, "idempotency_conflict", "idempotency key conflicts with an existing transfer"},
+	{store.ErrInvalidSession, http.StatusUnauthorized, "invalid_session", "invalid session"},
+	{token.ErrExpiredToken, http.StatusUnauthorized, "token_expired", "token has expired"},
+	{token.ErrInvalidToken, http.StatusUnauthorized, "token_invalid", "token is invalid"},
 }
 
-// lookupError resolves a domain error to its HTTP status and client-safe
-// message in a single pass over the catalog. Unknown errors map to 500.
-func lookupError(err error) (status int, message string) {
+// lookupError resolves a domain error in a single pass over the catalog.
+func lookupError(err error) apiError {
 	for _, e := range errorCatalog {
 		if errors.Is(err, e.is) {
-			return e.status, e.message
+			return apiError{status: e.status, code: e.code, message: e.message}
 		}
 	}
-	return http.StatusInternalServerError, "request failed"
+	return apiError{
+		status:  http.StatusInternalServerError,
+		code:    "internal_error",
+		message: "internal server error",
+	}
+}
+
+func statusError(status int) apiError {
+	code := "request_failed"
+	switch status {
+	case http.StatusBadRequest:
+		code = "bad_request"
+	case http.StatusUnauthorized:
+		code = "unauthorized"
+	case http.StatusForbidden:
+		code = "forbidden"
+	case http.StatusNotFound:
+		code = "not_found"
+	case http.StatusMethodNotAllowed:
+		code = "method_not_allowed"
+	case http.StatusConflict:
+		code = "conflict"
+	case http.StatusRequestEntityTooLarge:
+		code = "payload_too_large"
+	case http.StatusUnsupportedMediaType:
+		code = "unsupported_media_type"
+	case http.StatusTooManyRequests:
+		code = "rate_limited"
+	}
+	return apiError{status: status, code: code, message: http.StatusText(status)}
 }
 
 func errorHandler(c *echo.Context, err error) {
@@ -49,20 +95,21 @@ func errorHandler(c *echo.Context, err error) {
 		return
 	}
 
-	if he, ok := errors.AsType[*echo.HTTPError](err); ok {
-		_ = c.JSON(he.StatusCode(), map[string]string{"error": he.Message})
-		return
-	}
-	if status := echo.StatusCode(err); status != 0 {
-		_ = c.JSON(status, map[string]string{"error": http.StatusText(status)})
+	if apiErr, ok := errors.AsType[apiError](err); ok {
+		_ = c.JSON(apiErr.status, errorResponse{Code: apiErr.code, Error: apiErr.message})
 		return
 	}
 
-	status, message := lookupError(err)
-	if status == http.StatusInternalServerError {
-		message = "internal server error"
+	apiErr := lookupError(err)
+	if apiErr.code != "internal_error" {
+		_ = c.JSON(apiErr.status, errorResponse{Code: apiErr.code, Error: apiErr.message})
+		return
+	}
+
+	if status := echo.StatusCode(err); status != 0 {
+		apiErr = statusError(status)
 	}
 	// The request logger middleware logs the error once with full request
 	// context (status, path, request_id); logging here too would duplicate it.
-	_ = c.JSON(status, map[string]string{"error": message})
+	_ = c.JSON(apiErr.status, errorResponse{Code: apiErr.code, Error: apiErr.message})
 }

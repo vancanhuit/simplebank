@@ -96,11 +96,11 @@ describe("NewAccountPage", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/account-opening-limits", expect.any(Object));
     });
 
-    accounts.error = "offline";
+    accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
     resolveInitialLoad(false);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't load your accounts. offline",
+      "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
     );
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -116,9 +116,9 @@ describe("NewAccountPage", () => {
       expect(screen.getByRole("radio", { name: /EUR/ })).toBeEnabled();
     });
 
-    accounts.error = "offline";
+    accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't load your accounts. offline",
+      "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
     );
 
     let resolveReload!: () => void;
@@ -266,5 +266,49 @@ describe("NewAccountPage", () => {
     await waitFor(() => {
       expect(fieldset).toHaveAttribute("aria-busy", "false");
     });
+  });
+
+  it("adds the opening-policy context once and retries", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(503, { error: "private database detail" }))
+      .mockResolvedValueOnce(jsonResponse(200, { EUR: 100000 }));
+
+    render(NewAccountPage);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We couldn't load the account opening policy. SimpleBank is temporarily unavailable. Please try again.",
+    );
+    expect(screen.getByRole("alert")).not.toHaveTextContent(".. ");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/couldn't load the account opening policy/i),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("preserves the selected currency and deposit after creation fails", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { EUR: 100000, GBP: 100000, USD: 100000, VND: 100000 }),
+    );
+    const create = vi
+      .spyOn(accounts, "create")
+      .mockRejectedValue(new Error("private account creation detail"));
+    render(NewAccountPage);
+
+    const dong = await screen.findByRole("radio", { name: /VND/ });
+    await waitFor(() => expect(dong).toBeEnabled());
+    await fireEvent.click(dong);
+    const deposit = screen.getByRole("spinbutton", { name: "Opening deposit (VND)" });
+    await fireEvent.input(deposit, { target: { value: "1234" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Something went wrong. Please try again.",
+    );
+    expect(create).toHaveBeenCalledWith("VND", 1234);
+    expect(screen.getByRole("radio", { name: /VND/ })).toBeChecked();
+    expect(screen.getByRole("spinbutton", { name: "Opening deposit (VND)" })).toHaveValue(1234);
   });
 });

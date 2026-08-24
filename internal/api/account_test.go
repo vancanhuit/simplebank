@@ -60,6 +60,9 @@ func TestCreateAccountUnsupportedCurrency(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for unsupported currency, got %d (%s)", rec.Code, rec.Body.String())
 	}
+	if got := decodeErrorResponse(t, rec); got.Code != "unsupported_currency" {
+		t.Fatalf("code = %q, want unsupported_currency", got.Code)
+	}
 }
 
 // TestListAccountsClampsOversizePage checks the page-size cap: size 500 must be
@@ -152,6 +155,11 @@ func TestCreateAccountOpeningBalanceLimit(t *testing.T) {
 			if rec.Code != tt.wantStatus || called != tt.wantStore {
 				t.Fatalf("status=%d called=%v, want status=%d called=%v", rec.Code, called, tt.wantStatus, tt.wantStore)
 			}
+			if !tt.wantStore {
+				if got := decodeErrorResponse(t, rec); got.Code != "opening_balance_limit_exceeded" {
+					t.Fatalf("code = %q, want opening_balance_limit_exceeded", got.Code)
+				}
+			}
 		})
 	}
 }
@@ -209,8 +217,35 @@ func TestCreateAccountUnsafeOpeningBalance(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422 for unsafe opening balance, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	want := `{"error":"opening balance exceeds the supported limit"}` + "\n"
-	if got := rec.Body.String(); got != want {
-		t.Errorf("want exact JSON %q, got %q", want, got)
+	if got := decodeErrorResponse(t, rec); got.Code != "opening_balance_limit_exceeded" {
+		t.Fatalf("code = %q, want opening_balance_limit_exceeded", got.Code)
+	}
+}
+
+func TestAccountParametersRejectMalformedValues(t *testing.T) {
+	t.Parallel()
+	s := newTestServerWithStore(t, fakeStore{})
+	tests := []struct {
+		name string
+		path string
+		code string
+	}{
+		{name: "account id", path: "/api/v1/accounts/not-a-uuid", code: "invalid_account_id"},
+		{name: "page", path: "/api/v1/accounts?page=many", code: "invalid_page"},
+		{name: "size", path: "/api/v1/accounts?size=many", code: "invalid_size"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("Authorization", bearer(t, "alice"))
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (%s)", rec.Code, rec.Body.String())
+			}
+			if got := decodeErrorResponse(t, rec); got.Code != tt.code {
+				t.Fatalf("code = %q, want %s", got.Code, tt.code)
+			}
+		})
 	}
 }

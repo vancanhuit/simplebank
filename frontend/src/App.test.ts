@@ -42,6 +42,12 @@ const user = {
   created_at: "2026-01-01T00:00:00Z",
 };
 
+const renewResponse = {
+  access_token: "renewed-access-token",
+  access_token_expires_at: "2026-08-24T12:00:00Z",
+  user,
+};
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
@@ -60,9 +66,11 @@ describe("App routing", () => {
     auth.clear();
     auth.initializing = false;
     vi.spyOn(auth, "init").mockResolvedValue();
+    accountsMock.load.mockReset();
     accountsMock.reset.mockClear();
     notificationsMock.start.mockClear();
     notificationsMock.reset.mockClear();
+    notificationsMock.reconcile.mockClear();
   });
   afterEach(() => {
     cleanup();
@@ -92,6 +100,147 @@ describe("App routing", () => {
 
     await waitFor(() => expect(accountsMock.reset).toHaveBeenCalledOnce());
     expect(notificationsMock.reset).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["a network failure", () => Promise.reject(new Error("offline"))],
+    [
+      "a server failure",
+      () =>
+        Promise.resolve(
+          jsonResponse(503, { code: "internal_error", error: "temporarily unavailable" }),
+        ),
+    ],
+  ])("offers startup session recovery after %s", async (_name, refresh) => {
+    history.replaceState({}, "", "/transfer");
+    router.path = "/transfer";
+    auth.initializing = true;
+    vi.restoreAllMocks();
+    vi.stubGlobal("fetch", vi.fn(refresh));
+
+    render(App);
+
+    expect(await screen.findByText("We couldn't restore your session.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Welcome back" })).not.toBeInTheDocument();
+    expect(auth.initializing).toBe(false);
+    expect(accountsMock.reset).not.toHaveBeenCalled();
+    expect(notificationsMock.reset).not.toHaveBeenCalled();
+    expect(router.path).toBe("/transfer");
+  });
+
+  it("restores the originally requested protected page after startup retry succeeds", async () => {
+    history.replaceState({}, "", "/transfer");
+    router.path = "/transfer";
+    auth.initializing = true;
+    vi.restoreAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce(jsonResponse(200, renewResponse)),
+    );
+    render(App);
+
+    await fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Send money" })).toBeInTheDocument();
+    expect(router.path).toBe("/transfer");
+    expect(accountsMock.load).toHaveBeenCalledOnce();
+    expect(notificationsMock.reconcile).toHaveBeenCalledWith("manual");
+  });
+
+  it("announces and focuses protected content restored by startup retry", async () => {
+    history.replaceState({}, "", "/transfer");
+    router.path = "/transfer";
+    auth.initializing = true;
+    vi.restoreAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce(jsonResponse(200, renewResponse)),
+    );
+    render(App);
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    retry.focus();
+    expect(retry).toHaveFocus();
+
+    await fireEvent.click(retry);
+
+    expect(await screen.findByRole("heading", { name: "Send money" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("Send money");
+      expect(document.querySelector("main")).toHaveFocus();
+    });
+  });
+
+  it("keeps the protected page and session caches during transient authenticated renewal failure", async () => {
+    history.replaceState({}, "", "/transfer");
+    router.path = "/transfer";
+    auth.user = user;
+    auth.accessToken = "stale-access-token";
+    auth.renewalUnavailable = true;
+
+    render(App);
+
+    expect(await screen.findByRole("heading", { name: "Send money" })).toBeInTheDocument();
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("We couldn't restore your session.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(accountsMock.reset).not.toHaveBeenCalled();
+    expect(notificationsMock.reset).not.toHaveBeenCalled();
+    expect(router.path).toBe("/transfer");
+  });
+
+  it("expires definitively with cache resets and a replacing return path", async () => {
+    history.replaceState({}, "", "/transfer");
+    router.path = "/transfer";
+    auth.user = user;
+    auth.accessToken = "stale-access-token";
+    const historyLength = history.length;
+    const replaceState = vi.spyOn(history, "replaceState");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(401, { code: "invalid_refresh_token", error: "Session expired" }),
+        ),
+    );
+    render(App);
+
+    await auth.tryRefresh();
+
+    await waitFor(() => expect(router.path).toBe("/login"));
+    expect(history.length).toBe(historyLength);
+    expect(replaceState).toHaveBeenCalledWith(
+      { returnTo: "/transfer", sessionExpired: true },
+      "",
+      "/login",
+    );
+    expect(accountsMock.reset).toHaveBeenCalled();
+    expect(notificationsMock.reset).toHaveBeenCalled();
+  });
+
+  it("replaces a protected signed-out entry instead of pushing another entry", async () => {
+    history.replaceState({}, "", "/transfer?source=shortcut");
+    router.path = "/transfer";
+    const historyLength = history.length;
+    const replaceState = vi.spyOn(history, "replaceState");
+
+    render(App);
+
+    await waitFor(() => expect(router.path).toBe("/login"));
+    expect(history.length).toBe(historyLength);
+    expect(replaceState).toHaveBeenCalledWith(
+      { returnTo: "/transfer?source=shortcut" },
+      "",
+      "/login",
+    );
   });
 
   it("starts one notification session for an authenticated auth generation", async () => {
@@ -193,7 +342,7 @@ describe("App routing", () => {
     expect(
       historyState !== null && typeof historyState === "object" && "logoutFailed" in historyState,
     ).toBe(false);
-    expect(history.length).toBe(historyLength + 1);
+    expect(history.length).toBe(historyLength);
   });
 
   it("keeps login rendered but disabled until logout settles, then permits login", async () => {

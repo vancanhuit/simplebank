@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Notification } from "../api/types";
+  import { toMessage } from "../api/client";
+  import Alert from "../components/Alert.svelte";
   import NotificationItem from "../components/NotificationItem.svelte";
   import { navigate } from "../router.svelte";
   import { notifications } from "../stores/notifications.svelte";
@@ -14,7 +16,7 @@
       try {
         await notifications.markRead(notification.id);
       } catch (cause) {
-        mutationError = cause instanceof Error ? cause.message : "Request failed";
+        mutationError = toMessage(cause);
         mutationPending = false;
         return;
       }
@@ -29,7 +31,7 @@
     try {
       await notifications.markAllRead();
     } catch (cause) {
-      mutationError = cause instanceof Error ? cause.message : "Request failed";
+      mutationError = toMessage(cause);
     } finally {
       mutationPending = false;
     }
@@ -49,23 +51,25 @@
     </button>
   </div>
 
-  {#if mutationError && mutationError !== notifications.error}
-    <div role="alert" class="alert alert-error alert-soft mt-6">
-      <span>{mutationError}</span>
+  {#if mutationError}
+    <div class="mt-6">
+      <Alert variant="error">{mutationError}</Alert>
     </div>
   {/if}
 
-  {#if notifications.error && notifications.items.length > 0}
-    <div role="alert" class="alert alert-error alert-soft mt-6 sm:alert-horizontal">
-      <span class="min-w-0 flex-1">{notifications.error}</span>
-      <button
-        type="button"
-        class="btn btn-ghost min-h-11"
-        disabled={notifications.refreshing}
-        onclick={() => void notifications.reconcile("manual")}
-      >
-        Retry
-      </button>
+  {#if notifications.error && notifications.items.length > 0 && mutationError === null}
+    <div class="mt-6">
+      <Alert variant="error">
+        We couldn't refresh notifications. {notifications.error}
+        <button
+          type="button"
+          class="btn btn-ghost min-h-11"
+          disabled={notifications.refreshing}
+          onclick={() => void notifications.reconcile("manual")}
+        >
+          Retry
+        </button>
+      </Alert>
     </div>
   {/if}
 
@@ -78,16 +82,18 @@
       <span class="loading loading-ring loading-lg text-primary"></span>
     </div>
   {:else if notifications.error && notifications.items.length === 0}
-    <div role="alert" class="alert alert-error alert-soft mt-6 sm:alert-horizontal">
-      <span class="min-w-0 flex-1">{notifications.error}</span>
-      <button
-        type="button"
-        class="btn btn-ghost min-h-11"
-        disabled={notifications.loading}
-        onclick={() => void notifications.reconcile("manual")}
-      >
-        Retry
-      </button>
+    <div class="mt-6">
+      <Alert variant="error">
+        We couldn't load notifications. {notifications.error}
+        <button
+          type="button"
+          class="btn btn-ghost min-h-11"
+          disabled={notifications.loading}
+          onclick={() => void notifications.reconcile("manual")}
+        >
+          Retry
+        </button>
+      </Alert>
     </div>
   {:else if notifications.items.length === 0}
     <div class="card mt-6 border border-dashed border-base-300 bg-base-100 text-center">
@@ -110,16 +116,18 @@
   {/if}
 
   {#if notifications.loadMoreError}
-    <div role="alert" class="alert alert-error alert-soft mt-4 sm:alert-horizontal">
-      <span class="min-w-0 flex-1">{notifications.loadMoreError}</span>
-      <button
-        type="button"
-        class="btn btn-ghost min-h-11"
-        disabled={notifications.loadingMore}
-        onclick={() => void notifications.loadMore()}
-      >
-        Retry
-      </button>
+    <div class="mt-4">
+      <Alert variant="error">
+        We couldn't load more notifications. {notifications.loadMoreError}
+        <button
+          type="button"
+          class="btn btn-ghost min-h-11"
+          disabled={notifications.loadingMore}
+          onclick={() => void notifications.loadMore()}
+        >
+          Retry
+        </button>
+      </Alert>
     </div>
   {/if}
 

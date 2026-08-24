@@ -102,7 +102,7 @@ func (s *Server) streamNotifications(c *echo.Context) error {
 func (s *Server) listNotifications(c *echo.Context) error {
 	size, err := echo.QueryParamOr[int32](c, "size", 20)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
+		return newAPIError(http.StatusBadRequest, "invalid_size", "invalid size")
 	}
 	if size < 1 {
 		size = 20
@@ -159,7 +159,7 @@ func (s *Server) listNotifications(c *echo.Context) error {
 func (s *Server) markNotificationRead(c *echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid notification id")
+		return newAPIError(http.StatusBadRequest, "invalid_notification_id", "invalid notification id")
 	}
 	payload, err := authPayload(c)
 	if err != nil {
@@ -232,5 +232,5 @@ func encodeNotificationCursor(cursor notificationCursor) (string, error) {
 }
 
 func invalidNotificationCursor() error {
-	return echo.NewHTTPError(http.StatusBadRequest, "invalid notification cursor")
+	return newAPIError(http.StatusBadRequest, "invalid_notification_cursor", "invalid notification cursor")
 }

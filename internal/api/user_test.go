@@ -141,6 +141,15 @@ func newTestServerWithConfig(t *testing.T, st store.Store, cfg config.Config) *S
 	return s
 }
 
+func decodeErrorResponse(t *testing.T, rec *httptest.ResponseRecorder) errorResponse {
+	t.Helper()
+	var got errorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	return got
+}
+
 func TestCreateUserBadRequest(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
@@ -150,6 +159,24 @@ func TestCreateUserBadRequest(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_request_payload" {
+		t.Fatalf("code = %q, want invalid_request_payload", got.Code)
+	}
+}
+
+func TestCreateUserMalformedBody(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(`{"username":`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_request_body" {
+		t.Fatalf("code = %q, want invalid_request_body", got.Code)
 	}
 }
 
@@ -492,6 +519,9 @@ func TestLoginUserWrongPassword(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for wrong password, got %d (%s)", rec.Code, rec.Body.String())
 	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_credentials" {
+		t.Fatalf("code = %q, want invalid_credentials", got.Code)
+	}
 }
 
 func TestLoginUserUnknown(t *testing.T) {
@@ -512,6 +542,9 @@ func TestLoginUserUnknown(t *testing.T) {
 	// Unknown user must be indistinguishable from wrong password: 401, not 404.
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401 for unknown user, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "invalid_credentials" {
+		t.Fatalf("code = %q, want invalid_credentials", got.Code)
 	}
 }
 
@@ -540,6 +573,9 @@ func TestLoginUserUnverified(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("want 403, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "email_verification_required" {
+		t.Fatalf("code = %q, want email_verification_required", got.Code)
 	}
 	if len(rec.Result().Cookies()) != 0 {
 		t.Fatalf("unverified login must not set cookies, got %d", len(rec.Result().Cookies()))

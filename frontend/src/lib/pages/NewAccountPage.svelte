@@ -69,7 +69,7 @@
       openingLimits = await request<AccountOpeningLimits>("/account-opening-limits");
     } catch (err) {
       openingLimits = {};
-      policyError = `Couldn't load the account opening policy. ${toMessage(err)}`;
+      policyError = `We couldn't load the account opening policy. ${toMessage(err)}`;
     } finally {
       policyLoading = false;
     }
@@ -145,7 +145,7 @@
         <div aria-busy={accounts.loading}>
           {#if accounts.error}
             <Alert variant="error">
-              Couldn't load your accounts. {accounts.error}
+              We couldn't load your accounts. {accounts.error}
               <button type="button" class="btn btn-ghost min-h-11" onclick={loadAccounts}
                 >Retry</button
               >

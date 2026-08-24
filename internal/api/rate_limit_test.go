@@ -47,11 +47,40 @@ func TestCredentialRateLimitIsPerClientAndEndpoint(t *testing.T) {
 	if body["error"] != "rate limit exceeded" {
 		t.Errorf("error = %q, want rate limit exceeded", body["error"])
 	}
+	if body["code"] != "rate_limited" {
+		t.Errorf("code = %q, want rate_limited", body["code"])
+	}
 
 	if code := request("/api/v1/users", "192.0.2.1:1234").Code; code != http.StatusBadRequest {
 		t.Errorf("different endpoint: got status %d, want %d", code, http.StatusBadRequest)
 	}
 	if code := request("/api/v1/users/login", "192.0.2.2:1234").Code; code != http.StatusBadRequest {
 		t.Errorf("different client: got status %d, want %d", code, http.StatusBadRequest)
+	}
+}
+
+func TestAuthRateLimitUsesStructuredError(t *testing.T) {
+	s := newTestServer(t)
+	request := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tokens/renew", nil)
+		req.RemoteAddr = "192.0.2.3:1234"
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+	for range 5 {
+		if code := request().Code; code != http.StatusNoContent {
+			t.Fatalf("renew request: got status %d, want %d", code, http.StatusNoContent)
+		}
+	}
+	limited := request()
+	if limited.Code != http.StatusTooManyRequests {
+		t.Fatalf("limited request: got status %d, want %d", limited.Code, http.StatusTooManyRequests)
+	}
+	if retryAfter, err := strconv.Atoi(limited.Header().Get("Retry-After")); err != nil || retryAfter < 1 {
+		t.Errorf("Retry-After = %q, want a positive number of seconds", limited.Header().Get("Retry-After"))
+	}
+	if got := decodeErrorResponse(t, limited); got.Code != "rate_limited" {
+		t.Fatalf("code = %q, want rate_limited", got.Code)
 	}
 }

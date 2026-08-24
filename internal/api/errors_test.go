@@ -15,31 +15,41 @@ import (
 
 func TestLookupError(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	tests := []struct {
+		name        string
 		err         error
 		wantStatus  int
+		wantCode    string
 		wantMessage string
 	}{
-		{store.ErrRecordNotFound, http.StatusNotFound, "resource not found"},
-		{store.ErrUniqueViolation, http.StatusConflict, "resource already exists"},
-		{store.ErrForeignKeyViolation, http.StatusConflict, "related resource not found"},
-		{store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient balance"},
-		{store.ErrBalanceLimitExceeded, http.StatusUnprocessableEntity, "destination balance exceeds the supported limit"},
-		{store.ErrIdempotencyConflict, http.StatusConflict, "idempotency key conflicts with an existing transfer"},
-		{store.ErrInvalidSession, http.StatusUnauthorized, "invalid session"},
-		{token.ErrExpiredToken, http.StatusUnauthorized, "token has expired"},
-		{token.ErrInvalidToken, http.StatusUnauthorized, "token is invalid"},
-		{errors.New("some unknown error"), http.StatusInternalServerError, "request failed"},
+		{"not found", store.ErrRecordNotFound, http.StatusNotFound, "not_found", "resource not found"},
+		{"username exists", store.ErrUsernameExists, http.StatusConflict, "username_exists", "username already exists"},
+		{"email exists", store.ErrEmailExists, http.StatusConflict, "email_exists", "email already exists"},
+		{"unique violation", store.ErrUniqueViolation, http.StatusConflict, "already_exists", "resource already exists"},
+		{"foreign key violation", store.ErrForeignKeyViolation, http.StatusConflict, "related_not_found", "related resource not found"},
+		{"insufficient balance", store.ErrInsufficientBalance, http.StatusUnprocessableEntity, "insufficient_balance", "insufficient balance"},
+		{"balance limit exceeded", store.ErrBalanceLimitExceeded, http.StatusUnprocessableEntity, "destination_balance_limit_exceeded", "destination balance exceeds the supported limit"},
+		{"currency mismatch", store.ErrCurrencyMismatch, http.StatusBadRequest, "currency_mismatch", "currency mismatch"},
+		{"daily limit exceeded", store.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, "daily_limit_exceeded", "daily transfer limit exceeded"},
+		{"numeric out of range", store.ErrNumericOutOfRange, http.StatusUnprocessableEntity, "amount_too_large", "amount too large"},
+		{"idempotency conflict", store.ErrIdempotencyConflict, http.StatusConflict, "idempotency_conflict", "idempotency key conflicts with an existing transfer"},
+		{"invalid session", store.ErrInvalidSession, http.StatusUnauthorized, "invalid_session", "invalid session"},
+		{"expired token", token.ErrExpiredToken, http.StatusUnauthorized, "token_expired", "token has expired"},
+		{"invalid token", token.ErrInvalidToken, http.StatusUnauthorized, "token_invalid", "token is invalid"},
+		{"unknown", errors.New("database password leaked"), http.StatusInternalServerError, "internal_error", "internal server error"},
 	}
-	for _, tc := range cases {
-		t.Run(tc.err.Error(), func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			status, message := lookupError(tc.err)
-			if status != tc.wantStatus {
-				t.Errorf("status: got %d want %d", status, tc.wantStatus)
+			got := lookupError(tt.err)
+			if got.status != tt.wantStatus {
+				t.Errorf("status: got %d want %d", got.status, tt.wantStatus)
 			}
-			if message != tc.wantMessage {
-				t.Errorf("message: got %q want %q", message, tc.wantMessage)
+			if got.code != tt.wantCode {
+				t.Errorf("code: got %q want %q", got.code, tt.wantCode)
+			}
+			if got.message != tt.wantMessage {
+				t.Errorf("message: got %q want %q", got.message, tt.wantMessage)
 			}
 		})
 	}
@@ -51,24 +61,35 @@ func TestErrorHandlerPreservesErrorSemantics(t *testing.T) {
 		name        string
 		err         error
 		wantStatus  int
+		wantCode    string
 		wantMessage string
 	}{
 		{
-			name:        "custom HTTP error",
-			err:         echo.NewHTTPError(http.StatusTeapot, "custom message"),
+			name:        "typed API error",
+			err:         newAPIError(http.StatusBadRequest, "invalid_account_id", "invalid account id"),
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    "invalid_account_id",
+			wantMessage: "invalid account id",
+		},
+		{
+			name:        "unrestricted HTTP error",
+			err:         echo.NewHTTPError(http.StatusTeapot, "sensitive detail"),
 			wantStatus:  http.StatusTeapot,
-			wantMessage: "custom message",
+			wantCode:    "request_failed",
+			wantMessage: http.StatusText(http.StatusTeapot),
 		},
 		{
 			name:        "Echo status error",
 			err:         echo.ErrMethodNotAllowed,
 			wantStatus:  http.StatusMethodNotAllowed,
+			wantCode:    "method_not_allowed",
 			wantMessage: http.StatusText(http.StatusMethodNotAllowed),
 		},
 		{
 			name:        "domain error",
 			err:         store.ErrInvalidSession,
 			wantStatus:  http.StatusUnauthorized,
+			wantCode:    "invalid_session",
 			wantMessage: "invalid session",
 		},
 	}
@@ -85,12 +106,15 @@ func TestErrorHandlerPreservesErrorSemantics(t *testing.T) {
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
 			}
-			var body map[string]string
+			var body errorResponse
 			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 				t.Fatalf("decode response: %v", err)
 			}
-			if body["error"] != tt.wantMessage {
-				t.Fatalf("message = %q, want %q", body["error"], tt.wantMessage)
+			if body.Code != tt.wantCode {
+				t.Errorf("code = %q, want %q", body.Code, tt.wantCode)
+			}
+			if body.Error != tt.wantMessage {
+				t.Errorf("message = %q, want %q", body.Error, tt.wantMessage)
 			}
 		})
 	}

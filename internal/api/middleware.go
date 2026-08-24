@@ -45,7 +45,7 @@ func authPayload(c *echo.Context) (*token.Payload, error) {
 // place instead of being re-derived in every handler.
 func authorizeOwner(payload *token.Payload, owner string) error {
 	if payload.Username != owner {
-		return echo.NewHTTPError(http.StatusForbidden, "you do not have access to this resource")
+		return newAPIError(http.StatusForbidden, "forbidden", "you do not have access to this resource")
 	}
 	return nil
 }
@@ -57,7 +57,7 @@ func (s *Server) sameOrigin(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		r := c.Request()
 		if site := r.Header.Get(headerSecFetchSite); site != "" && site != "same-origin" && site != "none" {
-			return echo.NewHTTPError(http.StatusForbidden, "cross-origin request denied")
+			return newAPIError(http.StatusForbidden, "cross_origin_denied", "cross-origin request denied")
 		}
 		origin := r.Header.Get("Origin")
 		if origin == "" {
@@ -65,7 +65,7 @@ func (s *Server) sameOrigin(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 		got, err := url.Parse(origin)
 		if err != nil || got.Scheme == "" || got.Host == "" || got.Path != "" {
-			return echo.NewHTTPError(http.StatusForbidden, "cross-origin request denied")
+			return newAPIError(http.StatusForbidden, "cross_origin_denied", "cross-origin request denied")
 		}
 		expectedScheme := "http"
 		expectedHost := forwardedHost(r.Host, r.Header)
@@ -81,7 +81,7 @@ func (s *Server) sameOrigin(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 		}
 		if !strings.EqualFold(got.Scheme, expectedScheme) || !strings.EqualFold(got.Host, expectedHost) {
-			return echo.NewHTTPError(http.StatusForbidden, "cross-origin request denied")
+			return newAPIError(http.StatusForbidden, "cross_origin_denied", "cross-origin request denied")
 		}
 		return next(c)
 	}

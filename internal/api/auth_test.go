@@ -97,6 +97,9 @@ func TestGetAccountForbiddenWhenNotOwner(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("want 403 for non-owner, got %d (%s)", rec.Code, rec.Body.String())
 	}
+	if got := decodeErrorResponse(t, rec); got.Code != "forbidden" {
+		t.Fatalf("code = %q, want forbidden", got.Code)
+	}
 }
 
 func TestGetAccountOKForOwner(t *testing.T) {
@@ -166,5 +169,8 @@ func TestCreateTransferSameAccount(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for same-account transfer, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "same_account_transfer" {
+		t.Fatalf("code = %q, want same_account_transfer", got.Code)
 	}
 }
