@@ -80,14 +80,20 @@ describe("NotificationsPage", () => {
   it("keeps the page visible when mark-read fails", async () => {
     notifications.items = [unread];
     notifications.unreadCount = 1;
-    vi.spyOn(notifications, "markRead").mockRejectedValue(new Error("write failed"));
+    vi.spyOn(notifications, "markRead").mockImplementation(() => {
+      notifications.error = "SimpleBank is temporarily unavailable. Please try again.";
+      return Promise.reject(new Error("write failed"));
+    });
     render(NotificationsPage);
 
     await fireEvent.click(screen.getByRole("button", { name: /sent/i }));
 
     expect(router.path).toBe("/notifications");
     expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
-    expect(await screen.findByRole("alert")).toHaveTextContent("write failed");
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("Something went wrong. Please try again.");
+    expect(alerts[0]).not.toHaveTextContent("write failed");
   });
 
   it("loads the next cursor page without duplicate rows", async () => {

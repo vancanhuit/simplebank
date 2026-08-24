@@ -103,11 +103,11 @@ describe("TransferPage", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
     });
 
-    accounts.error = "offline";
+    accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
     resolveInitialLoad(false);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't load your accounts. offline",
+      "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
     );
     expect(screen.queryByRole("combobox", { name: "From account" })).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -125,9 +125,9 @@ describe("TransferPage", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
     });
 
-    accounts.error = "offline";
+    accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't load your accounts. offline",
+      "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
     );
 
     let resolveReload!: () => void;
@@ -346,7 +346,7 @@ describe("TransferPage", () => {
     });
     const submitButton = screen.getByRole("button", { name: /send transfer/i });
     await fireEvent.click(submitButton);
-    await screen.findByText("temporary failure");
+    await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
     await fireEvent.click(submitButton);
     expect(await screen.findByRole("status")).toHaveTextContent("Sent $50.00 successfully");
@@ -366,15 +366,29 @@ describe("TransferPage", () => {
       .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
-          transfer: { id: "tx-first", amount: 5000 },
-          from_account: { currency: "USD", balance: 95000 },
+          transfer: {
+            id: "tx-first",
+            from_account_id: "acct-1",
+            to_account_id: "acct-2",
+            amount: 5000,
+            idempotency_key: "first",
+            created_at: "2026-08-15T12:00:00Z",
+          },
+          from_account: { ...accounts.items[0], balance: 95000 },
         }),
       )
       .mockResolvedValueOnce(jsonResponse(200, accounts.items))
       .mockResolvedValueOnce(
         jsonResponse(200, {
-          transfer: { id: "tx-second", amount: 5000 },
-          from_account: { currency: "USD", balance: 90000 },
+          transfer: {
+            id: "tx-second",
+            from_account_id: "acct-1",
+            to_account_id: "acct-2",
+            amount: 5000,
+            idempotency_key: "second",
+            created_at: "2026-08-15T12:01:00Z",
+          },
+          from_account: { ...accounts.items[0], balance: 90000 },
         }),
       )
       .mockResolvedValueOnce(jsonResponse(200, accounts.items));
@@ -438,12 +452,12 @@ describe("TransferPage", () => {
     await fireEvent.input(recipient, { target: { value: " acct-2 " } });
     await fireEvent.input(amount, { target: { value: "50.00" } });
     await fireEvent.click(submit);
-    await screen.findByText("first failure");
+    await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
     await fireEvent.input(recipient, { target: { value: "acct-2" } });
     await fireEvent.input(amount, { target: { value: "50.0" } });
     await fireEvent.click(submit);
-    await screen.findByText("retry failure");
+    await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
     const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
     const retryBody = jsonRequestBody(fetchMock.mock.calls[2]);
@@ -494,11 +508,11 @@ describe("TransferPage", () => {
       });
       const submitButton = screen.getByRole("button", { name: /send transfer/i });
       await fireEvent.click(submitButton);
-      await screen.findByText("first failure");
+      await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
       await edit();
       await fireEvent.click(submitButton);
-      await screen.findByText("changed failure");
+      await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
       const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
       const changedBody = jsonRequestBody(fetchMock.mock.calls[2]);
@@ -544,13 +558,13 @@ describe("TransferPage", () => {
     });
     const submitButton = screen.getByRole("button", { name: /send transfer/i });
     await fireEvent.click(submitButton);
-    await screen.findByText("first failure");
+    await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
     await fireEvent.change(screen.getByRole("combobox", { name: "From account" }), {
       target: { value: "acct-2" },
     });
     await fireEvent.click(submitButton);
-    await screen.findByText("changed failure");
+    await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
     const firstBody = jsonRequestBody(fetchMock.mock.calls[1]);
     const changedBody = jsonRequestBody(fetchMock.mock.calls[2]);
@@ -585,7 +599,7 @@ describe("TransferPage", () => {
       target: { value: "50.00" },
     });
     await fireEvent.click(submitButton);
-    await screen.findByText("temporary failure");
+    await screen.findByText("SimpleBank is temporarily unavailable. Please try again.");
 
     expect(randomUUID).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -636,5 +650,35 @@ describe("TransferPage", () => {
 
     expect(amount).not.toHaveAttribute("aria-invalid");
     expect(screen.queryByText("Enter an amount greater than zero.")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["insufficient_balance", "You don't have enough money in this account."],
+    ["daily_limit_exceeded", "This transfer would exceed your daily transfer limit."],
+  ])("keeps the transfer key when retrying %s", async (code, message) => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("11111111-1111-4111-8111-111111111111");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(422, { code }))
+      .mockResolvedValueOnce(jsonResponse(422, { code }));
+
+    render(TransferPage);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
+      target: { value: "acct-2" },
+    });
+    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+      target: { value: "50.00" },
+    });
+
+    const submit = screen.getByRole("button", { name: /send transfer/i });
+    await fireEvent.click(submit);
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    await fireEvent.click(submit);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    expect(jsonRequestBody(fetchMock.mock.calls[2])).toEqual(
+      jsonRequestBody(fetchMock.mock.calls[1]),
+    );
   });
 });

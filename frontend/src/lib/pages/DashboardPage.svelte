@@ -106,32 +106,36 @@
         <div class="skeleton h-52"></div>
       {/each}
     </div>
-  {:else if accounts.error}
-    <Alert variant="error">
-      {accounts.error}
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm ml-2 min-h-11"
-        onclick={() => accounts.load()}>Retry</button
-      >
-    </Alert>
-  {:else if accounts.items.length === 0}
-    <div class="card border border-dashed border-base-300 bg-base-100 text-center">
-      <div class="card-body items-center px-6 py-12">
-        <h3 class="card-title text-base">No accounts yet</h3>
-        <p class="max-w-sm text-sm text-base-content/60">
-          Open your first account to start holding and transferring funds.
-        </p>
-        <div class="card-actions mt-2">
-          <Link href="/accounts/new" class="btn btn-primary min-h-11">Open an account</Link>
+  {:else}
+    {#if accounts.error}
+      <Alert variant="error">
+        We couldn't load your accounts. {accounts.error}
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm ml-2 min-h-11"
+          onclick={() => accounts.load()}>Retry</button
+        >
+      </Alert>
+    {/if}
+
+    {#if accounts.items.length === 0 && !accounts.error}
+      <div class="card border border-dashed border-base-300 bg-base-100 text-center">
+        <div class="card-body items-center px-6 py-12">
+          <h3 class="card-title text-base">No accounts yet</h3>
+          <p class="max-w-sm text-sm text-base-content/60">
+            Open your first account to start holding and transferring funds.
+          </p>
+          <div class="card-actions mt-2">
+            <Link href="/accounts/new" class="btn btn-primary min-h-11">Open an account</Link>
+          </div>
         </div>
       </div>
-    </div>
-  {:else}
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {#each accounts.items as account (account.id)}
-        <AccountCard {account} />
-      {/each}
-    </div>
+    {:else if accounts.items.length > 0}
+      <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {#each accounts.items as account (account.id)}
+          <AccountCard {account} />
+        {/each}
+      </div>
+    {/if}
   {/if}
 </section>

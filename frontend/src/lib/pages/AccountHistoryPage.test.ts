@@ -188,7 +188,9 @@ describe("AccountHistoryPage", () => {
 
     bumpActivity(accountA);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("request failed");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We couldn't refresh this account's activity. request failed",
+    );
     expect(screen.getByText(accountA)).toBeInTheDocument();
     expect(screen.getByText("Sent")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
@@ -197,7 +199,9 @@ describe("AccountHistoryPage", () => {
   it("shows initial loading again when retrying without successful data", async () => {
     requestMock.mockRejectedValueOnce(new Error("initial failure"));
     render(AccountHistoryPage);
-    expect(await screen.findByRole("alert")).toHaveTextContent("request failed");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We couldn't load this account's activity. request failed",
+    );
     const nextAccount = new Promise<Account>(() => undefined);
     const nextTransfers = new Promise<Transfer[]>(() => undefined);
     requestMock

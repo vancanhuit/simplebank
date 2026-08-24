@@ -87,7 +87,9 @@ describe("NotificationBell", () => {
 
     await fireEvent.click(screen.getByRole("button", { name: /sent/i }));
 
-    expect(await screen.findByText("write failed")).toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Something went wrong. Please try again.");
+    expect(alert).not.toHaveTextContent("write failed");
     expect(hidePopover).not.toHaveBeenCalled();
     expect(router.path).toBe("/");
 

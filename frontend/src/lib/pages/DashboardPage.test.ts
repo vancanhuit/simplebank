@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "./DashboardPage.svelte";
 import { accounts } from "../stores/accounts.svelte";
 
@@ -45,5 +45,18 @@ describe("DashboardPage", () => {
       "href",
       "/accounts/new",
     );
+  });
+
+  it("adds account context and retries a failed load", async () => {
+    accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
+    const load = vi.spyOn(accounts, "load").mockResolvedValue(true);
+
+    render(DashboardPage);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(load).toHaveBeenCalledOnce();
   });
 });

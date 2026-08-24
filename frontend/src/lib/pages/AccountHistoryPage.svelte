@@ -67,7 +67,10 @@
       successfulRouteId = id;
     } catch (err) {
       if (current()) {
-        error = toMessage(err);
+        const context = preserveVisibleData
+          ? "We couldn't refresh this account's activity."
+          : "We couldn't load this account's activity.";
+        error = `${context} ${toMessage(err)}`;
       }
     } finally {
       if (current()) {

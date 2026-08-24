@@ -171,7 +171,7 @@ describe("AccountsStore", () => {
 
     expect(accounts.items).toEqual([freshAccount]);
     expect(accounts.loaded).toBe(true);
-    expect(accounts.error).toBe("temporarily unavailable");
+    expect(accounts.error).toBe("SimpleBank is temporarily unavailable. Please try again.");
   });
 
   it("treats an aborted load as cancellation without a user-visible error", async () => {
