@@ -115,7 +115,7 @@ async function decode<T>(response: Response): Promise<T> {
   try {
     text = await response.text();
   } catch {
-    throw new ApiError("invalid_response", response.status);
+    throw new ApiError(response.ok ? "invalid_response" : "api", response.status);
   }
 
   let data: unknown;
@@ -199,7 +199,7 @@ export function toMessage(error: unknown): string {
     case "invalid_response":
       return "SimpleBank returned an unexpected response. Please try again.";
     case "aborted":
-      return "The request was canceled.";
+      return "";
     case "session_unavailable":
       return "Your session could not be restored. Please try again.";
     case "api":

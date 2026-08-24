@@ -92,7 +92,7 @@ describe("request", () => {
     );
   });
 
-  it("classifies aborts without exposing their messages", async () => {
+  it("keeps classified aborts silent and non-retryable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(new DOMException("private abort detail", "AbortError")),
@@ -101,8 +101,9 @@ describe("request", () => {
     const error = await request("/accounts").catch((reason: unknown) => reason);
 
     expect(error).toMatchObject({ kind: "aborted", status: null, code: null });
-    expect(toMessage(error)).toBe("The request was canceled.");
+    expect(toMessage(error)).toBe("");
     expect(toMessage(error)).not.toContain("private abort detail");
+    expect(isRetryable(error)).toBe(false);
   });
 
   it("classifies malformed successful JSON without exposing parser text", async () => {
@@ -112,6 +113,34 @@ describe("request", () => {
 
     expect(error).toMatchObject({ kind: "invalid_response", status: 200, code: null });
     expect(toMessage(error)).toBe("SimpleBank returned an unexpected response. Please try again.");
+  });
+
+  it("retains a non-retryable 400 status when its response body is unreadable", async () => {
+    const response = jsonResponse(400, { code: "invalid_request", error: "private server text" });
+    vi.spyOn(response, "text").mockRejectedValue(new Error("private body reader text"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+    const error = await request("/accounts").catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ kind: "api", status: 400, code: null });
+    expect(toMessage(error)).toBe(
+      "We couldn't complete your request. Please check your details and try again.",
+    );
+    expect(toMessage(error)).not.toContain("private body reader text");
+    expect(isRetryable(error)).toBe(false);
+  });
+
+  it("retains a retryable 503 status when its response body is unreadable", async () => {
+    const response = jsonResponse(503, { code: "internal_error", error: "private server text" });
+    vi.spyOn(response, "text").mockRejectedValue(new Error("private body reader text"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+    const error = await request("/accounts").catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ kind: "api", status: 503, code: null });
+    expect(toMessage(error)).toBe("SimpleBank is temporarily unavailable. Please try again.");
+    expect(toMessage(error)).not.toContain("private body reader text");
+    expect(isRetryable(error)).toBe(true);
   });
 
   it("preserves no-content success as undefined", async () => {
