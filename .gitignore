@@ -69,3 +69,5 @@
 .vscode/
 .codegraph/
 .worktrees/
+# CocoIndex Code (ccc)
+/.cocoindex_code/
