@@ -26,19 +26,21 @@ func (s *Server) createAccount(c *echo.Context) error {
 		return err
 	}
 	if !currency.IsSupported(req.Currency) {
-		return echo.NewHTTPError(http.StatusBadRequest, "unsupported currency")
+		return newAPIError(http.StatusBadRequest, "unsupported_currency", "unsupported currency")
 	}
 
 	if req.Balance > currency.MaxSafeMinorUnits {
-		return echo.NewHTTPError(
+		return newAPIError(
 			http.StatusUnprocessableEntity,
+			"opening_balance_limit_exceeded",
 			"opening balance exceeds the supported limit",
 		)
 	}
 
 	if req.Balance > s.config.OpeningBalanceLimitFor(req.Currency) {
-		return echo.NewHTTPError(
+		return newAPIError(
 			http.StatusUnprocessableEntity,
+			"opening_balance_limit_exceeded",
 			"opening balance exceeds the configured limit",
 		)
 	}
@@ -62,7 +64,7 @@ func (s *Server) createAccount(c *echo.Context) error {
 func (s *Server) getAccount(c *echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid account id")
+		return newAPIError(http.StatusBadRequest, "invalid_account_id", "invalid account id")
 	}
 
 	account, err := s.store.GetAccount(c.Request().Context(), id)
@@ -83,11 +85,11 @@ func (s *Server) getAccount(c *echo.Context) error {
 func (s *Server) listAccounts(c *echo.Context) error {
 	page, err := echo.QueryParamOr[int32](c, "page", 1)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid page")
+		return newAPIError(http.StatusBadRequest, "invalid_page", "invalid page")
 	}
 	size, err := echo.QueryParamOr[int32](c, "size", 5)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
+		return newAPIError(http.StatusBadRequest, "invalid_size", "invalid size")
 	}
 	page = max(page, 1)
 	if size < 1 {

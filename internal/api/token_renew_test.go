@@ -191,6 +191,21 @@ func TestRenewTokenMissingCookie(t *testing.T) {
 	}
 }
 
+func TestRenewTokenRejectsCrossOrigin(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tokens/renew", nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for cross-origin renew, got %d", rec.Code)
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "cross_origin_denied" {
+		t.Fatalf("code = %q, want cross_origin_denied", got.Code)
+	}
+}
+
 func TestRenewTokenReusedOldCookie(t *testing.T) {
 	t.Parallel()
 	tok, _ := refreshToken(t, "alice", nil)

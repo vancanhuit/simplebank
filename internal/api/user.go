@@ -157,15 +157,15 @@ func (s *Server) loginUser(c *echo.Context) error {
 			// Run a comparison against a dummy hash so an unknown username takes
 			// the same time as a wrong password (no enumeration via timing).
 			_ = password.Check(req.Password, dummyPasswordHash)
-			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
+			return newAPIError(http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 		}
 		return err
 	}
 	if err := password.Check(req.Password, user.HashedPassword); err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
+		return newAPIError(http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 	}
 	if !user.IsEmailVerified {
-		return echo.NewHTTPError(http.StatusForbidden, "email verification required")
+		return newAPIError(http.StatusForbidden, "email_verification_required", "email verification required")
 	}
 
 	tokens, err := s.issueTokenPair(user.Username, roleDepositor)
@@ -244,7 +244,7 @@ func (s *Server) renewToken(c *echo.Context) error {
 		if errors.Is(err, http.ErrNoCookie) {
 			return c.NoContent(http.StatusNoContent)
 		}
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid session")
+		return newAPIError(http.StatusUnauthorized, "invalid_session", "invalid session")
 	}
 
 	refreshPayload, err := s.tokenMaker.VerifyToken(refreshCookie.Value, token.Refresh)
@@ -323,10 +323,10 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 	code := c.QueryParam("code")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+		return newAPIError(http.StatusBadRequest, "invalid_verification_link", "invalid id")
 	}
 	if code == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
+		return newAPIError(http.StatusBadRequest, "invalid_verification_link", "invalid or expired verification link")
 	}
 
 	ctx := c.Request().Context()
@@ -336,7 +336,7 @@ func (s *Server) verifyEmail(c *echo.Context) error {
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrRecordNotFound) {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid or expired verification link")
+			return newAPIError(http.StatusBadRequest, "invalid_verification_link", "invalid or expired verification link")
 		}
 		return err
 	}

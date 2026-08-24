@@ -33,8 +33,9 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	}
 
 	if req.Amount > currency.MaxSafeMinorUnits {
-		return echo.NewHTTPError(
+		return newAPIError(
 			http.StatusUnprocessableEntity,
+			"amount_too_large",
 			"amount exceeds the supported limit",
 		)
 	}
@@ -43,14 +44,14 @@ func (s *Server) createTransfer(c *echo.Context) error {
 	// single lookup gives the ceilings in that currency's minor units.
 	limit := s.config.LimitFor(req.Currency)
 	if limit.MaxPerTransfer > 0 && req.Amount > limit.MaxPerTransfer {
-		return echo.NewHTTPError(http.StatusUnprocessableEntity, "amount exceeds the per-transfer limit")
+		return newAPIError(http.StatusUnprocessableEntity, "transfer_limit_exceeded", "amount exceeds the per-transfer limit")
 	}
 
 	fromID, _ := uuid.Parse(req.FromAccountID)
 	toID, _ := uuid.Parse(req.ToAccountID)
 	idempotencyKey, _ := uuid.Parse(req.IdempotencyKey)
 	if fromID == toID {
-		return echo.NewHTTPError(http.StatusBadRequest, "cannot transfer to the same account")
+		return newAPIError(http.StatusBadRequest, "same_account_transfer", "cannot transfer to the same account")
 	}
 	ctx := c.Request().Context()
 
@@ -92,16 +93,16 @@ func (s *Server) createTransfer(c *echo.Context) error {
 func (s *Server) listTransfers(c *echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid account id")
+		return newAPIError(http.StatusBadRequest, "invalid_account_id", "invalid account id")
 	}
 
 	page, err := echo.QueryParamOr[int32](c, "page", 1)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid page")
+		return newAPIError(http.StatusBadRequest, "invalid_page", "invalid page")
 	}
 	size, err := echo.QueryParamOr[int32](c, "size", 10)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid size")
+		return newAPIError(http.StatusBadRequest, "invalid_size", "invalid size")
 	}
 	page = max(page, 1)
 	if size < 1 {
@@ -151,7 +152,7 @@ func (s *Server) validAccount(ctx context.Context, id uuid.UUID, currency string
 		return account, store.ClassifyError(err)
 	}
 	if account.Currency != currency {
-		return account, echo.NewHTTPError(http.StatusBadRequest, "currency mismatch")
+		return account, newAPIError(http.StatusBadRequest, "currency_mismatch", "currency mismatch")
 	}
 	return account, nil
 }

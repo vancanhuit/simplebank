@@ -14,7 +14,7 @@ type customValidator struct {
 
 func (cv *customValidator) Validate(i any) error {
 	if err := cv.validate.Struct(i); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request payload")
+		return newAPIError(http.StatusBadRequest, "invalid_request_payload", "invalid request payload")
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func newValidator() *customValidator {
 func bindValidate[T any](c *echo.Context) (T, error) {
 	var req T
 	if err := c.Bind(&req); err != nil {
-		return req, echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+		return req, newAPIError(http.StatusBadRequest, "invalid_request_body", "invalid request body")
 	}
 	if err := c.Validate(&req); err != nil {
 		return req, err

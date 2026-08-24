@@ -359,6 +359,11 @@ func TestListNotificationsNormalizesSize(t *testing.T) {
 			if rec.Code != tt.wantCode {
 				t.Fatalf("status = %d, want %d (%s)", rec.Code, tt.wantCode, rec.Body.String())
 			}
+			if tt.wantCode == http.StatusBadRequest {
+				if got := decodeErrorResponse(t, rec); got.Code != "invalid_size" {
+					t.Fatalf("code = %q, want invalid_size", got.Code)
+				}
+			}
 		})
 	}
 }
@@ -407,8 +412,11 @@ func TestListNotificationsRejectsInvalidCursor(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer "+tokens.access)
 			rec := httptest.NewRecorder()
 			s.Handler().ServeHTTP(rec, req)
-			if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"error\":\"invalid notification cursor\"}\n" {
+			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("response = %d %q, want cursor 400", rec.Code, rec.Body.String())
+			}
+			if got := decodeErrorResponse(t, rec); got.Code != "invalid_notification_cursor" {
+				t.Fatalf("code = %q, want invalid_notification_cursor", got.Code)
 			}
 		})
 	}
@@ -489,8 +497,11 @@ func TestMarkNotificationReadUsesAuthenticatedOwner(t *testing.T) {
 			},
 		}
 		rec := authenticatedNotificationRequest(t, newTestServerWithStore(t, fake), http.MethodPut, "/api/v1/notifications/"+id.String()+"/read")
-		if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"error\":\"resource not found\"}\n" {
+		if rec.Code != http.StatusNotFound {
 			t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
+		}
+		if got := decodeErrorResponse(t, rec); got.Code != "not_found" {
+			t.Fatalf("code = %q, want not_found", got.Code)
 		}
 	})
 
@@ -499,6 +510,9 @@ func TestMarkNotificationReadUsesAuthenticatedOwner(t *testing.T) {
 		rec := authenticatedNotificationRequest(t, newTestServerWithStore(t, fakeStore{}), http.MethodPut, "/api/v1/notifications/not-a-uuid/read")
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400 (%s)", rec.Code, rec.Body.String())
+		}
+		if got := decodeErrorResponse(t, rec); got.Code != "invalid_notification_id" {
+			t.Fatalf("code = %q, want invalid_notification_id", got.Code)
 		}
 	})
 }

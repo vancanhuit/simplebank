@@ -147,6 +147,9 @@ func TestCreateTransferExceedsMaxAmount(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422 for over-limit amount, got %d (%s)", rec.Code, rec.Body.String())
 	}
+	if got := decodeErrorResponse(t, rec); got.Code != "transfer_limit_exceeded" {
+		t.Fatalf("code = %q, want transfer_limit_exceeded", got.Code)
+	}
 }
 
 func TestCreateTransferUnsafeAmount(t *testing.T) {
@@ -181,8 +184,8 @@ func TestCreateTransferUnsafeAmount(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422 for unsafe transfer amount, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "amount exceeds the supported limit") {
-		t.Errorf("want 'amount exceeds the supported limit', got %s", rec.Body.String())
+	if got := decodeErrorResponse(t, rec); got.Code != "amount_too_large" {
+		t.Fatalf("code = %q, want amount_too_large", got.Code)
 	}
 }
 
