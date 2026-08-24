@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import { toMessage } from "../api/client";
   import { auth } from "../stores/auth.svelte";
-  import { navigate, replaceNavigationState, router } from "../router.svelte";
+  import { navigate, replaceNavigationState, router, safeReturnPath } from "../router.svelte";
   import AuthLayout from "./AuthLayout.svelte";
   import TextField from "../components/TextField.svelte";
   import Button from "../components/Button.svelte";
@@ -17,6 +17,8 @@
   let error = $state<string | null>(null);
   let submitting = $state(false);
   let logoutFailed = $state(false);
+  let sessionExpired = $state(false);
+  let returnTo: string | null = null;
 
   const fieldIds = {
     username: "login-username",
@@ -32,10 +34,26 @@
     historyState.registered === true;
 
   $effect(() => {
-    if (router.state.logoutFailed !== true) return;
-    logoutFailed = true;
-    const remainingState = { ...router.state };
+    const state = router.state;
+    const hasConsumedState =
+      "logoutFailed" in state || "returnTo" in state || "sessionExpired" in state;
+    if (!hasConsumedState) return;
+
+    if (state.logoutFailed === true) {
+      logoutFailed = true;
+    }
+    if (state.sessionExpired === true) {
+      sessionExpired = true;
+    }
+    const validatedReturnTo = safeReturnPath(state.returnTo);
+    if (validatedReturnTo !== null) {
+      returnTo = validatedReturnTo;
+    }
+
+    const remainingState = { ...state };
     delete remainingState.logoutFailed;
+    delete remainingState.returnTo;
+    delete remainingState.sessionExpired;
     replaceNavigationState(remainingState);
   });
 
@@ -65,7 +83,7 @@
     submitting = true;
     try {
       await auth.login(validation.values.username, validation.values.password);
-      navigate("/");
+      navigate(returnTo ?? "/");
     } catch (err) {
       error = toMessage(err);
     } finally {
@@ -80,6 +98,9 @@
       <Alert variant="error">
         You were signed out locally, but SimpleBank couldn't complete the server sign-out request.
       </Alert>
+    {/if}
+    {#if sessionExpired}
+      <Alert>Your session expired. Sign in again to continue.</Alert>
     {/if}
     {#if registered}
       <Alert variant="success"

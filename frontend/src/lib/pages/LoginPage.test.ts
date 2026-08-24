@@ -116,4 +116,91 @@ describe("LoginPage", () => {
       password: " password with spaces ",
     });
   });
+
+  it("shows the session-expiry notice once and consumes its navigation state", async () => {
+    const state = { returnTo: "/transfer", sessionExpired: true, preserved: "value" };
+    history.replaceState(state, "", "/login");
+    router.state = state;
+    const first = render(LoginPage);
+
+    expect(
+      await screen.findByText("Your session expired. Sign in again to continue."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(history.state).toEqual({ preserved: "value" }));
+    expect(router.state).toEqual({ preserved: "value" });
+
+    first.unmount();
+    render(LoginPage);
+
+    expect(
+      screen.queryByText("Your session expired. Sign in again to continue."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("navigates to a validated return path after successful login", async () => {
+    const state = { returnTo: "/accounts/abc?tab=activity#latest" };
+    history.replaceState(state, "", "/login");
+    router.state = state;
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        access_token: "access-token",
+        access_token_expires_at: "2026-08-24T12:00:00Z",
+        session_id: "session-id",
+        user: {
+          username: "alice01",
+          full_name: "Alice Smith",
+          email: "alice@example.com",
+          is_email_verified: true,
+          created_at: "2026-08-22T22:00:00Z",
+        },
+      }),
+    );
+    render(LoginPage);
+
+    await fireEvent.input(screen.getByRole("textbox", { name: "Username" }), {
+      target: { value: "alice01" },
+    });
+    await fireEvent.input(screen.getByLabelText("Password"), {
+      target: { value: "password" },
+    });
+    await fireEvent.submit(screen.getByRole("button", { name: "Sign in" }).closest("form")!);
+
+    await waitFor(() => expect(router.path).toBe("/accounts/abc"));
+    expect(`${location.pathname}${location.search}${location.hash}`).toBe(
+      "/accounts/abc?tab=activity#latest",
+    );
+  });
+
+  it("falls back to the dashboard after login when return state is malicious", async () => {
+    const state = { returnTo: "https://evil.example/steal" };
+    history.replaceState(state, "", "/login");
+    router.state = state;
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        access_token: "access-token",
+        access_token_expires_at: "2026-08-24T12:00:00Z",
+        session_id: "session-id",
+        user: {
+          username: "alice01",
+          full_name: "Alice Smith",
+          email: "alice@example.com",
+          is_email_verified: true,
+          created_at: "2026-08-22T22:00:00Z",
+        },
+      }),
+    );
+    render(LoginPage);
+
+    await fireEvent.input(screen.getByRole("textbox", { name: "Username" }), {
+      target: { value: "alice01" },
+    });
+    await fireEvent.input(screen.getByLabelText("Password"), {
+      target: { value: "password" },
+    });
+    await fireEvent.submit(screen.getByRole("button", { name: "Sign in" }).closest("form")!);
+
+    await waitFor(() => expect(router.path).toBe("/"));
+    expect(location.pathname).toBe("/");
+    expect(location.origin).not.toBe("https://evil.example");
+  });
 });
