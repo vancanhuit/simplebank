@@ -28,7 +28,12 @@ export function safeReturnPath(value: unknown): string | null {
     }
   }
 
-  const url = navigationTarget(value);
+  let url: URL;
+  try {
+    url = navigationTarget(value);
+  } catch {
+    return null;
+  }
   const path = normalize(url.pathname);
   if (url.origin !== window.location.origin || path === "/login" || path === "/register") {
     return null;

@@ -151,6 +151,32 @@ describe("App routing", () => {
     expect(notificationsMock.reconcile).toHaveBeenCalledWith("manual");
   });
 
+  it("announces and focuses protected content restored by startup retry", async () => {
+    history.replaceState({}, "", "/transfer");
+    router.path = "/transfer";
+    auth.initializing = true;
+    vi.restoreAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce(jsonResponse(200, renewResponse)),
+    );
+    render(App);
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    retry.focus();
+    expect(retry).toHaveFocus();
+
+    await fireEvent.click(retry);
+
+    expect(await screen.findByRole("heading", { name: "Send money" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("Send money");
+      expect(document.querySelector("main")).toHaveFocus();
+    });
+  });
+
   it("keeps the protected page and session caches during transient authenticated renewal failure", async () => {
     history.replaceState({}, "", "/transfer");
     router.path = "/transfer";

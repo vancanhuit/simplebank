@@ -89,11 +89,16 @@
   // this a screen reader never learns the page changed.
   let routeAnnouncement = $state("");
   let hasNavigated = false;
+  let recoveringInitialSession = false;
   $effect(() => {
     // Depend on the resolved label; skip while auth is still resolving so we
     // don't announce a transient loading state.
     const label = view.label;
-    if (auth.initializing || (!auth.isAuthenticated && auth.renewalUnavailable)) {
+    if (auth.initializing) {
+      return;
+    }
+    if (!auth.isAuthenticated && auth.renewalUnavailable) {
+      recoveringInitialSession = true;
       return;
     }
     document.title = `${label} · SimpleBank`;
@@ -101,8 +106,11 @@
     // so only manage focus and announce on subsequent in-app navigations.
     if (!hasNavigated) {
       hasNavigated = true;
-      return;
+      if (!recoveringInitialSession) {
+        return;
+      }
     }
+    recoveringInitialSession = false;
     routeAnnouncement = label;
     // After the new view renders, move focus to its main region so keyboard
     // users continue from the new content instead of a stale element.

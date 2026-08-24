@@ -46,6 +46,7 @@ describe("router", () => {
     "/login?returnTo=/transfer",
     "/register",
     "/transfer\n/hidden",
+    "/\\[::1",
     42,
   ])("rejects unsafe return path %s", (value) => {
     expect(safeReturnPath(value)).toBeNull();

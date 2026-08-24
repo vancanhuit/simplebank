@@ -203,4 +203,38 @@ describe("LoginPage", () => {
     expect(location.pathname).toBe("/");
     expect(location.origin).not.toBe("https://evil.example");
   });
+
+  it("renders and falls back safely when return state is a malformed URL", async () => {
+    const state = { returnTo: "/\\[::1" };
+    history.replaceState(state, "", "/login");
+    router.state = state;
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        access_token: "access-token",
+        access_token_expires_at: "2026-08-24T12:00:00Z",
+        session_id: "session-id",
+        user: {
+          username: "alice01",
+          full_name: "Alice Smith",
+          email: "alice@example.com",
+          is_email_verified: true,
+          created_at: "2026-08-22T22:00:00Z",
+        },
+      }),
+    );
+
+    render(LoginPage);
+
+    expect(screen.getByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
+    await fireEvent.input(screen.getByRole("textbox", { name: "Username" }), {
+      target: { value: "alice01" },
+    });
+    await fireEvent.input(screen.getByLabelText("Password"), {
+      target: { value: "password" },
+    });
+    await fireEvent.submit(screen.getByRole("button", { name: "Sign in" }).closest("form")!);
+
+    await waitFor(() => expect(router.path).toBe("/"));
+    expect(location.pathname).toBe("/");
+  });
 });
