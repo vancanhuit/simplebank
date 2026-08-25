@@ -76,10 +76,9 @@
 
 <button
   type="button"
-  class="btn btn-ghost btn-square relative min-h-11 min-w-11"
+  class="btn btn-ghost btn-square relative min-h-11 min-w-11 [anchor-name:--notification-bell]"
   aria-label={`Notifications, ${notifications.unreadCount} unread`}
   popovertarget="notification-preview"
-  style="anchor-name:--notification-bell"
 >
   <Bell aria-hidden="true" size={19} />
   {#if notifications.unreadCount > 0}
@@ -95,9 +94,8 @@
 <section
   {@attach capturePopover}
   id="notification-preview"
-  class="dropdown dropdown-end m-0 w-[min(20rem,calc(100vw-1rem))] rounded-box border border-base-300 bg-base-100 p-0 shadow-xl"
+  class="dropdown dropdown-end m-0 w-[min(20rem,calc(100vw-1rem))] rounded-box border border-base-300 bg-base-100 p-0 shadow-xl [position-anchor:--notification-bell]"
   popover
-  style="position-anchor:--notification-bell"
   aria-label="Recent notifications"
 >
   <div class="flex items-center justify-between gap-2 border-b border-base-300 px-4 py-3">

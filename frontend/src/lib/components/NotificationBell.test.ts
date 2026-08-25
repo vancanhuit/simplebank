@@ -32,6 +32,18 @@ afterEach(() => {
 });
 
 describe("NotificationBell", () => {
+  it("keeps popover anchor declarations out of inline styles", () => {
+    render(NotificationBell);
+
+    const trigger = screen.getByRole("button", { name: "Notifications, 0 unread" });
+    const region = screen.getByRole("region", { name: "Recent notifications" });
+
+    expect(trigger).not.toHaveAttribute("style");
+    expect(trigger).toHaveClass("[anchor-name:--notification-bell]");
+    expect(region).not.toHaveAttribute("style");
+    expect(region).toHaveClass("[position-anchor:--notification-bell]");
+  });
+
   it("announces the actual unread count while visually capping the hidden badge", () => {
     seed([unread], 124);
     render(NotificationBell);
