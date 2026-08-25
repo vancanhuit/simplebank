@@ -286,3 +286,10 @@ enforced by cocogitto. Install the git hooks with `mise run hooks:install`.
 The pre-commit hook rejects unformatted staged Go files and stale or unstaged
 sqlc output when database sources change.
 Run `mise run golangci-lint` and `mise run test:unit` before opening a PR.
+
+Changes to `main` must go through a pull request. All required `Go CI` checks
+must pass on an up-to-date branch, and all review conversations must be
+resolved. Pull requests are squash-merged to preserve a linear history.
+
+Release tags use the `v<major>.<minor>.<patch>` format. Published release tags
+are immutable: they cannot be moved or deleted.
