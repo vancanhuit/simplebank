@@ -90,6 +90,10 @@ describe("AuthStore", () => {
   it.each([
     ["an empty object", {}],
     ["wrong field types", { ...validLoginResponse, access_token: 42 }],
+    [
+      "an unverified user",
+      { ...validLoginResponse, user: { ...verifiedUser, is_email_verified: false } },
+    ],
   ])("rejects login success containing %s before applying auth state", async (_name, body) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
     const store = new AuthStore();
@@ -198,6 +202,56 @@ describe("AuthStore", () => {
     expect(outcome).toBe("no_session");
     expect(store.accessToken).toBeNull();
     expect(store.user).toBeNull();
+    expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
+  });
+
+  it("treats an unverified refresh session as signed out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          ...validRenewResponse,
+          user: { ...verifiedUser, is_email_verified: false },
+        }),
+      ),
+    );
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+    const generation = store.generation;
+
+    const outcome = await store.tryRefresh();
+
+    expect(outcome).toBe("no_session");
+    expect(store.user).toBeNull();
+    expect(store.accessToken).toBeNull();
+    expect(store.generation).toBe(generation + 1);
+    expect(store.renewalUnavailable).toBe(false);
+    expect(store.sessionExpired).toBe(false);
+  });
+
+  it("treats a verification-required refresh error as signed out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(403, {
+          code: "email_verification_required",
+          error: "email verification required",
+        }),
+      ),
+    );
+    const store = new AuthStore();
+    store.user = verifiedUser;
+    store.accessToken = "stale-access";
+    const generation = store.generation;
+
+    const outcome = await store.tryRefresh();
+
+    expect(outcome).toBe("no_session");
+    expect(store.user).toBeNull();
+    expect(store.accessToken).toBeNull();
     expect(store.generation).toBe(generation + 1);
     expect(store.renewalUnavailable).toBe(false);
     expect(store.sessionExpired).toBe(false);

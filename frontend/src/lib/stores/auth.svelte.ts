@@ -40,7 +40,12 @@ function isRenewResponse(value: unknown): value is RenewResponse {
 }
 
 function isLoginResponse(value: unknown): value is LoginResponse {
-  return isRecord(value) && isRenewResponse(value) && typeof value.session_id === "string";
+  return (
+    isRecord(value) &&
+    isRenewResponse(value) &&
+    value.user.is_email_verified &&
+    typeof value.session_id === "string"
+  );
 }
 
 /**
@@ -143,6 +148,10 @@ class AuthStore {
       if (!isRenewResponse(res)) {
         throw new ApiError("invalid_response", 200);
       }
+      if (!res.user.is_email_verified) {
+        this.#invalidateSession();
+        return "no_session";
+      }
 
       this.accessToken = res.access_token;
       this.user = res.user;
@@ -151,6 +160,10 @@ class AuthStore {
     } catch (error) {
       if (this.#generation !== gen) {
         return "stale";
+      }
+      if (error instanceof ApiError && error.code === "email_verification_required") {
+        this.#invalidateSession();
+        return "no_session";
       }
       if (error instanceof ApiError && error.status === 401) {
         this.#invalidateSession();

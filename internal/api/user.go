@@ -253,6 +253,15 @@ func (s *Server) renewToken(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
+	user, err := s.store.GetUser(ctx, refreshPayload.Username)
+	if err != nil {
+		return store.ClassifyError(err)
+	}
+	if !user.IsEmailVerified {
+		s.clearRefreshCookie(c)
+		return newAPIError(http.StatusForbidden, "email_verification_required", "email verification required")
+	}
+
 	var tokens tokenPair
 	_, err = s.store.RotateSessionTx(ctx, store.RotateSessionTxParams{
 		ID:               refreshPayload.ID,
@@ -272,10 +281,6 @@ func (s *Server) renewToken(c *echo.Context) error {
 			}, nil
 		},
 	})
-	if err != nil {
-		return store.ClassifyError(err)
-	}
-	user, err := s.store.GetUser(ctx, refreshPayload.Username)
 	if err != nil {
 		return store.ClassifyError(err)
 	}

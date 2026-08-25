@@ -65,7 +65,7 @@ func TestRenewTokenOK(t *testing.T) {
 			return sqlcdb.Session{ID: newSession.ID, Username: arg.Username, RefreshToken: newSession.RefreshTokenHash, ExpiresAt: newSession.ExpiresAt}, nil
 		},
 		getUser: func(context.Context, string) (sqlcdb.User, error) {
-			return sqlcdb.User{Username: "alice", Email: "alice@example.com"}, nil
+			return sqlcdb.User{Username: "alice", Email: "alice@example.com", IsEmailVerified: true}, nil
 		},
 	}
 	s := newTestServerWithStore(t, fake)
@@ -115,10 +115,39 @@ func TestRenewTokenOK(t *testing.T) {
 	}
 }
 
+func TestRenewTokenUnverifiedUser(t *testing.T) {
+	t.Parallel()
+	tok, _ := refreshToken(t, "alice", nil)
+	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", IsEmailVerified: false}, nil
+		},
+		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
+			t.Fatal("unverified user session must not be rotated")
+			return sqlcdb.Session{}, nil
+		},
+	}
+	s := newTestServerWithStore(t, fake)
+
+	rec := postRenew(t, s, tok)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeErrorResponse(t, rec); got.Code != "email_verification_required" {
+		t.Fatalf("code = %q, want email_verification_required", got.Code)
+	}
+	if cookies := rec.Result().Cookies(); len(cookies) != 1 || cookies[0].Name != refreshCookieName || cookies[0].MaxAge != -1 {
+		t.Fatalf("unverified user refresh cookie must be cleared, got %+v", cookies)
+	}
+}
+
 func TestRenewTokenBlockedSession(t *testing.T) {
 	t.Parallel()
 	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", IsEmailVerified: true}, nil
+		},
 		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
 			return sqlcdb.Session{}, store.ErrInvalidSession
 		},
@@ -138,6 +167,9 @@ func TestRenewTokenUsernameMismatch(t *testing.T) {
 	t.Parallel()
 	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", IsEmailVerified: true}, nil
+		},
 		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
 			return sqlcdb.Session{}, store.ErrInvalidSession
 		},
@@ -153,6 +185,9 @@ func TestRenewTokenRefreshMismatch(t *testing.T) {
 	t.Parallel()
 	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", IsEmailVerified: true}, nil
+		},
 		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
 			return sqlcdb.Session{}, store.ErrInvalidSession
 		},
@@ -168,6 +203,9 @@ func TestRenewTokenExpiredSession(t *testing.T) {
 	t.Parallel()
 	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", IsEmailVerified: true}, nil
+		},
 		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
 			return sqlcdb.Session{}, store.ErrInvalidSession
 		},
@@ -214,6 +252,9 @@ func TestRenewTokenReusedOldCookie(t *testing.T) {
 	t.Parallel()
 	tok, _ := refreshToken(t, "alice", nil)
 	fake := fakeStore{
+		getUser: func(context.Context, string) (sqlcdb.User, error) {
+			return sqlcdb.User{Username: "alice", IsEmailVerified: true}, nil
+		},
 		rotateSessionTx: func(context.Context, store.RotateSessionTxParams) (sqlcdb.Session, error) {
 			return sqlcdb.Session{}, store.ErrInvalidSession
 		},
