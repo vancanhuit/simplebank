@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -248,7 +248,7 @@ func TestListenerIgnoresMalformedPayload(t *testing.T) {
 
 	connection.notifications <- fakeWaitResult{notification: &pgconn.Notification{Payload: `{`}}
 	connection.notifications <- fakeWaitResult{notification: &pgconn.Notification{Payload: `{"id":"00000000-0000-0000-0000-000000000000","owner":"alice"}`}}
-	connection.notifications <- fakeWaitResult{notification: &pgconn.Notification{Payload: `{"id":"` + uuid.NewString() + `","owner":""}`}}
+	connection.notifications <- fakeWaitResult{notification: &pgconn.Notification{Payload: `{"id":"` + uuid.New().String() + `","owner":""}`}}
 
 	select {
 	case got := <-subscriber:

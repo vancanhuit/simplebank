@@ -2,8 +2,7 @@ package notification
 
 import (
 	"sync"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const subscriberBuffer = 16
