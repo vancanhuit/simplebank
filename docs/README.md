@@ -1,8 +1,7 @@
 # SimpleBank Documentation
 
-Project documentation is organized by purpose. Start with the current guides,
-use architecture decision records for durable rationale, and treat design and
-implementation plans as historical context for the work they describe.
+Project documentation is organized by purpose. Start with the current guides
+and use architecture decision records for durable rationale.
 
 ## Current Guides
 
@@ -36,24 +35,11 @@ hard-to-reverse choices and their trade-offs. Accepted ADRs are authoritative
 for the decisions they cover. Do not delete an outdated ADR; add a new record
 that supersedes it and update both records' statuses.
 
-## Design and Implementation History
-
-| Directory | Purpose |
-|-----------|---------|
-| [`superpowers/specs/`](superpowers/specs/) | Approved feature designs and acceptance criteria captured before implementation |
-| [`superpowers/plans/`](superpowers/plans/) | Step-by-step implementation plans associated with those designs |
-
-Specs and plans are snapshots of intent at the time they were written. They
-remain useful for constraints and rejected approaches, but later code, current
-guides, and ADRs may supersede their implementation details.
-
 ## Updating Documentation
 
 - Update the relevant current guide when setup, commands, configuration, API
   behavior, test workflows, or repository structure changes.
 - Write an ADR for a significant decision that would be expensive to reverse;
   do not use ADRs for routine implementation details.
-- Preserve specs and plans as historical records instead of rewriting them to
-  match later implementation changes.
 - Prefer links to a single source of truth over duplicating detailed behavior
   across documents.
