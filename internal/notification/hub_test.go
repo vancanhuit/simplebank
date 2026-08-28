@@ -4,8 +4,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func TestHubPublishesOnlyToOwner(t *testing.T) {
@@ -75,18 +74,15 @@ func TestHubConcurrentPublishAndUnsubscribe(t *testing.T) {
 	var wg sync.WaitGroup
 	for range iterations {
 		_, unsubscribe := hub.Subscribe("alice")
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range iterations {
 				hub.Publish("alice", uuid.New())
 			}
-		}()
-		go func() {
-			defer wg.Done()
+		})
+		wg.Go(func() {
 			unsubscribe()
 			unsubscribe()
-		}()
+		})
 	}
 	wg.Wait()
 }

@@ -75,7 +75,7 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 			if err != nil {
 				return ClassifyError(err)
 			}
-			if spent+arg.Amount > arg.DailyLimit {
+			if arg.Amount > arg.DailyLimit || spent > arg.DailyLimit-arg.Amount {
 				return ErrDailyLimitExceeded
 			}
 		}

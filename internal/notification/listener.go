@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -174,7 +174,7 @@ func (l *Listener) publish(notification *pgconn.Notification) {
 		ID    uuid.UUID `json:"id"`
 		Owner string    `json:"owner"`
 	}
-	if err := json.Unmarshal([]byte(notification.Payload), &message); err != nil || message.ID == uuid.Nil || message.Owner == "" {
+	if err := json.Unmarshal([]byte(notification.Payload), &message); err != nil || message.ID == uuid.Nil() || message.Owner == "" {
 		return
 	}
 	l.hub.Publish(message.Owner, message.ID)

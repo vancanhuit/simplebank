@@ -328,6 +328,53 @@ func TestTransferTxDailyLimit(t *testing.T) {
 	}
 }
 
+// TestTransferTxDailyLimitDoesNotOverflow ensures a large historical total
+// cannot wrap the limit comparison and permit another transfer.
+func TestTransferTxDailyLimitDoesNotOverflow(t *testing.T) {
+	sender := createTestUser(t)
+	recipient := createTestUser(t)
+	from := createTestAccount(t, sender.Username)
+	to := createTestAccount(t, recipient.Username)
+
+	if _, err := testPool.Exec(t.Context(), `
+		INSERT INTO transfers (from_account_id, to_account_id, amount, idempotency_key)
+		SELECT $1, $2, $3, uuidv7()
+		FROM generate_series(1, 1024)
+	`, from.ID, to.ID, int64(currency.MaxSafeMinorUnits)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(t.Context(), `
+		INSERT INTO transfers (from_account_id, to_account_id, amount, idempotency_key)
+		VALUES ($1, $2, 1018, $3)
+	`, from.ID, to.ID, uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := testStore.TransferTx(t.Context(), TransferTxParams{
+		FromAccountID:  from.ID,
+		ToAccountID:    to.ID,
+		Amount:         10,
+		Currency:       currency.USD,
+		IdempotencyKey: uuid.New(),
+		DailyLimit:     currency.MaxSafeMinorUnits,
+	})
+	if !errors.Is(err, ErrDailyLimitExceeded) {
+		t.Fatalf("want ErrDailyLimitExceeded, got %v", err)
+	}
+
+	updatedFrom, err := testStore.GetAccount(t.Context(), from.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedTo, err := testStore.GetAccount(t.Context(), to.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedFrom.Balance != from.Balance || updatedTo.Balance != to.Balance {
+		t.Fatalf("balances changed after rejected transfer: %d and %d", updatedFrom.Balance, updatedTo.Balance)
+	}
+}
+
 // TestCreateAccountTxOpeningEntry checks that opening an account with a balance
 // records a matching entry, keeping balance == SUM(entries).
 func TestCreateAccountTxOpeningEntry(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
-	guuid "github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -31,7 +31,7 @@ type Server struct {
 	store                  store.Store
 	tokenMaker             token.Maker
 	riverClient            *river.Client[pgx.Tx]
-	subscribeNotifications func(string) (<-chan guuid.UUID, func())
+	subscribeNotifications func(string) (<-chan uuid.UUID, func())
 	notificationKeepalive  time.Duration
 	readiness              func(context.Context) error
 	router                 *echo.Echo

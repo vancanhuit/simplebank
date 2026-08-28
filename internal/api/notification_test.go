@@ -12,10 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	guuid "github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"uuid"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vancanhuit/simplebank/internal/config"
 	store "github.com/vancanhuit/simplebank/internal/db"
@@ -53,8 +52,8 @@ func TestNotificationStreamFiltersAuthenticatedOwner(t *testing.T) {
 		t.Fatalf("initial frame = %q, want connected comment", got)
 	}
 
-	hub.Publish("bob", guuid.MustParse("0198d94d-9380-7d00-8000-000000000001"))
-	aliceID := guuid.MustParse("0198d94d-9380-7d00-8000-000000000002")
+	hub.Publish("bob", uuid.MustParse("0198d94d-9380-7d00-8000-000000000001"))
+	aliceID := uuid.MustParse("0198d94d-9380-7d00-8000-000000000002")
 	hub.Publish("alice", aliceID)
 	if got, want := readSSEFrame(t, reader), "event: notification\ndata: "+aliceID.String()+"\n\n"; got != want {
 		t.Fatalf("notification frame = %q, want %q", got, want)
@@ -142,8 +141,8 @@ func (writer *fakeDeadlineResponseWriter) SetWriteDeadline(time.Time) error {
 func TestNotificationStreamWriteDeadlineFailureUnsubscribes(t *testing.T) {
 	s, _, _ := newNotificationStreamServer(t, time.Hour)
 	unsubscribed := false
-	s.subscribeNotifications = func(string) (<-chan guuid.UUID, func()) {
-		return make(chan guuid.UUID), func() { unsubscribed = true }
+	s.subscribeNotifications = func(string) (<-chan uuid.UUID, func()) {
+		return make(chan uuid.UUID), func() { unsubscribed = true }
 	}
 	tokens := mustIssueTokenPair(t, "alice")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/stream", nil)
