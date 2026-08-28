@@ -199,8 +199,8 @@ authoritative and enforces the same cap before account creation.
 
 ## Architecture
 
-See the [documentation index](docs/README.md) for architecture decisions,
-feature designs, and implementation-plan history.
+See the [documentation index](docs/README.md) for current guides and
+architecture decisions.
 
 ```
 caddy/            reverse-proxy configuration for the proxy-aware dev profile
@@ -230,6 +230,7 @@ Key design decisions are recorded as ADRs in [docs/decisions/](docs/decisions/RE
 - [ADR-0004](docs/decisions/0004-split-util-into-domain-packages.md) — splitting `util` into domain packages, separating crypto from non-crypto randomness.
 - [ADR-0005](docs/decisions/0005-transfer-safety-idempotency-and-limits.md) — idempotent transfers with source-first authorization, in-transaction re-validation and daily limits, plus API-edge per-transfer caps.
 - [ADR-0006](docs/decisions/0006-run-worker-with-http-server.md) — running the River worker in the HTTP server process with ordered startup and shutdown.
+- [ADR-0007](docs/decisions/0007-deliver-durable-balance-notifications-with-sse.md) — durable balance notifications delivered to the SPA with server-sent events.
 
 Money transfers run in a single database transaction that locks both accounts in
 a deterministic order (avoiding deadlocks), re-validates currency against the

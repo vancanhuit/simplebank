@@ -3,7 +3,7 @@
 ## Sources and tools
 
 - Use the pinned `mise` toolchain and `mise run ...` tasks from `mise.toml`; `auto_install` is disabled, so run `mise install` on a fresh checkout.
-- Treat current code, `README.md`, `frontend/README.md`, and accepted ADRs in `docs/decisions/` as authoritative. `docs/superpowers/{specs,plans}/` is historical and may be stale.
+- Treat current code, `README.md`, `frontend/README.md`, and accepted ADRs in `docs/decisions/` as authoritative.
 - Go-wide build, lint, vulnerability, and unit-test tasks build the SPA first because `frontend/embed.go` embeds `frontend/dist`; do not remove that dependency or expect a clean direct Go build of `cmd/app` to work without the assets.
 
 ## Architecture boundaries
