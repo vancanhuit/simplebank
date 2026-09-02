@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"net/http"
 	"time"
@@ -34,14 +32,6 @@ var dummyPasswordHash = func() string {
 
 var verificationAccepted = map[string]string{
 	"message": "check your email for verification instructions",
-}
-
-// hashRefreshToken returns the value stored in sessions.refresh_token. Storing a
-// hash instead of the raw token means a database leak does not yield usable
-// refresh tokens.
-func hashRefreshToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
 }
 
 type createUserRequest struct {
@@ -126,7 +116,7 @@ func (s *Server) createUser(c *echo.Context) error {
 			return c.JSON(http.StatusAccepted, verificationAccepted)
 		}
 		c.Logger().Error("create user transaction", "error", classified)
-		return c.JSON(http.StatusAccepted, verificationAccepted)
+		return classified
 	}
 
 	return c.JSON(http.StatusAccepted, verificationAccepted)
@@ -176,7 +166,7 @@ func (s *Server) loginUser(c *echo.Context) error {
 	session, err := s.store.CreateSession(ctx, sqlcdb.CreateSessionParams{
 		ID:           tokens.refreshPayload.ID,
 		Username:     user.Username,
-		RefreshToken: hashRefreshToken(tokens.refresh),
+		RefreshToken: secret.Digest(tokens.refresh),
 		UserAgent:    c.Request().UserAgent(),
 		ClientIp:     c.RealIP(),
 		IsBlocked:    false,
@@ -266,7 +256,7 @@ func (s *Server) renewToken(c *echo.Context) error {
 	_, err = s.store.RotateSessionTx(ctx, store.RotateSessionTxParams{
 		ID:               refreshPayload.ID,
 		Username:         refreshPayload.Username,
-		RefreshTokenHash: hashRefreshToken(refreshCookie.Value),
+		RefreshTokenHash: secret.Digest(refreshCookie.Value),
 		Now:              time.Now(),
 		NewSession: func() (store.SessionReplacement, error) {
 			var issueErr error
@@ -276,7 +266,7 @@ func (s *Server) renewToken(c *echo.Context) error {
 			}
 			return store.SessionReplacement{
 				ID:               tokens.refreshPayload.ID,
-				RefreshTokenHash: hashRefreshToken(tokens.refresh),
+				RefreshTokenHash: secret.Digest(tokens.refresh),
 				ExpiresAt:        tokens.refreshPayload.ExpiresAt.Time,
 			}, nil
 		},

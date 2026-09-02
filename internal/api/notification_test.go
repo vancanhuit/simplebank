@@ -163,7 +163,7 @@ func TestNotificationStreamWriteDeadlineFailureUnsubscribes(t *testing.T) {
 	}
 }
 
-func newNotificationStreamServer(t *testing.T, keepalive time.Duration) (*Server, token.Maker, *notification.Hub) {
+func newNotificationStreamServer(t *testing.T, keepalive time.Duration) (*Server, *token.JWTMaker, *notification.Hub) {
 	t.Helper()
 	maker, err := token.NewJWTMaker(testSecret)
 	if err != nil {
@@ -181,7 +181,7 @@ func newNotificationStreamServer(t *testing.T, keepalive time.Duration) (*Server
 func openNotificationStream(
 	t *testing.T,
 	testServer *httptest.Server,
-	maker token.Maker,
+	maker *token.JWTMaker,
 	username string,
 	tokenTTL time.Duration,
 ) (*http.Response, context.CancelFunc) {

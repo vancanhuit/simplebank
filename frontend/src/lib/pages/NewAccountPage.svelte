@@ -3,6 +3,7 @@
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import { request, toMessage } from "../api/client";
   import type { AccountOpeningLimits } from "../api/types";
+  import { accountOpeningLimits } from "../api/validation";
   import { accounts } from "../stores/accounts.svelte";
   import {
     CURRENCIES,
@@ -66,7 +67,7 @@
     policyError = null;
 
     try {
-      openingLimits = await request<AccountOpeningLimits>("/account-opening-limits");
+      openingLimits = accountOpeningLimits(await request<unknown>("/account-opening-limits"));
     } catch (err) {
       openingLimits = {};
       policyError = `We couldn't load the account opening policy. ${toMessage(err)}`;

@@ -16,7 +16,6 @@ type Store interface {
 	CreateUserTx(ctx context.Context, arg CreateUserTxParams) (sqlcdb.User, error)
 	VerifyEmailTx(ctx context.Context, arg VerifyEmailTxParams) (VerifyEmailTxResult, error)
 	CreateAccountTx(ctx context.Context, arg sqlcdb.CreateAccountParams) (sqlcdb.Account, error)
-	ReconcileAccount(ctx context.Context, id uuid.UUID) (Reconciliation, error)
 	RotateSessionTx(ctx context.Context, arg RotateSessionTxParams) (sqlcdb.Session, error)
 	ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) (ListNotificationsPageResult, error)
 	MarkNotificationReadTx(ctx context.Context, owner string, id uuid.UUID) (int64, error)
@@ -25,8 +24,9 @@ type Store interface {
 
 type SQLStore struct {
 	*sqlcdb.Queries
-	connPool               *pgxpool.Pool
-	afterListNotifications func()
+	connPool                  *pgxpool.Pool
+	afterListNotifications    func()
+	afterMarkNotificationRead func()
 }
 
 func New(pool *pgxpool.Pool) Store {

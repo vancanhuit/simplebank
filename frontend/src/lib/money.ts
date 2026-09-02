@@ -18,11 +18,6 @@ const FRACTION_DIGITS: Record<Currency, number> = {
   VND: 0,
 };
 
-/** Whether a string is one of the supported currency codes. */
-export function isCurrency(value: string): value is Currency {
-  return (CURRENCIES as readonly string[]).includes(value);
-}
-
 /** Number of fraction digits rendered for a currency (0 for VND). */
 export function fractionDigits(currency: Currency): number {
   return FRACTION_DIGITS[currency];

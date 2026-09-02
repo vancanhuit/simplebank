@@ -6,8 +6,6 @@ import { initializeTheme } from "./lib/theme";
 
 initializeTheme();
 
-const app = mount(Root, {
+mount(Root, {
   target: document.getElementById("app")!,
 });
-
-export default app;

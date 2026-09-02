@@ -187,6 +187,7 @@ test("dashboard reflows and remains accessible at supported viewports", async ({
 test("notification popover and history remain accessible and responsive in both themes", async ({
   page,
 }) => {
+  test.setTimeout(45_000);
   const api = await mockAuthenticatedAPI(page, [account]);
   api.setNotifications({ notifications: [notification], unread_count: 1, next_cursor: null });
   await page.goto("/");

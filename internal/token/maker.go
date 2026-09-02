@@ -44,8 +44,8 @@ func (p Payload) Validate() error {
 	return nil
 }
 
-func NewPayload(username, role string, tokenType Type, duration time.Duration) (*Payload, error) {
-	return NewPayloadWithID(uuid.NewV7(), username, role, tokenType, duration), nil
+func NewPayload(username, role string, tokenType Type, duration time.Duration) *Payload {
+	return NewPayloadWithID(uuid.NewV7(), username, role, tokenType, duration)
 }
 
 func NewPayloadWithID(id uuid.UUID, username, role string, tokenType Type, duration time.Duration) *Payload {
@@ -63,10 +63,4 @@ func NewPayloadWithID(id uuid.UUID, username, role string, tokenType Type, durat
 			ExpiresAt: jwt.NewNumericDate(now.Add(duration)),
 		},
 	}
-}
-
-type Maker interface {
-	CreateToken(username, role string, tokenType Type, duration time.Duration) (string, *Payload, error)
-	CreateTokenWithID(id uuid.UUID, username, role string, tokenType Type, duration time.Duration) (string, *Payload, error)
-	VerifyToken(raw string, expectedType Type) (*Payload, error)
 }

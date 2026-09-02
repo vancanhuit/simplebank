@@ -1,5 +1,6 @@
 import { request, toMessage } from "../api/client";
 import type { Account } from "../api/types";
+import { account, accounts as validateAccounts } from "../api/validation";
 import type { Currency } from "../money";
 
 /**
@@ -26,10 +27,12 @@ class AccountsStore {
     try {
       // size=100 is the API's per-page maximum; it comfortably covers a
       // personal set of accounts without pagination UI.
-      const items = await request<Account[]>("/accounts?page=1&size=100", {
-        authenticated: true,
-        signal,
-      });
+      const items = validateAccounts(
+        await request<unknown>("/accounts?page=1&size=100", {
+          authenticated: true,
+          signal,
+        }),
+      );
       if (signal?.aborted || this.#generation !== generation || this.#loadSequence !== sequence) {
         return false;
       }
@@ -52,15 +55,17 @@ class AccountsStore {
 
   async create(currency: Currency, balance = 0): Promise<Account> {
     const generation = this.#generation;
-    const account = await request<Account>("/accounts", {
-      method: "POST",
-      authenticated: true,
-      body: { currency, balance },
-    });
+    const created = account(
+      await request<unknown>("/accounts", {
+        method: "POST",
+        authenticated: true,
+        body: { currency, balance },
+      }),
+    );
     if (this.#generation === generation) {
-      this.items = [...this.items, account];
+      this.items = [...this.items, created];
     }
-    return account;
+    return created;
   }
 
   get(id: string): Account | undefined {

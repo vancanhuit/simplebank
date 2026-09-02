@@ -8,6 +8,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -601,5 +602,72 @@ func TestMarkAllNotificationsReadTxReturnsAuthoritativeCount(t *testing.T) {
 	}
 	if otherUnreadCount != 1 {
 		t.Errorf("other owner unread count = %d, want 1", otherUnreadCount)
+	}
+}
+
+func TestNotificationReadTransactionsSerializeCountsPerOwner(t *testing.T) {
+	owner := createTestUser(t)
+	recipient := createTestUser(t)
+	from := createTestAccount(t, owner.Username)
+	to := createTestAccount(t, recipient.Username)
+	notifications := make([]sqlcdb.Notification, 2)
+	for i := range notifications {
+		transfer, err := testStore.CreateTransfer(t.Context(), sqlcdb.CreateTransferParams{
+			FromAccountID: from.ID, ToAccountID: to.ID, Amount: 25, IdempotencyKey: uuid.New(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		notifications[i], err = testStore.CreateNotification(t.Context(), sqlcdb.CreateNotificationParams{
+			Direction: "sent", TransferID: transfer.ID, AccountID: from.ID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	firstMarked := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var hookCalls int
+	var hookMu sync.Mutex
+	concurrentStore := &SQLStore{Queries: sqlcdb.New(testPool), connPool: testPool}
+	concurrentStore.afterMarkNotificationRead = func() {
+		hookMu.Lock()
+		hookCalls++
+		first := hookCalls == 1
+		hookMu.Unlock()
+		if first {
+			close(firstMarked)
+			<-releaseFirst
+		}
+	}
+	counts := make(chan int64, 2)
+	errs := make(chan error, 2)
+	var workers sync.WaitGroup
+	workers.Go(func() {
+		count, err := concurrentStore.MarkNotificationReadTx(t.Context(), owner.Username, notifications[0].ID)
+		counts <- count
+		errs <- err
+	})
+	<-firstMarked
+	for _, notification := range notifications[1:] {
+		workers.Go(func() {
+			count, err := concurrentStore.MarkNotificationReadTx(t.Context(), owner.Username, notification.ID)
+			counts <- count
+			errs <- err
+		})
+	}
+	close(releaseFirst)
+	workers.Wait()
+	close(counts)
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := slices.Sorted(slices.Values([]int64{<-counts, <-counts}))
+	if !slices.Equal(got, []int64{0, 1}) {
+		t.Fatalf("concurrent unread counts = %v, want [0 1]", got)
 	}
 }

@@ -239,7 +239,7 @@ func TestCreateUserEmailExistsReturnsGenericAccepted(t *testing.T) {
 	}
 }
 
-func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
+func TestCreateUserInternalTxErrorReturnsGenericFailure(t *testing.T) {
 	t.Parallel()
 	const internalErr = "river enqueue failed"
 	fake := fakeStore{
@@ -257,15 +257,11 @@ func TestCreateUserInternalTxErrorReturnsGenericAccepted(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("want 202 for internal create-user transaction error, got %d (%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("want 500 for internal create-user transaction error, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	var got map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if got["message"] != "check your email for verification instructions" {
-		t.Fatalf("unexpected response: %+v", got)
+	if got := decodeErrorResponse(t, rec); got.Code != "internal_error" || got.Error != "internal server error" {
+		t.Fatalf("unexpected error response: %+v", got)
 	}
 	logged := logBuf.String()
 	if !strings.Contains(logged, "create user transaction") || !strings.Contains(logged, internalErr) {

@@ -389,51 +389,14 @@ func TestCreateAccountTxOpeningEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, err := testStore.ReconcileAccount(t.Context(), account.ID)
-	if err != nil {
+	var ledgerBalance int64
+	if err := testPool.QueryRow(t.Context(),
+		"SELECT COALESCE(SUM(amount), 0) FROM entries WHERE account_id = $1", account.ID,
+	).Scan(&ledgerBalance); err != nil {
 		t.Fatal(err)
 	}
-	if !rec.Balanced {
-		t.Errorf("opening balance not reconciled: stored=%d ledger=%d", rec.StoredBalance, rec.LedgerBalance)
-	}
-}
-
-// TestReconcileAccountAfterTransfer confirms the ledger stays balanced once
-// funds move between two fully entry-backed accounts.
-func TestReconcileAccountAfterTransfer(t *testing.T) {
-	u1 := createTestUser(t)
-	u2 := createTestUser(t)
-	acc1, err := testStore.CreateAccountTx(t.Context(), sqlcdb.CreateAccountParams{
-		Owner: u1.Username, Balance: 1000, Currency: currency.USD,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	acc2, err := testStore.CreateAccountTx(t.Context(), sqlcdb.CreateAccountParams{
-		Owner: u2.Username, Balance: 0, Currency: currency.USD,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := testStore.TransferTx(t.Context(), TransferTxParams{
-		FromAccountID:  acc1.ID,
-		ToAccountID:    acc2.ID,
-		Amount:         250,
-		Currency:       currency.USD,
-		IdempotencyKey: uuid.New(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, id := range []uuid.UUID{acc1.ID, acc2.ID} {
-		rec, err := testStore.ReconcileAccount(t.Context(), id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !rec.Balanced {
-			t.Errorf("account %s unbalanced: stored=%d ledger=%d", id, rec.StoredBalance, rec.LedgerBalance)
-		}
+	if ledgerBalance != account.Balance {
+		t.Errorf("ledger balance = %d, want %d", ledgerBalance, account.Balance)
 	}
 }
 

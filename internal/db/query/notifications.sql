@@ -38,6 +38,9 @@ SELECT count(*)::bigint
 FROM notifications
 WHERE owner = $1 AND read_at IS NULL;
 
+-- name: LockNotificationOwner :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(owner), 0));
+
 -- name: MarkNotificationRead :one
 UPDATE notifications
 SET read_at = COALESCE(read_at, now())

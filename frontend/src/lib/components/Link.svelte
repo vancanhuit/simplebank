@@ -14,13 +14,21 @@
   const isCurrent = $derived(router.path === href);
 
   function handleClick(event: MouseEvent) {
-    // Let the browser handle new-tab / modified clicks and external links.
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+    onclick?.(event);
+    // Let the browser handle cancelled, new-tab, modified, and external navigation.
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0 ||
+      new URL(href, window.location.href).origin !== window.location.origin
+    ) {
       return;
     }
     event.preventDefault();
     navigate(href);
-    onclick?.(event);
   }
 </script>
 

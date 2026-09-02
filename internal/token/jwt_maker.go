@@ -20,11 +20,7 @@ func NewJWTMaker(secretKey string) (*JWTMaker, error) {
 }
 
 func (m *JWTMaker) CreateToken(username, role string, tokenType Type, duration time.Duration) (string, *Payload, error) {
-	payload, err := NewPayload(username, role, tokenType, duration)
-	if err != nil {
-		return "", nil, err
-	}
-	return m.signPayload(payload)
+	return m.signPayload(NewPayload(username, role, tokenType, duration))
 }
 
 func (m *JWTMaker) CreateTokenWithID(id uuid.UUID, username, role string, tokenType Type, duration time.Duration) (string, *Payload, error) {

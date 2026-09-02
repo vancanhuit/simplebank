@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"time"
 	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
@@ -67,11 +66,7 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 		}
 
 		if arg.DailyLimit > 0 {
-			since := time.Now().Add(-24 * time.Hour)
-			spent, err := q.SumOutgoingTransfersSince(ctx, sqlcdb.SumOutgoingTransfersSinceParams{
-				FromAccountID: arg.FromAccountID,
-				Since:         since,
-			})
+			spent, err := q.SumOutgoingTransfersSince(ctx, arg.FromAccountID)
 			if err != nil {
 				return ClassifyError(err)
 			}
@@ -163,6 +158,8 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 			IdempotencyKey: arg.IdempotencyKey,
 		}); getErr == nil {
 			return s.replayTransfer(ctx, existing, arg)
+		} else {
+			return TransferTxResult{}, ClassifyError(getErr)
 		}
 	}
 

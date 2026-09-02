@@ -137,6 +137,20 @@ describe("LoginPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the registration notice once and consumes its navigation state", async () => {
+    const state = { registered: true, preserved: "value" };
+    history.replaceState(state, "", "/login");
+    router.state = state;
+    const first = render(LoginPage);
+
+    expect(await screen.findByText(/Account request accepted/)).toBeInTheDocument();
+    await waitFor(() => expect(history.state).toEqual({ preserved: "value" }));
+
+    first.unmount();
+    render(LoginPage);
+    expect(screen.queryByText(/Account request accepted/)).not.toBeInTheDocument();
+  });
+
   it("navigates to a validated return path after successful login", async () => {
     const state = { returnTo: "/accounts/abc?tab=activity#latest" };
     history.replaceState(state, "", "/login");

@@ -3,6 +3,7 @@
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import { request, toMessage } from "../api/client";
   import type { TransferLimits, TransferResult } from "../api/types";
+  import { transferLimits, transferResult } from "../api/validation";
   import { accounts } from "../stores/accounts.svelte";
   import { formatMoney, fractionDigits, parseAmountToMinor, type Currency } from "../money";
   import Button from "../components/Button.svelte";
@@ -61,7 +62,7 @@
     // Load the per-currency limits so we can flag an over-limit amount before
     // hitting the API. A failure here is non-fatal: the server still enforces.
     try {
-      limits = await request<TransferLimits>("/transfer-limits");
+      limits = transferLimits(await request<unknown>("/transfer-limits"));
     } catch {
       limits = {};
     }
@@ -118,17 +119,19 @@
 
     submitting = true;
     try {
-      const result = await request<TransferResult>("/transfers", {
-        method: "POST",
-        authenticated: true,
-        body: {
-          ...intent,
-          // Stable across retries of this same transfer: if the response is lost
-          // but the server committed, resubmitting replays it rather than
-          // debiting twice.
-          idempotency_key: idempotencyKey,
-        },
-      });
+      const result = transferResult(
+        await request<unknown>("/transfers", {
+          method: "POST",
+          authenticated: true,
+          body: {
+            ...intent,
+            // Stable across retries of this same transfer: if the response is lost
+            // but the server committed, resubmitting replays it rather than
+            // debiting twice.
+            idempotency_key: idempotencyKey,
+          },
+        }),
+      );
       receipt = result;
       // The transfer is confirmed, so the next one is a new intent: rotate the
       // key and clear the form.

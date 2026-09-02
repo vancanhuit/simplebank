@@ -241,9 +241,9 @@ describe("request", () => {
       if (order === "automatic-first") {
         automatic = request<{ ok: boolean }>("/accounts", { authenticated: true });
         await vi.waitFor(() => expect(renewResolvers).toHaveLength(1));
-        manual = auth.retryRefresh();
+        manual = auth.tryRefresh();
       } else {
-        manual = auth.retryRefresh();
+        manual = auth.tryRefresh();
         await vi.waitFor(() => expect(renewResolvers).toHaveLength(1));
         automatic = request<{ ok: boolean }>("/accounts", { authenticated: true });
         await vi.waitFor(() => expect(accountRequests).toBe(1));

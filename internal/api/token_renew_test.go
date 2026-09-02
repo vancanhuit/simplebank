@@ -10,6 +10,7 @@ import (
 
 	store "github.com/vancanhuit/simplebank/internal/db"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
+	"github.com/vancanhuit/simplebank/internal/secret"
 	"github.com/vancanhuit/simplebank/internal/token"
 )
 
@@ -28,7 +29,7 @@ func refreshToken(t *testing.T, username string, mutate func(*sqlcdb.Session)) (
 	session := sqlcdb.Session{
 		ID:           payload.ID,
 		Username:     username,
-		RefreshToken: hashRefreshToken(tok),
+		RefreshToken: secret.Digest(tok),
 		IsBlocked:    false,
 		ExpiresAt:    time.Now().Add(time.Hour),
 	}
@@ -80,8 +81,8 @@ func TestRenewTokenOK(t *testing.T) {
 	if rotated.Username != session.Username {
 		t.Fatalf("RotateSessionTx username = %q, want %q", rotated.Username, session.Username)
 	}
-	if rotated.RefreshTokenHash != hashRefreshToken(tok) {
-		t.Fatalf("RotateSessionTx hash = %q, want %q", rotated.RefreshTokenHash, hashRefreshToken(tok))
+	if rotated.RefreshTokenHash != secret.Digest(tok) {
+		t.Fatalf("RotateSessionTx hash = %q, want %q", rotated.RefreshTokenHash, secret.Digest(tok))
 	}
 	if replacementSession.ID != session.ID {
 		t.Fatalf("renew replacement session ID = %s, want stable %s", replacementSession.ID, session.ID)

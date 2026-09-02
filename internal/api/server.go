@@ -29,7 +29,7 @@ const headerXForwardedHost = "X-Forwarded-Host"
 type Server struct {
 	config                 config.Config
 	store                  store.Store
-	tokenMaker             token.Maker
+	tokenMaker             *token.JWTMaker
 	riverClient            *river.Client[pgx.Tx]
 	subscribeNotifications func(string) (<-chan uuid.UUID, func())
 	notificationKeepalive  time.Duration
@@ -40,7 +40,7 @@ type Server struct {
 func NewServer(
 	cfg config.Config,
 	st store.Store,
-	maker token.Maker,
+	maker *token.JWTMaker,
 	riverClient *river.Client[pgx.Tx],
 	notificationHub *notification.Hub,
 	readiness func(context.Context) error,

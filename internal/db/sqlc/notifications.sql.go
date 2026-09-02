@@ -122,6 +122,15 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 	return items, nil
 }
 
+const lockNotificationOwner = `-- name: LockNotificationOwner :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+`
+
+func (q *Queries) LockNotificationOwner(ctx context.Context, owner string) error {
+	_, err := q.db.Exec(ctx, lockNotificationOwner, owner)
+	return err
+}
+
 const markAllNotificationsRead = `-- name: MarkAllNotificationsRead :execrows
 UPDATE notifications
 SET read_at = now()

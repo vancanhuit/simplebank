@@ -7,6 +7,7 @@ import type {
   User,
 } from "../api/types";
 import { replaceNavigation } from "../router.svelte";
+import { acceptedResponse } from "../api/validation";
 
 export type RefreshOutcome = "refreshed" | "no_session" | "expired" | "unavailable" | "stale";
 
@@ -19,22 +20,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isNonemptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return isNonemptyString(value) && !Number.isNaN(Date.parse(value));
+}
+
 function isUser(value: unknown): value is User {
   return (
     isRecord(value) &&
-    typeof value.username === "string" &&
-    typeof value.full_name === "string" &&
-    typeof value.email === "string" &&
+    isNonemptyString(value.username) &&
+    isNonemptyString(value.full_name) &&
+    isNonemptyString(value.email) &&
     typeof value.is_email_verified === "boolean" &&
-    typeof value.created_at === "string"
+    isTimestamp(value.created_at)
   );
 }
 
 function isRenewResponse(value: unknown): value is RenewResponse {
   return (
     isRecord(value) &&
-    typeof value.access_token === "string" &&
-    typeof value.access_token_expires_at === "string" &&
+    isNonemptyString(value.access_token) &&
+    isTimestamp(value.access_token_expires_at) &&
     isUser(value.user)
   );
 }
@@ -44,7 +53,7 @@ function isLoginResponse(value: unknown): value is LoginResponse {
     isRecord(value) &&
     isRenewResponse(value) &&
     value.user.is_email_verified &&
-    typeof value.session_id === "string"
+    isNonemptyString(value.session_id)
   );
 }
 
@@ -110,7 +119,7 @@ class AuthStore {
   }
 
   async register(input: RegisterInput): Promise<AcceptedResponse> {
-    return request<AcceptedResponse>("/users", { method: "POST", body: input });
+    return acceptedResponse(await request<unknown>("/users", { method: "POST", body: input }));
   }
 
   /** Exchange the httpOnly refresh cookie for a fresh access token. */
@@ -174,10 +183,6 @@ class AuthStore {
       this.renewalUnavailable = true;
       return "unavailable";
     }
-  }
-
-  retryRefresh(): Promise<RefreshOutcome> {
-    return this.tryRefresh();
   }
 
   consumeSessionExpired(): boolean {

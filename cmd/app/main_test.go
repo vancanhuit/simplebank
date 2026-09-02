@@ -21,6 +21,30 @@ func TestConfigureServerTimeouts(t *testing.T) {
 	}
 }
 
+func TestLoopbackURL(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		addr string
+		want string
+	}{
+		{":8080", "http://localhost:8080/livez"},
+		{"0.0.0.0:8081", "http://localhost:8081/livez"},
+		{"[::]:8082", "http://localhost:8082/livez"},
+		{"127.0.0.1:8083", "http://localhost:8083/livez"},
+	} {
+		got, err := loopbackURL("http", test.addr, "/livez")
+		if err != nil {
+			t.Fatalf("loopbackURL(%q): %v", test.addr, err)
+		}
+		if got != test.want {
+			t.Errorf("loopbackURL(%q) = %q, want %q", test.addr, got, test.want)
+		}
+	}
+	if _, err := loopbackURL("http", "8080", "/livez"); err == nil {
+		t.Fatal("loopbackURL accepted address without host-port form")
+	}
+}
+
 type fakeServiceLifecycle struct {
 	name            string
 	events          *[]string
@@ -28,6 +52,9 @@ type fakeServiceLifecycle struct {
 	stopErr         error
 	startContextErr error
 	startAction     func()
+	blockStart      bool
+	startCalled     chan struct{}
+	stopCalled      chan struct{}
 	stopContextErr  error
 	stopDone        <-chan struct{}
 	stopDeadline    time.Time
@@ -36,9 +63,16 @@ type fakeServiceLifecycle struct {
 
 func (service *fakeServiceLifecycle) Start(ctx context.Context) error {
 	*service.events = append(*service.events, service.name+":start")
+	if service.startCalled != nil {
+		close(service.startCalled)
+	}
 	service.startContextErr = ctx.Err()
 	if service.startAction != nil {
 		service.startAction()
+	}
+	if service.blockStart {
+		<-service.stopCalled
+		return nil
 	}
 	if service.startErr == nil && service.startContextErr != nil {
 		return service.startContextErr
@@ -46,8 +80,58 @@ func (service *fakeServiceLifecycle) Start(ctx context.Context) error {
 	return service.startErr
 }
 
+func TestRunServicesCancellationInterruptsBlockedStart(t *testing.T) {
+	tests := []struct {
+		name     string
+		listener *fakeServiceLifecycle
+		worker   *fakeServiceLifecycle
+		want     []string
+	}{
+		{name: "listener", listener: &fakeServiceLifecycle{blockStart: true, startCalled: make(chan struct{}), stopCalled: make(chan struct{})}, want: []string{"listener:start", "listener:stop"}},
+		{name: "worker", worker: &fakeServiceLifecycle{blockStart: true, startCalled: make(chan struct{}), stopCalled: make(chan struct{})}, want: []string{"listener:start", "worker:start", "worker:stop", "listener:stop"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			events := []string{}
+			listener := tt.listener
+			if listener == nil {
+				listener = &fakeServiceLifecycle{}
+			}
+			worker := tt.worker
+			if worker == nil {
+				worker = &fakeServiceLifecycle{}
+			}
+			listener.name, listener.events = "listener", &events
+			worker.name, worker.events = "worker", &events
+
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error, 1)
+			go func() {
+				done <- runServices(ctx, listener, worker, func(context.Context) error {
+					return errors.New("http must not start")
+				})
+			}()
+			if tt.name == "listener" {
+				<-listener.startCalled
+			} else {
+				<-worker.startCalled
+			}
+			cancel()
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("runServices error = %v, want context canceled", err)
+			}
+			if !reflect.DeepEqual(events, tt.want) {
+				t.Fatalf("events = %v, want %v", events, tt.want)
+			}
+		})
+	}
+}
+
 func (service *fakeServiceLifecycle) Stop(ctx context.Context) error {
 	*service.events = append(*service.events, service.name+":stop")
+	if service.stopCalled != nil {
+		close(service.stopCalled)
+	}
 	service.stopContextErr = ctx.Err()
 	service.stopDone = ctx.Done()
 	service.stopDeadline, service.stopHasDeadline = ctx.Deadline()
@@ -93,11 +177,9 @@ func TestRunServicesListenerStartFailurePreventsWorkerAndHTTP(t *testing.T) {
 	if got, want := err.Error(), "starting notification listener: context canceled"; got != want {
 		t.Fatalf("runServices error = %q, want %q", got, want)
 	}
-	if want := []string{"listener:start"}; !reflect.DeepEqual(events, want) {
+	if len(events) != 0 {
+		want := []string{}
 		t.Fatalf("events = %v, want %v", events, want)
-	}
-	if !errors.Is(listener.startContextErr, context.Canceled) {
-		t.Fatalf("listener start context error = %v, want context canceled", listener.startContextErr)
 	}
 }
 
@@ -115,11 +197,8 @@ func TestRunServicesCanceledWorkerStartupPreventsHTTP(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("runServices error = %v, want context canceled", err)
 	}
-	if want := []string{"listener:start", "worker:start", "listener:stop"}; !reflect.DeepEqual(events, want) {
+	if want := []string{"listener:start", "listener:stop"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
-	}
-	if !errors.Is(worker.startContextErr, context.Canceled) {
-		t.Fatalf("worker start context error = %v, want context canceled", worker.startContextErr)
 	}
 	assertShutdownContext(t, listener)
 }
