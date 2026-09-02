@@ -71,10 +71,7 @@ func TestJWTMakerExpired(t *testing.T) {
 
 func TestJWTMakerInvalidAlg(t *testing.T) {
 	t.Parallel()
-	payload, err := NewPayload("alice", "depositor", Access, time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
+	payload := NewPayload("alice", "depositor", Access, time.Minute)
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodNone, payload)
 	signed, err := jwtToken.SignedString(jwt.UnsafeAllowNoneSignatureType)
 	if err != nil {

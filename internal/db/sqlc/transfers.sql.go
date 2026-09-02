@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"uuid"
 )
@@ -111,18 +110,14 @@ func (q *Queries) ListTransfersByAccount(ctx context.Context, arg ListTransfersB
 }
 
 const sumOutgoingTransfersSince = `-- name: SumOutgoingTransfersSince :one
-SELECT COALESCE(SUM(amount), 0)::bigint AS total
+SELECT LEAST(COALESCE(SUM(amount), 0), 9007199254740991)::bigint AS total
 FROM transfers
-WHERE from_account_id = $1 AND created_at >= $2
+WHERE from_account_id = $1
+  AND created_at >= clock_timestamp() - interval '24 hours'
 `
 
-type SumOutgoingTransfersSinceParams struct {
-	FromAccountID uuid.UUID `json:"from_account_id"`
-	Since         time.Time `json:"since"`
-}
-
-func (q *Queries) SumOutgoingTransfersSince(ctx context.Context, arg SumOutgoingTransfersSinceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, sumOutgoingTransfersSince, arg.FromAccountID, arg.Since)
+func (q *Queries) SumOutgoingTransfersSince(ctx context.Context, fromAccountID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, sumOutgoingTransfersSince, fromAccountID)
 	var total int64
 	err := row.Scan(&total)
 	return total, err

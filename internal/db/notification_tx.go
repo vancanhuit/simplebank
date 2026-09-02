@@ -61,11 +61,17 @@ func (s *SQLStore) ListNotificationsPage(
 func (s *SQLStore) MarkNotificationReadTx(ctx context.Context, owner string, id uuid.UUID) (int64, error) {
 	var unreadCount int64
 	err := s.execTx(ctx, func(q *sqlcdb.Queries) error {
+		if err := q.LockNotificationOwner(ctx, owner); err != nil {
+			return ClassifyError(err)
+		}
 		if _, err := q.MarkNotificationRead(ctx, sqlcdb.MarkNotificationReadParams{
 			ID:    id,
 			Owner: owner,
 		}); err != nil {
 			return ClassifyError(err)
+		}
+		if s.afterMarkNotificationRead != nil {
+			s.afterMarkNotificationRead()
 		}
 
 		var err error
@@ -78,6 +84,9 @@ func (s *SQLStore) MarkNotificationReadTx(ctx context.Context, owner string, id 
 func (s *SQLStore) MarkAllNotificationsReadTx(ctx context.Context, owner string) (int64, error) {
 	var unreadCount int64
 	err := s.execTx(ctx, func(q *sqlcdb.Queries) error {
+		if err := q.LockNotificationOwner(ctx, owner); err != nil {
+			return ClassifyError(err)
+		}
 		if _, err := q.MarkAllNotificationsRead(ctx, owner); err != nil {
 			return ClassifyError(err)
 		}

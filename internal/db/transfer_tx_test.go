@@ -15,19 +15,16 @@ import (
 
 	"github.com/vancanhuit/simplebank/internal/currency"
 	sqlcdb "github.com/vancanhuit/simplebank/internal/db/sqlc"
-	"github.com/vancanhuit/simplebank/internal/password"
 	"github.com/vancanhuit/simplebank/internal/random"
 )
 
+const testPasswordHash = "$2a$12$012345678901234567890uJc9LKMZYJgZ3DvPFiAAsgRUuYpC"
+
 func createTestUser(t *testing.T) sqlcdb.User {
 	t.Helper()
-	hashed, err := password.Hash(random.String(8))
-	if err != nil {
-		t.Fatal(err)
-	}
 	user, err := testStore.CreateUser(t.Context(), sqlcdb.CreateUserParams{
 		Username:       random.Owner(),
-		HashedPassword: hashed,
+		HashedPassword: testPasswordHash,
 		FullName:       random.Owner(),
 		Email:          random.String(6) + "@example.com",
 	})

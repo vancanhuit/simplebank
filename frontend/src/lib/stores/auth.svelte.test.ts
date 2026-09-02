@@ -90,6 +90,9 @@ describe("AuthStore", () => {
   it.each([
     ["an empty object", {}],
     ["wrong field types", { ...validLoginResponse, access_token: 42 }],
+    ["an empty access token", { ...validLoginResponse, access_token: "" }],
+    ["an invalid expiry", { ...validLoginResponse, access_token_expires_at: "later" }],
+    ["an empty session id", { ...validLoginResponse, session_id: "" }],
     [
       "an unverified user",
       { ...validLoginResponse, user: { ...verifiedUser, is_email_verified: false } },
@@ -130,6 +133,11 @@ describe("AuthStore", () => {
   it.each([
     ["an empty object", {}],
     ["wrong field types", { ...validRenewResponse, user: { ...verifiedUser, full_name: 42 } }],
+    ["an empty access token", { ...validRenewResponse, access_token: "" }],
+    [
+      "an invalid user date",
+      { ...validRenewResponse, user: { ...verifiedUser, created_at: "today" } },
+    ],
   ])("preserves auth when refresh success contains %s", async (_name, body) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
     const store = new AuthStore();
@@ -180,7 +188,7 @@ describe("AuthStore", () => {
     const store = new AuthStore();
 
     const automatic = store.tryRefresh();
-    const manual = store.retryRefresh();
+    const manual = store.tryRefresh();
 
     expect(manual).toBe(automatic);
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -452,7 +460,7 @@ describe("AuthStore", () => {
 
     expect(await store.tryRefresh()).toBe("unavailable");
     expect(store.renewalUnavailable).toBe(true);
-    expect(await store.retryRefresh()).toBe("refreshed");
+    expect(await store.tryRefresh()).toBe("refreshed");
 
     expect(store.user).toEqual(verifiedUser);
     expect(store.accessToken).toBe("new-access");

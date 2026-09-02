@@ -1,8 +1,10 @@
 import { request, requestResponse, toMessage } from "../api/client";
 import { consumeEventStream } from "../api/sse";
-import type { Notification, NotificationPage, NotificationReadResponse } from "../api/types";
+import type { Notification } from "../api/types";
 import { accounts } from "./accounts.svelte";
 import { auth } from "./auth.svelte";
+import { SvelteMap } from "svelte/reactivity";
+import { notificationPage, notificationReadResponse } from "../api/validation";
 
 export type ReconcileReason =
   "initial" | "connected" | "live" | "visibility" | "manual" | "recovery";
@@ -18,10 +20,6 @@ interface SessionContext {
   generation: number;
   authGeneration: number;
   controller: AbortController;
-}
-
-class ActivityVersion {
-  value = $state(0);
 }
 
 class NotificationsStore {
@@ -49,7 +47,7 @@ class NotificationsStore {
   #queuedReason: ReconcileReason | null = null;
   #mutationQueue: Promise<void> = Promise.resolve();
   #mutationEpoch = 0;
-  #activityVersions = new Map<string, ActivityVersion>();
+  #activityVersions = new SvelteMap<string, number>();
 
   get recent(): Notification[] {
     return this.items.slice(0, 5);
@@ -124,9 +122,6 @@ class NotificationsStore {
     this.loadMoreError = null;
     this.nextCursor = null;
     this.toasts = [];
-    for (const version of this.#activityVersions.values()) {
-      version.value += 1;
-    }
     this.#activityVersions.clear();
   }
 
@@ -176,9 +171,11 @@ class NotificationsStore {
     this.loadMoreError = null;
 
     try {
-      const page = await request<NotificationPage>(
-        `/notifications?size=20&cursor=${encodeURIComponent(cursor)}`,
-        { authenticated: true, signal },
+      const page = notificationPage(
+        await request<unknown>(`/notifications?size=20&cursor=${encodeURIComponent(cursor)}`, {
+          authenticated: true,
+          signal,
+        }),
       );
       if (!this.#isCurrent(context)) {
         return;
@@ -253,11 +250,13 @@ class NotificationsStore {
     this.items = this.items.map((item) => (item.id === id ? { ...item, read_at: readAt } : item));
     this.unreadCount = Math.max(0, this.unreadCount - 1);
     try {
-      const result = await request<NotificationReadResponse>(`/notifications/${id}/read`, {
-        method: "PUT",
-        authenticated: true,
-        signal,
-      });
+      const result = notificationReadResponse(
+        await request<unknown>(`/notifications/${id}/read`, {
+          method: "PUT",
+          authenticated: true,
+          signal,
+        }),
+      );
       if (this.#isCurrent(context)) {
         this.#mutationEpoch += 1;
         this.items = this.items.map((item) =>
@@ -290,11 +289,13 @@ class NotificationsStore {
     this.items = this.items.map((item) => (ids.has(item.id) ? { ...item, read_at: readAt } : item));
     this.unreadCount = Math.max(0, this.unreadCount - previousReadAt.size);
     try {
-      const result = await request<NotificationReadResponse>("/notifications/read-all", {
-        method: "PUT",
-        authenticated: true,
-        signal,
-      });
+      const result = notificationReadResponse(
+        await request<unknown>("/notifications/read-all", {
+          method: "PUT",
+          authenticated: true,
+          signal,
+        }),
+      );
       if (this.#isCurrent(context)) {
         this.#mutationEpoch += 1;
         this.items = this.items.map((item) =>
@@ -326,16 +327,7 @@ class NotificationsStore {
   }
 
   activityVersion(accountId: string): number {
-    return this.#activityVersion(accountId).value;
-  }
-
-  #activityVersion(accountId: string): ActivityVersion {
-    let version = this.#activityVersions.get(accountId);
-    if (version === undefined) {
-      version = new ActivityVersion();
-      this.#activityVersions.set(accountId, version);
-    }
-    return version;
+    return this.#activityVersions.get(accountId) ?? 0;
   }
 
   async #runReconciliations(firstReason: ReconcileReason, context: SessionContext): Promise<void> {
@@ -365,10 +357,12 @@ class NotificationsStore {
     this.error = null;
 
     try {
-      const page = await request<NotificationPage>("/notifications?size=20", {
-        authenticated: true,
-        signal,
-      });
+      const page = notificationPage(
+        await request<unknown>("/notifications?size=20", {
+          authenticated: true,
+          signal,
+        }),
+      );
       if (!this.#isCurrent(context)) {
         return;
       }
@@ -393,7 +387,10 @@ class NotificationsStore {
 
       if (reason !== "initial" && newlyDiscovered.length > 0) {
         for (const notification of newlyDiscovered) {
-          this.#activityVersion(notification.account_id).value += 1;
+          this.#activityVersions.set(
+            notification.account_id,
+            (this.#activityVersions.get(notification.account_id) ?? 0) + 1,
+          );
         }
       }
 

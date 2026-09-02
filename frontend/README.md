@@ -43,7 +43,7 @@ build.
 | `mise run frontend:test:e2e`         | Run Playwright responsive accessibility tests  |
 | `mise run frontend:test:e2e:install` | Install Chromium for Playwright                |
 
-The package also provides watch, coverage, auto-fix, and formatting scripts for
+The package also provides watch, auto-fix, and formatting scripts for
 interactive use; see `package.json` for the complete list.
 
 ## Build and Serving

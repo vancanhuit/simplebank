@@ -87,6 +87,7 @@ describe("AccountHistoryPage", () => {
                 from_account_id: accountA,
                 to_account_id: accountB,
                 amount: 2500,
+                idempotency_key: "tx-1-key",
                 created_at: "2026-01-02T00:00:00Z",
               },
             ]
@@ -110,6 +111,19 @@ describe("AccountHistoryPage", () => {
     expect(await screen.findByText(accountB)).toBeInTheDocument();
     expectRequest(`/accounts/${accountB}`);
     expectRequest(`/accounts/${accountB}/transfers?page=1&size=50`);
+  });
+
+  it("shows loading when revisiting A after navigating A to B to A", async () => {
+    render(AccountHistoryPage);
+    expect(await screen.findByText(accountA)).toBeInTheDocument();
+    navigate(`/accounts/${accountB}`);
+    expect(await screen.findByText(accountB)).toBeInTheDocument();
+
+    requestMock.mockImplementation(() => new Promise(() => undefined));
+    navigate(`/accounts/${accountA}`);
+
+    expect(await screen.findByLabelText("Loading activity")).toBeInTheDocument();
+    expect(screen.queryByText(accountB)).not.toBeInTheDocument();
   });
 
   it("ignores a stale response from the previous account route", async () => {

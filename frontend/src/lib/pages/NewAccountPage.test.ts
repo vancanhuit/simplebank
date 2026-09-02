@@ -32,7 +32,6 @@ describe("NewAccountPage", () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, {
         EUR: 100000,
-        GBP: 100000,
         USD: 100000,
       }),
     );
@@ -258,7 +257,6 @@ describe("NewAccountPage", () => {
     resolveLimits(
       jsonResponse(200, {
         EUR: 100000,
-        GBP: 100000,
         USD: 100000,
       }),
     );
@@ -289,9 +287,7 @@ describe("NewAccountPage", () => {
   });
 
   it("preserves the selected currency and deposit after creation fails", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { EUR: 100000, GBP: 100000, USD: 100000, VND: 100000 }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { EUR: 100000, USD: 100000, VND: 100000 }));
     const create = vi
       .spyOn(accounts, "create")
       .mockRejectedValue(new Error("private account creation detail"));

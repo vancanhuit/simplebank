@@ -23,7 +23,6 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func NewClient(
-	ctx context.Context,
 	pool *pgxpool.Pool,
 	maxWorkers int,
 	st store.Store,

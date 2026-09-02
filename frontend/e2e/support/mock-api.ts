@@ -1,39 +1,8 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
+import type { Account, Notification, NotificationPage, User } from "../../src/lib/api/types.js";
 
-export interface Account {
-  id: string;
-  owner: string;
-  balance: number;
-  currency: "USD" | "EUR" | "VND";
-  created_at: string;
-}
-
-export interface Notification {
-  id: string;
-  account_id: string;
-  transfer_id: string;
-  direction: "sent" | "received";
-  amount: number;
-  currency: Account["currency"];
-  balance: number;
-  read_at: string | null;
-  created_at: string;
-}
-
-export interface NotificationPage {
-  notifications: Notification[];
-  unread_count: number;
-  next_cursor: string | null;
-}
-
-interface User {
-  username: string;
-  full_name: string;
-  email: string;
-  is_email_verified: boolean;
-  created_at: string;
-}
+export type { Account, Notification, NotificationPage };
 
 export const user: User = {
   username: "alexandria",

@@ -230,7 +230,7 @@ describe("TransferPage", () => {
     // Mock transfer limits
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
-        USD: { max_per_transfer: 1000000 },
+        USD: { max_per_transfer: 1000000, daily: 0 },
       }),
     );
 
@@ -249,6 +249,7 @@ describe("TransferPage", () => {
           to_account_id: "acct-2",
           amount: 5000,
           currency: "USD",
+          idempotency_key: "key-abc123",
           created_at: "2026-08-15T12:00:00Z",
         },
         from_account: {
@@ -323,12 +324,19 @@ describe("TransferPage", () => {
       .mockReturnValueOnce(idempotencyKey)
       .mockReturnValue("22222222-2222-4222-8222-222222222222");
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000, daily: 0 } }))
       .mockResolvedValueOnce(jsonResponse(503, { error: "temporary failure" }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
-          transfer: { id: "tx-retry", amount: 5000 },
-          from_account: { currency: "USD", balance: 95000 },
+          transfer: {
+            id: "tx-retry",
+            from_account_id: "acct-1",
+            to_account_id: "acct-2",
+            amount: 5000,
+            idempotency_key: "retry",
+            created_at: "2026-08-15T12:00:00Z",
+          },
+          from_account: { ...accounts.items[0], balance: 95000 },
         }),
       )
       .mockResolvedValueOnce(jsonResponse(200, accounts.items));
@@ -363,7 +371,7 @@ describe("TransferPage", () => {
       .mockReturnValueOnce("22222222-2222-4222-8222-222222222222")
       .mockReturnValueOnce("33333333-3333-4333-8333-333333333333");
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000, daily: 0 } }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
           transfer: {
@@ -437,7 +445,7 @@ describe("TransferPage", () => {
       .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
       .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000, daily: 0 } }))
       .mockResolvedValueOnce(jsonResponse(503, { error: "first failure" }))
       .mockResolvedValueOnce(jsonResponse(503, { error: "retry failure" }));
 
@@ -491,7 +499,7 @@ describe("TransferPage", () => {
         .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
         .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
       fetchMock
-        .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+        .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000, daily: 0 } }))
         .mockResolvedValueOnce(jsonResponse(503, { error: "first failure" }))
         .mockResolvedValueOnce(jsonResponse(503, { error: "changed failure" }));
 
@@ -538,8 +546,8 @@ describe("TransferPage", () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse(200, {
-          USD: { max_per_transfer: 1000000 },
-          EUR: { max_per_transfer: 1000000 },
+          USD: { max_per_transfer: 1000000, daily: 0 },
+          EUR: { max_per_transfer: 1000000, daily: 0 },
         }),
       )
       .mockResolvedValueOnce(jsonResponse(503, { error: "first failure" }))
@@ -578,7 +586,7 @@ describe("TransferPage", () => {
       .spyOn(crypto, "randomUUID")
       .mockReturnValueOnce("11111111-1111-4111-8111-111111111111");
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000, daily: 0 } }))
       .mockResolvedValueOnce(jsonResponse(503, { error: "temporary failure" }));
 
     render(TransferPage);
@@ -658,7 +666,7 @@ describe("TransferPage", () => {
   ])("keeps the transfer key when retrying %s", async (code, message) => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue("11111111-1111-4111-8111-111111111111");
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { USD: { max_per_transfer: 1000000, daily: 0 } }))
       .mockResolvedValueOnce(jsonResponse(422, { code }))
       .mockResolvedValueOnce(jsonResponse(422, { code }));
 

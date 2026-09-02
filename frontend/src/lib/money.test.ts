@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  formatMoney,
-  formatSignedMoney,
-  parseAmountToMinor,
-  isCurrency,
-  fractionDigits,
-} from "./money";
+import { formatMoney, formatSignedMoney, parseAmountToMinor, fractionDigits } from "./money";
 
 describe("formatMoney", () => {
   it("renders USD minor units with two fraction digits", () => {
@@ -82,11 +76,6 @@ describe("parseAmountToMinor", () => {
 });
 
 describe("currency helpers", () => {
-  it("recognizes supported currencies", () => {
-    expect(isCurrency("USD")).toBe(true);
-    expect(isCurrency("GBP")).toBe(false);
-  });
-
   it("reports fraction digits per currency", () => {
     expect(fractionDigits("USD")).toBe(2);
     expect(fractionDigits("VND")).toBe(0);

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -62,19 +63,6 @@ type Config struct {
 	accountOpeningLimitsErr error
 }
 
-// LimitFor returns the configured ceilings for a currency, or a zero-value
-// (both limits disabled) when the currency has no entry.
-func (c Config) LimitFor(currencyCode string) CurrencyLimit {
-	return c.TransferLimits[currencyCode]
-}
-
-// OpeningBalanceLimitFor returns the configured cap for opening balances in a
-// given currency. A missing currency entry returns zero, meaning only zero
-// opening balance is allowed for that currency.
-func (c Config) OpeningBalanceLimitFor(currencyCode string) int64 {
-	return c.AccountOpeningLimits[currencyCode]
-}
-
 func (c Config) Validate() error {
 	if c.DBSource == "" {
 		return errors.New("db-source is required")
@@ -82,11 +70,20 @@ func (c Config) Validate() error {
 	if len(c.JWTSecret) < 32 {
 		return errors.New("jwt-secret must be at least 32 characters")
 	}
+	if c.AccessTTL <= 0 {
+		return errors.New("access-ttl must be positive")
+	}
+	if c.RefreshTTL <= 0 {
+		return errors.New("refresh-ttl must be positive")
+	}
 	if c.SMTPFrom == "" {
 		return errors.New("smtp-from is required")
 	}
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
 		return errors.New("tls-cert-file and tls-key-file must be set together")
+	}
+	if c.TLSCertFile != "" && !c.SessionCookieSecure {
+		return errors.New("session-cookie-secure must be true when direct TLS is configured")
 	}
 	if c.PublicBaseURL != "" {
 		baseURL, err := url.Parse(c.PublicBaseURL)
@@ -95,6 +92,10 @@ func (c Config) Validate() error {
 		}
 		if !strings.EqualFold(baseURL.Scheme, "http") && !strings.EqualFold(baseURL.Scheme, "https") {
 			return errors.New("public-base-url must use an explicit http or https scheme")
+		}
+		if baseURL.Host == "" || baseURL.Hostname() == "" || baseURL.User != nil ||
+			baseURL.Path != "" || baseURL.RawQuery != "" || baseURL.Fragment != "" {
+			return errors.New("public-base-url must be an origin without credentials, path, query, or fragment")
 		}
 		if strings.EqualFold(baseURL.Scheme, "https") && !c.SessionCookieSecure {
 			return errors.New("session-cookie-secure must be true for an HTTPS public-base-url")
@@ -116,10 +117,16 @@ func parseTransferLimits(raw string) (map[string]CurrencyLimit, error) {
 		return nil, nil
 	}
 	var limits map[string]CurrencyLimit
-	if err := json.Unmarshal([]byte(raw), &limits); err != nil {
+	if err := decodeStrictJSON(raw, &limits); err != nil {
 		return nil, err
 	}
+	if limits == nil {
+		return nil, errors.New("limits must be a JSON object")
+	}
 	for code, limit := range limits {
+		if !currency.IsSupported(code) {
+			return nil, fmt.Errorf("unsupported currency %q", code)
+		}
 		if limit.MaxPerTransfer < 0 {
 			return nil, fmt.Errorf("max per-transfer limit for %s must not be negative", code)
 		}
@@ -144,11 +151,16 @@ func parseAccountOpeningLimits(raw string) (map[string]int64, error) {
 		return nil, nil
 	}
 	var limits map[string]int64
-	if err := json.Unmarshal([]byte(raw), &limits); err != nil {
+	if err := decodeStrictJSON(raw, &limits); err != nil {
 		return nil, err
 	}
-	// Reject any negative cap.
+	if limits == nil {
+		return nil, errors.New("limits must be a JSON object")
+	}
 	for currencyCode, cap := range limits {
+		if !currency.IsSupported(currencyCode) {
+			return nil, fmt.Errorf("unsupported currency %q", currencyCode)
+		}
 		if cap < 0 {
 			return nil, fmt.Errorf("negative opening balance cap for %s: %d", currencyCode, cap)
 		}
@@ -157,6 +169,21 @@ func parseAccountOpeningLimits(raw string) (map[string]int64, error) {
 		}
 	}
 	return limits, nil
+}
+
+func decodeStrictJSON(raw string, target any) error {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return err
+	}
+	return nil
 }
 
 func Flags() []cli.Flag {

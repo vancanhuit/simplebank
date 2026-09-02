@@ -40,7 +40,7 @@
   async function retryRefresh(): Promise<void> {
     retryingRefresh = true;
     try {
-      const outcome: RefreshOutcome = await auth.retryRefresh();
+      const outcome: RefreshOutcome = await auth.tryRefresh();
       if (outcome === "refreshed") {
         await Promise.all([accounts.load(), notifications.reconcile("manual")]);
       }

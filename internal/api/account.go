@@ -37,7 +37,7 @@ func (s *Server) createAccount(c *echo.Context) error {
 		)
 	}
 
-	if req.Balance > s.config.OpeningBalanceLimitFor(req.Currency) {
+	if req.Balance > s.config.AccountOpeningLimits[req.Currency] {
 		return newAPIError(
 			http.StatusUnprocessableEntity,
 			"opening_balance_limit_exceeded",

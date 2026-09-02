@@ -23,7 +23,6 @@ type Querier interface {
 	CreateVerifyEmail(ctx context.Context, arg CreateVerifyEmailParams) (VerifyEmail, error)
 	GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 	GetAccountForUpdate(ctx context.Context, id uuid.UUID) (Account, error)
-	GetAccountLedgerBalance(ctx context.Context, accountID uuid.UUID) (int64, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionForUpdate(ctx context.Context, id uuid.UUID) (Session, error)
 	GetTransferBySourceAndIdempotencyKey(ctx context.Context, arg GetTransferBySourceAndIdempotencyKeyParams) (Transfer, error)
@@ -32,11 +31,12 @@ type Querier interface {
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]Account, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListTransfersByAccount(ctx context.Context, arg ListTransfersByAccountParams) ([]Transfer, error)
+	LockNotificationOwner(ctx context.Context, owner string) error
 	MarkAllNotificationsRead(ctx context.Context, owner string) (int64, error)
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (Notification, error)
 	PublishNotification(ctx context.Context, arg PublishNotificationParams) error
 	RotateSession(ctx context.Context, arg RotateSessionParams) (Session, error)
-	SumOutgoingTransfersSince(ctx context.Context, arg SumOutgoingTransfersSinceParams) (int64, error)
+	SumOutgoingTransfersSince(ctx context.Context, fromAccountID uuid.UUID) (int64, error)
 	UpdateVerifyEmail(ctx context.Context, arg UpdateVerifyEmailParams) (VerifyEmail, error)
 	VerifyUserEmail(ctx context.Context, username string) (User, error)
 }

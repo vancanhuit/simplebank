@@ -1,6 +1,7 @@
 <script lang="ts">
   import { request, toMessage } from "../api/client";
   import type { Account, Transfer } from "../api/types";
+  import { account as validateAccount, transfers as validateTransfers } from "../api/validation";
   import { auth } from "../stores/auth.svelte";
   import { notifications } from "../stores/notifications.svelte";
   import { router } from "../router.svelte";
@@ -44,6 +45,7 @@
     if (preserveVisibleData) {
       refreshing = true;
     } else {
+      successfulRouteId = null;
       loading = true;
       account = null;
       transfers = [];
@@ -53,11 +55,11 @@
       loadGeneration === generation && auth.generation === authGeneration && !signal.aborted;
     try {
       const [nextAccount, nextTransfers] = await Promise.all([
-        request<Account>(`/accounts/${id}`, { authenticated: true, signal }),
-        request<Transfer[]>(`/accounts/${id}/transfers?page=1&size=50`, {
+        request<unknown>(`/accounts/${id}`, { authenticated: true, signal }).then(validateAccount),
+        request<unknown>(`/accounts/${id}/transfers?page=1&size=50`, {
           authenticated: true,
           signal,
-        }),
+        }).then(validateTransfers),
       ]);
       if (!current()) {
         return;

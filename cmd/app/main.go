@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -124,7 +126,6 @@ type appDeps struct {
 	cfg                  config.Config
 	pool                 *pgxpool.Pool
 	store                store.Store
-	mailer               mail.Mailer
 	riverClient          *river.Client[pgx.Tx]
 	notificationHub      *notification.Hub
 	notificationListener *notification.Listener
@@ -160,8 +161,18 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 	if err != nil {
 		return nil, err
 	}
-	baseURL := cmp.Or(cfg.PublicBaseURL, "http://localhost"+cfg.HTTPAddr)
-	riverClient, err := worker.NewClient(ctx, pool, cfg.RiverMaxWorkers, st, mailer, baseURL)
+	baseURL := cfg.PublicBaseURL
+	if baseURL == "" {
+		scheme := "http"
+		if cfg.TLSCertFile != "" {
+			scheme = "https"
+		}
+		baseURL, err = loopbackURL(scheme, cfg.HTTPAddr, "")
+		if err != nil {
+			return nil, err
+		}
+	}
+	riverClient, err := worker.NewClient(pool, cfg.RiverMaxWorkers, st, mailer, baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +181,6 @@ func buildApp(ctx context.Context, cmd *cli.Command) (*appDeps, error) {
 		cfg:                  cfg,
 		pool:                 pool,
 		store:                st,
-		mailer:               mailer,
 		riverClient:          riverClient,
 		notificationHub:      hub,
 		notificationListener: listener,
@@ -222,6 +232,10 @@ type serviceLifecycle interface {
 	Stop(context.Context) error
 }
 
+type cancelingService interface {
+	StopAndCancel(context.Context) error
+}
+
 func runServices(
 	ctx context.Context,
 	listener serviceLifecycle,
@@ -229,12 +243,12 @@ func runServices(
 	serve func(context.Context) error,
 ) error {
 	lifecycleCtx := context.WithoutCancel(ctx)
-	if err := listener.Start(ctx); err != nil {
+	if err := startService(ctx, lifecycleCtx, listener); err != nil {
 		return fmt.Errorf("starting notification listener: %w", err)
 	}
 	slog.Info("notification listener started")
 
-	if err := worker.Start(ctx); err != nil {
+	if err := startService(ctx, lifecycleCtx, worker); err != nil {
 		shutdownCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
 		listenerErr := listener.Stop(shutdownCtx)
 		cancel()
@@ -248,6 +262,13 @@ func runServices(
 	workerShutdownCtx, cancelWorkerShutdown := context.WithTimeout(lifecycleCtx, 10*time.Second)
 	workerErr := worker.Stop(workerShutdownCtx)
 	cancelWorkerShutdown()
+	if workerErr != nil {
+		if canceler, ok := worker.(cancelingService); ok {
+			cancelCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
+			workerErr = errors.Join(workerErr, canceler.StopAndCancel(cancelCtx))
+			cancel()
+		}
+	}
 
 	slog.Info("notification listener shutting down", "cause", context.Cause(ctx))
 	listenerShutdownCtx, cancelListenerShutdown := context.WithTimeout(lifecycleCtx, 10*time.Second)
@@ -255,6 +276,29 @@ func runServices(
 	cancelListenerShutdown()
 
 	return errors.Join(serverErr, workerErr, listenerErr)
+}
+
+func startService(ctx, lifecycleCtx context.Context, service serviceLifecycle) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	started := make(chan error, 1)
+	go func() { started <- service.Start(lifecycleCtx) }()
+
+	select {
+	case err := <-started:
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(lifecycleCtx, 10*time.Second)
+		stopErr := service.Stop(shutdownCtx)
+		cancel()
+		select {
+		case startErr := <-started:
+			return errors.Join(ctx.Err(), stopErr, startErr)
+		case <-shutdownCtx.Done():
+			return errors.Join(ctx.Err(), stopErr)
+		}
+	}
 }
 
 // startServer runs the HTTP server with hardened timeouts and graceful
@@ -317,8 +361,11 @@ func runHealthcheck(ctx context.Context, cmd *cli.Command) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("%s://localhost%s/livez", scheme, addr)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	probeURL, err := loopbackURL(scheme, addr, "/livez")
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
 	if err != nil {
 		return err
 	}
@@ -334,4 +381,12 @@ func runHealthcheck(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("healthcheck failed: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func loopbackURL(scheme, addr, path string) (string, error) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("invalid http-addr %q: %w", addr, err)
+	}
+	return (&url.URL{Scheme: scheme, Host: net.JoinHostPort("localhost", port), Path: path}).String(), nil
 }

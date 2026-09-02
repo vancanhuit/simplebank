@@ -18,6 +18,7 @@
   let submitting = $state(false);
   let logoutFailed = $state(false);
   let sessionExpired = $state(false);
+  let registered = $state(false);
   let returnTo: string | null = null;
 
   const fieldIds = {
@@ -25,32 +26,22 @@
     password: "login-password",
   } as const;
 
-  // One-shot notice set by the register flow via history state.
-  const historyState: unknown = window.history.state;
-  const registered =
-    typeof historyState === "object" &&
-    historyState !== null &&
-    "registered" in historyState &&
-    historyState.registered === true;
-
   $effect(() => {
-    const state = router.state;
-    const hasConsumedState =
-      "logoutFailed" in state || "returnTo" in state || "sessionExpired" in state;
-    if (!hasConsumedState) return;
-
-    if (state.logoutFailed === true) {
-      logoutFailed = true;
+    const navigationState = router.state;
+    if (
+      !("registered" in navigationState) &&
+      !("logoutFailed" in navigationState) &&
+      !("returnTo" in navigationState) &&
+      !("sessionExpired" in navigationState)
+    ) {
+      return;
     }
-    if (state.sessionExpired === true) {
-      sessionExpired = true;
-    }
-    const validatedReturnTo = safeReturnPath(state.returnTo);
-    if (validatedReturnTo !== null) {
-      returnTo = validatedReturnTo;
-    }
-
-    const remainingState = { ...state };
+    registered ||= navigationState.registered === true;
+    logoutFailed ||= navigationState.logoutFailed === true;
+    sessionExpired ||= navigationState.sessionExpired === true;
+    returnTo ??= safeReturnPath(navigationState.returnTo);
+    const remainingState = { ...navigationState };
+    delete remainingState.registered;
     delete remainingState.logoutFailed;
     delete remainingState.returnTo;
     delete remainingState.sessionExpired;

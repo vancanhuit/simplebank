@@ -1,4 +1,4 @@
-import type { Currency } from "../money";
+import type { Currency } from "../money.js";
 
 /** A bank account, mirroring the backend `Account` model. */
 export interface Account {

@@ -42,7 +42,7 @@ func (s *Server) createTransfer(c *echo.Context) error {
 
 	// Transfer limits are per-currency: both accounts share req.Currency, so a
 	// single lookup gives the ceilings in that currency's minor units.
-	limit := s.config.LimitFor(req.Currency)
+	limit := s.config.TransferLimits[req.Currency]
 	if limit.MaxPerTransfer > 0 && req.Amount > limit.MaxPerTransfer {
 		return newAPIError(http.StatusUnprocessableEntity, "transfer_limit_exceeded", "amount exceeds the per-transfer limit")
 	}

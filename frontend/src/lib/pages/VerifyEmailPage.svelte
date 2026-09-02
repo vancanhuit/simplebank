@@ -3,6 +3,7 @@
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import { isRetryable, request, toMessage } from "../api/client";
+  import { verificationResponse } from "../api/validation";
   import { auth } from "../stores/auth.svelte";
   import AuthLayout from "./AuthLayout.svelte";
   import Link from "../components/Link.svelte";
@@ -21,7 +22,7 @@
     retryable = false;
     try {
       const query = `?id=${encodeURIComponent(id)}&code=${encodeURIComponent(code)}`;
-      await request<{ is_verified: boolean }>(`/users/verify_email${query}`);
+      verificationResponse(await request<unknown>(`/users/verify_email${query}`));
       status = "success";
     } catch (err) {
       status = "error";

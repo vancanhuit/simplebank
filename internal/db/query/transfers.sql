@@ -10,9 +10,10 @@ WHERE from_account_id = sqlc.arg(from_account_id)
 LIMIT 1;
 
 -- name: SumOutgoingTransfersSince :one
-SELECT COALESCE(SUM(amount), 0)::bigint AS total
+SELECT LEAST(COALESCE(SUM(amount), 0), 9007199254740991)::bigint AS total
 FROM transfers
-WHERE from_account_id = sqlc.arg(from_account_id) AND created_at >= sqlc.arg(since);
+WHERE from_account_id = $1
+  AND created_at >= clock_timestamp() - interval '24 hours';
 
 -- name: ListTransfersByAccount :many
 SELECT * FROM transfers
