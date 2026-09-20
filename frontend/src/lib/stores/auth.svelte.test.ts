@@ -34,6 +34,27 @@ const validRenewResponse = {
 };
 
 describe("AuthStore", () => {
+  it.each(["alice", "bob"])(
+    "renews %s with a boundary only on principal replacement",
+    async (username) => {
+      const store = new AuthStore();
+      store.user = verifiedUser;
+      store.accessToken = "alice-token";
+      const generation = store.generation;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          jsonResponse(200, {
+            ...validRenewResponse,
+            user: { ...verifiedUser, username },
+          }),
+        ),
+      );
+      expect(await store.tryRefresh()).toBe("refreshed");
+      expect(store.generation).toBe(generation + (username === "bob" ? 1 : 0));
+      expect(store.user?.username).toBe(username);
+    },
+  );
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();

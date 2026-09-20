@@ -229,6 +229,8 @@ jobs:
           # survive on ephemeral runners without a backing cache.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - run: |
-          docker image ls
-          docker image inspect simplebank:latest
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: arm64
+      - name: Verify target executables and non-root startup
+        run: bash scripts/verify-container.sh simplebank:latest

@@ -92,6 +92,7 @@ Migrations (schema + River) run automatically on startup.
 | `mise run govulncheck` | Scan for known vulnerabilities |
 | `mise run sqlc:generate` | Regenerate Go query code from `internal/db/query/*.sql` |
 | `mise run docker:build` | Build a multi-arch Docker image |
+| `mise run docker:verify` | Inspect loaded amd64/arm64 executables and run non-root CLI smoke checks (requires native support or QEMU for each target) |
 
 ## Configuration
 
@@ -149,6 +150,10 @@ Base path `/api/v1`. Health endpoints (`/livez`, `/readyz`) are unversioned.
 | `POST` | `/api/v1/transfers` | Bearer | Transfer from an account you own to another same-currency account (requires an `idempotency_key`) |
 
 Protected routes accept only `Authorization: Bearer <access-token>` credentials.
+If a verification link is missing or expired, use **Request a new verification
+email** on the verification page or from the unverified-login message. Enter
+the email address and check the inbox; signing in first is not required.
+
 Refresh tokens are never returned in JSON responses; the browser receives them
 in the `simplebank_refresh` HttpOnly, `SameSite=Strict` cookie scoped to
 `/api/v1`, with `Secure` enabled by default. Only the renew/logout endpoints
