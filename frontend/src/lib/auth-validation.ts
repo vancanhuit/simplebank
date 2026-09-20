@@ -17,6 +17,10 @@ const ALPHANUMERIC = /^[A-Za-z0-9]+$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const utf8 = new TextEncoder();
 
+export function validateEmail(email: string): string | undefined {
+  return EMAIL.test(email.trim()) ? undefined : "Enter a valid email address.";
+}
+
 export function validateLogin(input: LoginInput): ValidationResult<LoginInput> {
   const values = {
     username: input.username.trim(),
@@ -58,9 +62,8 @@ export function validateRegistration(
     errors.username = "Use letters and numbers only.";
   }
 
-  if (!EMAIL.test(values.email)) {
-    errors.email = "Enter a valid email address.";
-  }
+  const emailError = validateEmail(values.email);
+  if (emailError) errors.email = emailError;
 
   if (!values.password) {
     errors.password = "Enter your password.";

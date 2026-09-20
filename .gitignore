@@ -40,6 +40,7 @@
 !mise.toml
 !mise.lock
 !env.bash
+!/scripts/verify-container.sh
 !cog.toml
 !.golangci.yml
 !.editorconfig

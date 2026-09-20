@@ -85,20 +85,41 @@ func TestRegisterSPAReturnsJSONForUnknownAPIPath(t *testing.T) {
 	s := newTestServer(t)
 	s.RegisterSPA(spaTestFS())
 
-	// A path under /api that matches no route reaches the SPA catch-all; the
-	// guard must return a JSON 404 rather than serving the HTML app shell.
-	req := httptest.NewRequest(http.MethodGet, "/api/unknown", nil)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
+	for _, path := range []string{"/api", "/api/", "/api/unknown", "/api/v1/unknown"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("want 404 for unknown API path, got %d", rec.Code)
+			want := http.StatusNotFound
+			if path == "/api/v1/unknown" {
+				want = http.StatusUnauthorized // Preserve the group's authentication precedence.
+			}
+			if rec.Code != want {
+				t.Fatalf("want %d for unknown API path, got %d", want, rec.Code)
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+				t.Fatalf("want json error, got content type %q", ct)
+			}
+			if strings.Contains(rec.Body.String(), "SimpleBank") {
+				t.Fatalf("API path must not serve the SPA shell, got %q", rec.Body.String())
+			}
+		})
 	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
-		t.Fatalf("want json error, got content type %q", ct)
-	}
-	if strings.Contains(rec.Body.String(), "SimpleBank") {
-		t.Fatalf("API path must not serve the SPA shell, got %q", rec.Body.String())
+}
+
+func TestRegisterSPAPreservesAPIRoutes(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	s.RegisterSPA(spaTestFS())
+	for _, path := range []string{"/livez", "/readyz", "/api/v1/transfer-limits"} {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "application/json") {
+				t.Fatalf("route displaced by SPA: %d %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 

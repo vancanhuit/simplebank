@@ -71,7 +71,7 @@ class AuthStore {
   renewalUnavailable = $state(false);
   sessionExpired = $state(false);
   /** Monotonic generation to prevent race conditions. */
-  #generation = 0;
+  #generation = $state(0);
   #refreshAttempt: RefreshAttempt | null = null;
 
   get generation(): number {
@@ -162,6 +162,9 @@ class AuthStore {
         return "no_session";
       }
 
+      if (this.user !== null && this.user.username !== res.user.username) {
+        this.#generation += 1;
+      }
       this.accessToken = res.access_token;
       this.user = res.user;
       this.renewalUnavailable = false;

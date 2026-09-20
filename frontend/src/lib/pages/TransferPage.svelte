@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import { request, toMessage } from "../api/client";
   import type { TransferLimits, TransferResult } from "../api/types";
   import { transferLimits, transferResult } from "../api/validation";
   import { accounts } from "../stores/accounts.svelte";
+  import { auth } from "../stores/auth.svelte";
   import { formatMoney, fractionDigits, parseAmountToMinor, type Currency } from "../money";
   import Button from "../components/Button.svelte";
   import Alert from "../components/Alert.svelte";
@@ -20,6 +21,8 @@
   let submitting = $state(false);
   let receipt = $state<TransferResult | null>(null);
   let limits = $state<TransferLimits>({});
+  const sessionGeneration = auth.generation;
+  const current = () => auth.generation === sessionGeneration;
   interface TransferIntent {
     from_account_id: string;
     to_account_id: string;
@@ -50,13 +53,20 @@
     if (!accounts.loaded || accounts.error !== null) {
       await accounts.load();
     }
-
-    if (accounts.loaded && !accounts.loading && accounts.error === null) {
-      // Preselect the account chosen from a card, then the first account.
-      fromAccountId = accounts.transferFromId ?? accounts.items[0]?.id ?? "";
-      accounts.transferFromId = null;
-    }
   }
+
+  // Concurrent inventory refreshes can supersede the mount request. Initialize
+  // from the first accepted inventory, then never silently change the source.
+  $effect(() => {
+    if (current() && accounts.loaded && !accounts.loading && accounts.error === null) {
+      untrack(() => {
+        if (fromAccountId) return;
+        // Preselect the account chosen from a card, then the first account.
+        fromAccountId = accounts.transferFromId ?? accounts.items[0]?.id ?? "";
+        accounts.transferFromId = null;
+      });
+    }
+  });
 
   async function loadTransferLimits(): Promise<void> {
     // Load the per-currency limits so we can flag an over-limit amount before
@@ -69,19 +79,17 @@
   }
 
   const fromAccount = $derived(accounts.get(fromAccountId));
-  const amountStep = $derived(
-    fromAccount ? (fractionDigits(fromAccount.currency) === 0 ? "1" : "0.01") : "0.01",
-  );
 
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
+    if (!current() || submitting) return;
     error = null;
     toError = null;
     amountError = null;
     receipt = null;
 
     if (!fromAccount) {
-      error = "Choose an account to send from.";
+      document.getElementById("from")?.focus();
       return;
     }
     const recipient = toAccountId.trim();
@@ -132,6 +140,7 @@
           },
         }),
       );
+      if (!current()) return;
       receipt = result;
       // The transfer is confirmed, so the next one is a new intent: rotate the
       // key and clear the form.
@@ -139,12 +148,13 @@
       keyedIntent = null;
       // Reload balances so the dashboard and the from-account reflect the debit.
       await accounts.load();
+      if (!current()) return;
       amount = "";
       toAccountId = "";
     } catch (err) {
-      error = toMessage(err);
+      if (current()) error = toMessage(err);
     } finally {
-      submitting = false;
+      if (current()) submitting = false;
     }
   }
 </script>
@@ -204,14 +214,15 @@
         </Alert>
       {/if}
     </div>
-  {:else if accounts.items.length === 0}
+  {/if}
+  {#if accounts.loaded && accounts.items.length === 0}
     <div class="mt-8">
       <Alert variant="info">
         You need an account before you can send money.
         <Link href="/accounts/new" class="font-semibold underline">Open one</Link>.
       </Alert>
     </div>
-  {:else}
+  {:else if accounts.loaded}
     <div class="card card-border mt-8 bg-base-100 shadow-sm">
       <form class="card-body gap-5 p-6 sm:p-8" onsubmit={handleSubmit} novalidate>
         {#if error}
@@ -220,7 +231,16 @@
 
         <fieldset class="fieldset">
           <label for="from" class="fieldset-legend">From account</label>
-          <select id="from" bind:value={fromAccountId} class="select w-full min-h-11">
+          <select
+            id="from"
+            bind:value={fromAccountId}
+            class="select w-full min-h-11"
+            aria-invalid={!fromAccount || undefined}
+            aria-describedby={!fromAccount ? "source-error" : undefined}
+          >
+            {#if !fromAccount}
+              <option value={fromAccountId} disabled>Choose an available account</option>
+            {/if}
             {#each accounts.items as account (account.id)}
               <option value={account.id}>
                 {account.currency} · {formatMoney(account.balance, account.currency)}
@@ -231,6 +251,8 @@
             <p class="label text-base-content/65">
               Available: {formatMoney(fromAccount.balance, fromAccount.currency)}
             </p>
+          {:else}
+            <p id="source-error" role="alert" class="text-error">Choose an account to send from.</p>
           {/if}
         </fieldset>
 
@@ -246,10 +268,9 @@
 
         <TextField
           label={`Amount${fromAccount ? ` (${fromAccount.currency})` : ""}`}
-          type="number"
-          inputmode="decimal"
-          step={amountStep}
-          min="0"
+          inputmode={fromAccount && fractionDigits(fromAccount.currency) === 0
+            ? "numeric"
+            : "decimal"}
           bind:value={amount}
           placeholder="0.00"
           error={amountError ?? undefined}

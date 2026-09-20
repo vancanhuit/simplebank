@@ -5,6 +5,7 @@
   import type { AccountOpeningLimits } from "../api/types";
   import { accountOpeningLimits } from "../api/validation";
   import { accounts } from "../stores/accounts.svelte";
+  import { auth } from "../stores/auth.svelte";
   import {
     CURRENCIES,
     formatMoney,
@@ -12,7 +13,7 @@
     parseAmountToMinor,
     type Currency,
   } from "../money";
-  import { openingLimitFor, openingLimitInputMax, validateOpeningBalance } from "../opening-limits";
+  import { openingLimitFor, validateOpeningBalance } from "../opening-limits";
   import { navigate } from "../router.svelte";
   import Button from "../components/Button.svelte";
   import Alert from "../components/Alert.svelte";
@@ -27,6 +28,8 @@
   let openingLimits = $state<AccountOpeningLimits>({});
   let policyLoading = $state(true);
   let policyError = $state<string | null>(null);
+  const sessionGeneration = auth.generation;
+  const current = () => auth.generation === sessionGeneration;
 
   onMount(() => {
     void loadOpeningLimits();
@@ -38,7 +41,7 @@
       await accounts.load();
     }
 
-    if (accounts.loaded && !accounts.loading && accounts.error === null) {
+    if (current() && accounts.loaded && !accounts.loading && accounts.error === null) {
       const firstAvailable = available[0];
       if (firstAvailable && !available.includes(currency)) {
         currency = firstAvailable;
@@ -52,9 +55,7 @@
     CURRENCIES.filter((code) => !accounts.items.some((account) => account.currency === code)),
   );
 
-  const depositStep = $derived(fractionDigits(currency) === 0 ? "1" : "0.01");
   const openingLimit = $derived(openingLimitFor(openingLimits, currency));
-  const depositMax = $derived(openingLimitInputMax(openingLimit, currency));
   const policyReady = $derived(!policyLoading && policyError === null);
   const accountsReady = $derived(accounts.loaded && !accounts.loading && accounts.error === null);
   const formDisabled = $derived(!policyReady || !accountsReady || submitting);
@@ -78,6 +79,7 @@
 
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
+    if (!current() || submitting) return;
     error = null;
     depositError = null;
 
@@ -87,9 +89,8 @@
     }
 
     // The opening deposit is optional; an empty field opens the account at zero.
-    // A number-type input binds as a number at runtime, so coerce before testing.
     let balance = 0;
-    if (String(deposit).trim() !== "") {
+    if (deposit.trim() !== "") {
       const minor = parseAmountToMinor(deposit, currency);
       if (minor === null) {
         depositError = "Enter an opening deposit greater than zero, or leave it blank.";
@@ -106,11 +107,12 @@
     submitting = true;
     try {
       await accounts.create(currency, balance);
+      if (!current()) return;
       navigate("/");
     } catch (err) {
-      error = toMessage(err);
+      if (current()) error = toMessage(err);
     } finally {
-      submitting = false;
+      if (current()) submitting = false;
     }
   }
 </script>
@@ -189,11 +191,7 @@
 
         <TextField
           label={`Opening deposit (${currency})`}
-          type="number"
-          inputmode="decimal"
-          step={depositStep}
-          min="0"
-          max={depositMax}
+          inputmode={fractionDigits(currency) === 0 ? "numeric" : "decimal"}
           bind:value={deposit}
           placeholder="0.00"
           hint={depositHint}

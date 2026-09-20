@@ -82,6 +82,108 @@ async function flush(): Promise<void> {
 }
 
 describe("NotificationsStore", () => {
+  it.each(["page-first", "refresh-first"])(
+    "discards superseded pagination and retries the refreshed cursor: %s",
+    async (order) => {
+      const oldPage = deferred<NotificationPage>();
+      const refresh = deferred<NotificationPage>();
+      mocks.request
+        .mockResolvedValueOnce(page([sent], 1, "old"))
+        .mockReturnValueOnce(oldPage.promise)
+        .mockReturnValueOnce(refresh.promise)
+        .mockResolvedValueOnce(page([received], 2, "final"));
+      await notifications.reconcile("initial");
+      const more = notifications.loadMore();
+      const reconciliation = notifications.reconcile("visibility");
+      if (order === "page-first") {
+        oldPage.resolve(page([received], 1, "obsolete"));
+        await flush();
+        expect(notifications.nextCursor).toBe("old");
+        refresh.resolve(page([anotherSent, sent], 2, "fresh"));
+      } else {
+        refresh.resolve(page([anotherSent, sent], 2, "fresh"));
+        await reconciliation;
+        oldPage.resolve(page([received], 1, "obsolete"));
+      }
+      await Promise.all([more, reconciliation]);
+      expect(mocks.request.mock.calls.map(([path]) => String(path))).toEqual([
+        "/notifications?size=20",
+        "/notifications?size=20&cursor=old",
+        "/notifications?size=20",
+        "/notifications?size=20&cursor=fresh",
+      ]);
+      expect(notifications.unreadCount).toBe(2);
+      expect(notifications.nextCursor).toBe("final");
+      expect(notifications.items.map((row) => row.id)).toEqual([
+        anotherSent.id,
+        sent.id,
+        received.id,
+      ]);
+    },
+  );
+
+  it("queues pagination behind refresh before capturing its cursor", async () => {
+    const refresh = deferred<NotificationPage>();
+    mocks.request
+      .mockResolvedValueOnce(page([sent], 1, "old"))
+      .mockReturnValueOnce(refresh.promise)
+      .mockResolvedValueOnce(page([received], 2));
+    await notifications.reconcile("initial");
+    const reconciliation = notifications.reconcile("manual");
+    const more = notifications.loadMore();
+    expect(mocks.request).toHaveBeenCalledTimes(2);
+    refresh.resolve(page([sent], 2, "fresh"));
+    await Promise.all([more, reconciliation]);
+    expect(mocks.request.mock.calls[2][0]).toBe("/notifications?size=20&cursor=fresh");
+  });
+
+  it("atomically refreshes every loaded page, retains it on later failure, and shrinks ended history", async () => {
+    const readSent = { ...sent, read_at: "2026-08-23T11:00:00Z" };
+    const readReceived = { ...received, read_at: "2026-08-23T11:00:00Z" };
+    mocks.request
+      .mockResolvedValueOnce(page([sent], 2, "older"))
+      .mockResolvedValueOnce(page([received], 2))
+      .mockResolvedValueOnce(page([readSent], 0, "new-older"))
+      .mockRejectedValueOnce(new Error("offline"));
+    await notifications.reconcile("initial");
+    await notifications.loadMore();
+    await notifications.reconcile("visibility");
+    expect(notifications.items).toEqual([sent, received]);
+    expect(notifications.unreadCount).toBe(2);
+    expect(notifications.error).not.toBeNull();
+    mocks.request
+      .mockResolvedValueOnce(page([readSent], 1, "new-older"))
+      .mockResolvedValueOnce(page([readSent, readReceived], 0, "final"));
+    await notifications.reconcile("manual");
+    expect(notifications.items).toEqual([readSent, readReceived]);
+    expect(notifications.unreadCount).toBe(0);
+    expect(notifications.nextCursor).toBe("final");
+    expect(notifications.toasts).toEqual([]);
+    mocks.request.mockResolvedValueOnce(page([readSent], 0));
+    await notifications.reconcile("connected");
+    expect(notifications.items).toEqual([readSent]);
+    expect(notifications.nextCursor).toBeNull();
+  });
+
+  it("discards a multi-page window after session reset", async () => {
+    const laterPage = deferred<NotificationPage>();
+    mocks.request
+      .mockResolvedValueOnce(page([sent], 2, "older"))
+      .mockResolvedValueOnce(page([received], 2))
+      .mockResolvedValueOnce(page([anotherSent], 3, "older"))
+      .mockReturnValueOnce(laterPage.promise);
+    await notifications.reconcile("initial");
+    await notifications.loadMore();
+    const refresh = notifications.reconcile("live");
+    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(4));
+    notifications.reset();
+    laterPage.resolve(page([sent, received], 3));
+    await refresh;
+    expect(notifications.items).toEqual([]);
+    expect(notifications.unreadCount).toBe(0);
+    expect(notifications.toasts).toEqual([]);
+    expect(mocks.accountsLoad).toHaveBeenCalledTimes(1);
+  });
   beforeEach(() => {
     mocks.accountsLoad.mockResolvedValue(true);
     mocks.consumeEventStream.mockImplementation(
@@ -292,11 +394,7 @@ describe("NotificationsStore", () => {
     expect(notifications.items.map((row) => row.id)).toEqual([sent.id, received.id]);
 
     await notifications.reconcile("manual");
-    expect(notifications.items.map((row) => row.id)).toEqual([
-      anotherSent.id,
-      sent.id,
-      received.id,
-    ]);
+    expect(notifications.items.map((row) => row.id)).toEqual([anotherSent.id]);
     expect(notifications.unreadCount).toBe(1);
   });
 
@@ -438,8 +536,19 @@ describe("NotificationsStore", () => {
     );
 
     await notifications.reconcile("live");
+    mocks.request.mockResolvedValueOnce(
+      page(
+        [
+          anotherSent,
+          { ...sent, read_at: "2026-08-23T11:00:00Z" },
+          { ...received, read_at: "2026-08-23T11:00:00Z" },
+        ],
+        1,
+      ),
+    );
     secondMutation.resolve({ unread_count: 1 });
     await markAll;
+    await vi.waitFor(() => expect(notifications.items[1].read_at).not.toBeNull());
 
     expect(notifications.unreadCount).toBe(1);
     expect(notifications.items.find((item) => item.id === sent.id)?.read_at).not.toBeNull();
