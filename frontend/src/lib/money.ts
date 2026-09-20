@@ -27,14 +27,25 @@ export function fractionDigits(currency: Currency): number {
  * Format a balance stored in minor units (the backend stores `balance` as an
  * int64 of the smallest currency unit) into a localized currency string.
  */
-export function formatMoney(minorAmount: number, currency: Currency): string {
-  const major = minorAmount / MINOR_UNITS[currency];
-  return new Intl.NumberFormat(undefined, {
+export function formatMoney(minorAmount: number, currency: Currency, locale?: string): string {
+  const minor = BigInt(minorAmount);
+  const unit = BigInt(MINOR_UNITS[currency]);
+  const whole = minor / unit;
+  const digits = FRACTION_DIGITS[currency];
+  const fraction = new Intl.NumberFormat(locale, {
+    useGrouping: false,
+    minimumIntegerDigits: digits || 1,
+  }).format(minor < 0n ? -(minor % unit) : minor % unit);
+  // BigInt preserves grouping exactly; -0 preserves the sign below one major unit.
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     minimumFractionDigits: FRACTION_DIGITS[currency],
     maximumFractionDigits: FRACTION_DIGITS[currency],
-  }).format(major);
+  })
+    .formatToParts(minor < 0n && whole === 0n ? -0 : whole)
+    .map((part) => (part.type === "fraction" ? fraction : part.value))
+    .join("");
 }
 
 /** Format a signed transfer amount, always showing the leading + or −. */

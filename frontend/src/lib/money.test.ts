@@ -2,6 +2,19 @@ import { describe, it, expect } from "vitest";
 import { formatMoney, formatSignedMoney, parseAmountToMinor, fractionDigits } from "./money";
 
 describe("formatMoney", () => {
+  it.each([
+    [Number.MAX_SAFE_INTEGER, "USD", "en-US", "$90,071,992,547,409.91"],
+    [Number.MAX_SAFE_INTEGER, "EUR", "de-DE", "90.071.992.547.409,91 €"],
+    [-Number.MAX_SAFE_INTEGER, "EUR", "en-US", "-€90,071,992,547,409.91"],
+    [Number.MAX_SAFE_INTEGER, "VND", "de-DE", "9.007.199.254.740.991 ₫"],
+    [0, "USD", "en-US", "$0.00"],
+    [1, "EUR", "de-DE", "0,01 €"],
+    [-1, "USD", "en-US", "-$0.01"],
+    [-1, "EUR", "de-DE", "-0,01 €"],
+    [-1, "VND", "en-US", "-₫1"],
+  ] as const)("formats %s %s exactly in %s", (minor, currency, locale, expected) => {
+    expect(formatMoney(minor, currency, locale)).toBe(expected);
+  });
   it("renders USD minor units with two fraction digits", () => {
     expect(formatMoney(48235, "USD")).toContain("482.35");
   });

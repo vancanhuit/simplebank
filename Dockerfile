@@ -46,6 +46,7 @@ COPY internal internal
 COPY frontend/ frontend/
 
 ARG TARGETOS
+ARG TARGETARCH
 ARG VERSION
 ARG COMMIT
 ARG BUILD_DATE
