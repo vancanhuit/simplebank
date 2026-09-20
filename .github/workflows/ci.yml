@@ -126,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
-      - uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5
+      - uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5
         with:
           daemon-config: |
             {
@@ -134,8 +134,8 @@ jobs:
                 "containerd-snapshotter": true
               }
             }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
-      - uses: docker/setup-compose-action@4eb059ff7f16592f9c84d5ca339c53cb7c5064e2 # v2
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2
         with:
           version: latest
       - uses: ./.github/actions/go-cache
@@ -155,7 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
-      - uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5
+      - uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5
         with:
           daemon-config: |
             {
@@ -163,8 +163,8 @@ jobs:
                 "containerd-snapshotter": true
               }
             }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
-      - uses: docker/setup-compose-action@4eb059ff7f16592f9c84d5ca339c53cb7c5064e2 # v2
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2
         with:
           version: latest
       - run: |
@@ -200,7 +200,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5
+      - uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5
         with:
           daemon-config: |
             {
@@ -208,14 +208,14 @@ jobs:
                 "containerd-snapshotter": true
               }
             }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Derive build metadata
         run: |
           source env.bash
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
           echo "BUILD_DATE=$BUILD_DATE" >> "$GITHUB_ENV"
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -229,7 +229,7 @@ jobs:
           # survive on ephemeral runners without a backing cache.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:
           platforms: arm64
       - name: Verify target executables and non-root startup
