@@ -36,7 +36,7 @@ func serveSPA(c *echo.Context, dist fs.FS, fileServer http.Handler) error {
 
 	// Unmatched API paths must not fall through to the SPA; return a JSON 404 so
 	// API clients always receive a consistent error shape rather than HTML.
-	if strings.HasPrefix(name, "api/") {
+	if name == "api" || strings.HasPrefix(name, "api/") {
 		return echo.NewHTTPError(http.StatusNotFound, "not found")
 	}
 

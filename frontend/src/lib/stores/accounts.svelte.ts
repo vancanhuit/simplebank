@@ -2,6 +2,7 @@ import { request, toMessage } from "../api/client";
 import type { Account } from "../api/types";
 import { account, accounts as validateAccounts } from "../api/validation";
 import type { Currency } from "../money";
+import { auth } from "./auth.svelte";
 
 /**
  * Client-side cache of the signed-in user's accounts. It owns loading and error
@@ -21,6 +22,7 @@ class AccountsStore {
 
   async load(signal?: AbortSignal): Promise<boolean> {
     const generation = this.#generation;
+    const authGeneration = auth.generation;
     const sequence = ++this.#loadSequence;
     this.loading = true;
     this.error = null;
@@ -33,21 +35,34 @@ class AccountsStore {
           signal,
         }),
       );
-      if (signal?.aborted || this.#generation !== generation || this.#loadSequence !== sequence) {
+      if (
+        signal?.aborted ||
+        auth.generation !== authGeneration ||
+        this.#generation !== generation ||
+        this.#loadSequence !== sequence
+      ) {
         return false;
       }
       this.items = items;
       this.loaded = true;
       return true;
     } catch (err) {
-      if (this.#generation === generation && this.#loadSequence === sequence) {
+      if (
+        auth.generation === authGeneration &&
+        this.#generation === generation &&
+        this.#loadSequence === sequence
+      ) {
         if (!signal?.aborted) {
           this.error = toMessage(err);
         }
       }
       return false;
     } finally {
-      if (this.#generation === generation && this.#loadSequence === sequence) {
+      if (
+        auth.generation === authGeneration &&
+        this.#generation === generation &&
+        this.#loadSequence === sequence
+      ) {
         this.loading = false;
       }
     }
@@ -55,6 +70,7 @@ class AccountsStore {
 
   async create(currency: Currency, balance = 0): Promise<Account> {
     const generation = this.#generation;
+    const authGeneration = auth.generation;
     const created = account(
       await request<unknown>("/accounts", {
         method: "POST",
@@ -62,7 +78,7 @@ class AccountsStore {
         body: { currency, balance },
       }),
     );
-    if (this.#generation === generation) {
+    if (auth.generation === authGeneration && this.#generation === generation) {
       this.items = [...this.items, created];
     }
     return created;

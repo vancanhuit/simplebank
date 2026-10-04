@@ -92,6 +92,10 @@ docker buildx build --platform linux/amd64,linux/arm64 -t simplebank:latest --lo
   .
 '''
 
+[tasks."docker:verify"]
+description = "Check loaded amd64/arm64 executable headers and non-root CLI startup (requires native support or QEMU)"
+run = 'bash scripts/verify-container.sh simplebank:latest'
+
 [tasks."hooks:install"]
 description = "Install git hooks"
 run = 'cog install-hook --all --overwrite'

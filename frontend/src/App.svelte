@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick, untrack } from "svelte";
   import { auth, type RefreshOutcome } from "./lib/stores/auth.svelte";
   import { accounts } from "./lib/stores/accounts.svelte";
   import { replaceNavigation, router, safeReturnPath } from "./lib/router.svelte";
@@ -23,25 +23,34 @@
   onDestroy(() => notifications.reset());
 
   let notificationAuthGeneration: number | null = null;
-  $effect(() => {
+  $effect.pre(() => {
     if (!auth.initializing && auth.isAuthenticated) {
       if (notificationAuthGeneration !== auth.generation) {
+        if (notificationAuthGeneration !== null) {
+          untrack(() => {
+            notifications.reset();
+            accounts.reset();
+          });
+        }
         notificationAuthGeneration = auth.generation;
-        notifications.start();
+        untrack(() => notifications.start());
       }
     } else if (!auth.initializing && !auth.renewalUnavailable) {
       notificationAuthGeneration = null;
-      notifications.reset();
-      accounts.reset();
+      untrack(() => {
+        notifications.reset();
+        accounts.reset();
+      });
     }
   });
 
   let retryingRefresh = $state(false);
   async function retryRefresh(): Promise<void> {
+    const generation = auth.generation;
     retryingRefresh = true;
     try {
       const outcome: RefreshOutcome = await auth.tryRefresh();
-      if (outcome === "refreshed") {
+      if (outcome === "refreshed" && generation === auth.generation) {
         await Promise.all([accounts.load(), notifications.reconcile("manual")]);
       }
     } finally {
@@ -174,36 +183,38 @@
 {:else}
   <div class="flex min-h-screen flex-col bg-base-200 text-base-content">
     {#if view.chrome}
-      <a
-        href="#main"
-        class="btn btn-primary sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50"
-      >
-        Skip to content
-      </a>
+      {#key auth.generation}
+        <a
+          href="#main"
+          class="btn btn-primary sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50"
+        >
+          Skip to content
+        </a>
 
-      <AppHeader />
-      {#if auth.renewalUnavailable}
-        <div class="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">
-          <Alert variant="error">
-            <div
-              class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <span>We couldn't restore your session.</span>
-              <Button
-                variant="secondary"
-                loading={retryingRefresh}
-                onclick={retryRefresh}
-                class="shrink-0">Retry</Button
+        <AppHeader />
+        {#if auth.renewalUnavailable}
+          <div class="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">
+            <Alert variant="error">
+              <div
+                class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
               >
-            </div>
-          </Alert>
-        </div>
-      {/if}
-      <NotificationToasts />
+                <span>We couldn't restore your session.</span>
+                <Button
+                  variant="secondary"
+                  loading={retryingRefresh}
+                  onclick={retryRefresh}
+                  class="shrink-0">Retry</Button
+                >
+              </div>
+            </Alert>
+          </div>
+        {/if}
+        <NotificationToasts />
 
-      <main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:py-12">
-        <Page />
-      </main>
+        <main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:py-12">
+          <Page />
+        </main>
+      {/key}
     {:else}
       <!-- Public pages (auth, email verification) render their own <main>,
            which grows to fill the shell so the footer stays at the bottom. -->

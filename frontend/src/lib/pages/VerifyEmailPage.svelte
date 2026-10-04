@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
-  import { isRetryable, request, toMessage } from "../api/client";
-  import { verificationResponse } from "../api/validation";
+  import { ApiError, isRetryable, request, toMessage } from "../api/client";
+  import { acceptedResponse, verificationResponse } from "../api/validation";
+  import { validateEmail } from "../auth-validation";
+  import TextField from "../components/TextField.svelte";
+  import Button from "../components/Button.svelte";
   import { auth } from "../stores/auth.svelte";
   import AuthLayout from "./AuthLayout.svelte";
   import Link from "../components/Link.svelte";
@@ -15,6 +18,48 @@
   let errorMessage = $state("");
   let retryable = $state(false);
   let verification = $state<{ id: string; code: string } | null>(null);
+  let email = $state("");
+  let emailError = $state<string | undefined>();
+  let resendError = $state<string | null>(null);
+  let sending = $state(false);
+  let accepted = $state(false);
+  let coolingDown = $state(false);
+  let cooldown: ReturnType<typeof setTimeout> | undefined;
+  let destroyed = false;
+  onDestroy(() => {
+    destroyed = true;
+    clearTimeout(cooldown);
+  });
+
+  async function resend(event: SubmitEvent) {
+    event.preventDefault();
+    if (sending || coolingDown) return;
+    emailError = validateEmail(email);
+    if (emailError) return;
+    sending = true;
+    accepted = false;
+    resendError = null;
+    try {
+      acceptedResponse(
+        await request<unknown>("/users/verify_email/resend", {
+          method: "POST",
+          body: { email: email.trim() },
+        }),
+      );
+      if (!destroyed) accepted = true;
+    } catch (cause) {
+      if (destroyed) return;
+      resendError = toMessage(cause);
+      if (cause instanceof ApiError && cause.retryAfterSeconds !== null) {
+        coolingDown = true;
+        cooldown = setTimeout(() => {
+          coolingDown = false;
+        }, cause.retryAfterSeconds * 1_000);
+      }
+    } finally {
+      if (!destroyed) sending = false;
+    }
+  }
 
   async function verify(id: string, code: string): Promise<void> {
     status = "pending";
@@ -99,13 +144,33 @@
       <Alert variant="error">{errorMessage}</Alert>
       {#if retryable && verification}
         <button type="button" class="btn mt-2" onclick={retryVerification}>Retry</button>
-      {:else}
-        <Link href="/login" class="btn btn-outline mt-2">Continue to sign in</Link>
       {/if}
     </div>
+    <form class="flex flex-col gap-5" onsubmit={resend} novalidate>
+      <h2 class="font-semibold">Request a new verification email</h2>
+      {#if accepted}
+        <Alert variant="success"
+          >Request accepted. If this address needs verification, check your email for a new link.
+          Delivery may take a few minutes.</Alert
+        >
+      {/if}
+      {#if resendError}<Alert variant="error">{resendError}</Alert>{/if}
+      <TextField
+        label="Email"
+        type="email"
+        inputmode="email"
+        autocomplete="email"
+        bind:value={email}
+        error={emailError}
+        oninput={() => (emailError = undefined)}
+        required
+      />
+      <Button type="submit" loading={sending} disabled={coolingDown}>Send verification email</Button
+      >
+    </form>
   {/if}
 
   {#snippet footer()}
-    Need help? Sign in and request a new verification email.
+    Already verified? <Link href="/login" class="link link-primary">Continue to sign in</Link>
   {/snippet}
 </AuthLayout>

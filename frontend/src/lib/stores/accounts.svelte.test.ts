@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accounts } from "./accounts.svelte";
+import { auth } from "./auth.svelte";
 
 const staleAccount = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -39,6 +40,20 @@ function deferredFetches(): Array<(response: Response) => void> {
 }
 
 describe("AccountsStore", () => {
+  it("rejects old-principal work even before App resets the account store", async () => {
+    const completions = deferredFetches();
+    const load = accounts.load();
+    const create = accounts.create("USD", 100).catch((cause: unknown) => cause);
+    auth.clear();
+    accounts.items = [{ ...freshAccount, owner: "bob" }];
+    accounts.error = null;
+    completions[0](jsonResponse(503, { code: "internal_error" }));
+    completions[1](jsonResponse(201, staleAccount));
+    await expect(load).resolves.toBe(false);
+    await expect(create).resolves.toMatchObject({ kind: "aborted" });
+    expect(accounts.items[0].owner).toBe("bob");
+    expect(accounts.error).toBeNull();
+  });
   afterEach(() => {
     accounts.reset();
     vi.restoreAllMocks();

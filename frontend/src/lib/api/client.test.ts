@@ -24,6 +24,27 @@ const validRenewResponse = {
 };
 
 describe("request", () => {
+  it("never retries an Alice mutation with Bob's renewed token or clears Bob", async () => {
+    auth.user = verifiedUser;
+    auth.accessToken = "alice-token";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(401, { code: "token_expired" }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ...validRenewResponse,
+          access_token: "bob-token",
+          user: { ...verifiedUser, username: "bob" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      request("/transfers", { authenticated: true, method: "POST", body: {} }),
+    ).rejects.toMatchObject({ kind: "aborted" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(auth.user?.username).toBe("bob");
+    expect(auth.accessToken).toBe("bob-token");
+  });
   beforeEach(() => {
     auth.clear();
   });
@@ -322,7 +343,7 @@ describe("request", () => {
     auth.accessToken = "new-token";
     resolveFirst(jsonResponse(401, { code: "token_expired", error: "expired" }));
 
-    await expect(pending).rejects.toMatchObject({ status: 401 });
+    await expect(pending).rejects.toMatchObject({ kind: "aborted" });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(refresh).not.toHaveBeenCalled();
   });
@@ -380,7 +401,7 @@ describe("request", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     resolveRefreshes.forEach((resolve) => resolve("unavailable"));
-    await expect(oldRequest).rejects.toMatchObject({ kind: "session_unavailable" });
+    await expect(oldRequest).rejects.toMatchObject({ kind: "aborted" });
     await expect(newRequest).rejects.toMatchObject({ kind: "session_unavailable" });
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledTimes(2);

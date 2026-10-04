@@ -5,6 +5,7 @@
   import { toMessage } from "../api/client";
   import { navigate } from "../router.svelte";
   import { notifications } from "../stores/notifications.svelte";
+  import { auth } from "../stores/auth.svelte";
   import Link from "./Link.svelte";
   import NotificationItem from "./NotificationItem.svelte";
   import Alert from "./Alert.svelte";
@@ -46,6 +47,7 @@
   }
 
   async function activate(notification: Notification) {
+    const generation = auth.generation;
     if (notification.read_at !== null) {
       closePopover();
       navigate(`/accounts/${notification.account_id}`);
@@ -54,6 +56,7 @@
 
     await run(async () => {
       await notifications.markRead(notification.id);
+      if (generation !== auth.generation) return;
       closePopover();
       navigate(`/accounts/${notification.account_id}`);
     });

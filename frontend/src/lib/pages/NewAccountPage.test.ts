@@ -11,6 +11,51 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe("NewAccountPage", () => {
+  it.each(["USD", "EUR"] as const)(
+    "preserves maximum-safe %s decimal text through the DOM",
+    async (currency) => {
+      accounts.items = [];
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { [currency]: Number.MAX_SAFE_INTEGER }));
+      const create = vi
+        .spyOn(accounts, "create")
+        .mockRejectedValue(new Error("stop after payload"));
+      render(NewAccountPage);
+      await waitFor(() =>
+        expect(screen.getByRole("radio", { name: new RegExp(currency) })).toBeEnabled(),
+      );
+      await fireEvent.click(screen.getByRole("radio", { name: new RegExp(currency) }));
+      const deposit = screen.getByRole("textbox", { name: `Opening deposit (${currency})` });
+      await fireEvent.input(deposit, { target: { value: "90071992547409.91" } });
+      await fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+      expect(create).toHaveBeenCalledWith(currency, Number.MAX_SAFE_INTEGER);
+      expect(deposit).toHaveValue("90071992547409.91");
+    },
+  );
+
+  it.each(["1.0000000000000001", "1e3", "90071992547409.92", "-1", "0"])(
+    "rejects deposit text %s without coercion",
+    async (value) => {
+      const create = vi.spyOn(accounts, "create");
+      render(NewAccountPage);
+      const deposit = await screen.findByRole("textbox", { name: "Opening deposit (EUR)" });
+      await waitFor(() => expect(deposit).toBeEnabled());
+      await fireEvent.input(deposit, { target: { value } });
+      await fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+      expect(deposit).toHaveAttribute("aria-invalid", "true");
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("treats a cleared edited deposit as zero", async () => {
+    const create = vi.spyOn(accounts, "create").mockRejectedValue(new Error("stop after payload"));
+    render(NewAccountPage);
+    const deposit = await screen.findByRole("textbox", { name: "Opening deposit (EUR)" });
+    await waitFor(() => expect(deposit).toBeEnabled());
+    await fireEvent.input(deposit, { target: { value: "12.34" } });
+    await fireEvent.input(deposit, { target: { value: "" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(create).toHaveBeenCalledWith("EUR", 0);
+  });
   const fetchMock = vi.fn();
 
   beforeEach(() => {
@@ -174,7 +219,7 @@ describe("NewAccountPage", () => {
     render(NewAccountPage);
 
     const euro = await screen.findByRole("radio", { name: /EUR/ });
-    const deposit = screen.getByRole("spinbutton", { name: "Opening deposit (EUR)" });
+    const deposit = screen.getByRole("textbox", { name: "Opening deposit (EUR)" });
     const submit = screen.getByRole("button", { name: "Create account" });
     expect(euro).toBeDisabled();
     expect(deposit).toBeDisabled();
@@ -187,17 +232,15 @@ describe("NewAccountPage", () => {
       expect(deposit).toBeEnabled();
       expect(submit).toBeEnabled();
     });
-    expect(deposit).toHaveAttribute("step", "0.01");
-    expect(deposit).toHaveAttribute("max", "1234.56");
+    expect(deposit).toHaveAttribute("inputmode", "decimal");
     expect(deposit).toHaveAccessibleDescription(
       "Optional. Maximum €1,234.56. Leave blank to open at zero.",
     );
 
     await fireEvent.click(screen.getByRole("radio", { name: /VND/ }));
 
-    const dongDeposit = screen.getByRole("spinbutton", { name: "Opening deposit (VND)" });
-    expect(dongDeposit).toHaveAttribute("step", "1");
-    expect(dongDeposit).toHaveAttribute("max", "500000");
+    const dongDeposit = screen.getByRole("textbox", { name: "Opening deposit (VND)" });
+    expect(dongDeposit).toHaveAttribute("inputmode", "numeric");
     expect(dongDeposit).toHaveAccessibleDescription(
       "Optional. Maximum ₫500,000. Leave blank to open at zero.",
     );
@@ -296,7 +339,7 @@ describe("NewAccountPage", () => {
     const dong = await screen.findByRole("radio", { name: /VND/ });
     await waitFor(() => expect(dong).toBeEnabled());
     await fireEvent.click(dong);
-    const deposit = screen.getByRole("spinbutton", { name: "Opening deposit (VND)" });
+    const deposit = screen.getByRole("textbox", { name: "Opening deposit (VND)" });
     await fireEvent.input(deposit, { target: { value: "1234" } });
     await fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
@@ -305,6 +348,6 @@ describe("NewAccountPage", () => {
     );
     expect(create).toHaveBeenCalledWith("VND", 1234);
     expect(screen.getByRole("radio", { name: /VND/ })).toBeChecked();
-    expect(screen.getByRole("spinbutton", { name: "Opening deposit (VND)" })).toHaveValue(1234);
+    expect(screen.getByRole("textbox", { name: "Opening deposit (VND)" })).toHaveValue("1234");
   });
 });

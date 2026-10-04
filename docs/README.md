@@ -35,6 +35,12 @@ hard-to-reverse choices and their trade-offs. Accepted ADRs are authoritative
 for the decisions they cover. Do not delete an outdated ADR; add a new record
 that supersedes it and update both records' statuses.
 
+## Audits
+
+- [Go backend and Svelte frontend audit — 2026-09-19](audits/go-backend-svelte-frontend.md):
+  revision-specific findings, verification evidence, coverage limits, and a
+  prioritized remediation backlog.
+
 ## Updating Documentation
 
 - Update the relevant current guide when setup, commands, configuration, API

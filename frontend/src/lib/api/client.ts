@@ -62,9 +62,15 @@ export async function requestResponse(
 ): Promise<Response> {
   const generation = auth.generation;
   let response = await send(path, options);
+  if (options.authenticated && auth.generation !== generation) {
+    throw new ApiError("aborted");
+  }
 
   if (response.status === 401 && options.authenticated && auth.generation === generation) {
     const outcome: RefreshOutcome = await auth.tryRefresh();
+    if (auth.generation !== generation) {
+      throw new ApiError("aborted");
+    }
     if (outcome === "refreshed" && auth.generation === generation) {
       response = await send(path, options);
     } else if (outcome === "unavailable") {
@@ -72,6 +78,9 @@ export async function requestResponse(
     }
   }
 
+  if (options.authenticated && auth.generation !== generation) {
+    throw new ApiError("aborted");
+  }
   if (!response.ok) {
     await decode(response);
   }
@@ -84,7 +93,12 @@ export async function requestResponse(
  * retries, so an expired access token is invisible to callers.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  return decode<T>(await requestResponse(path, options));
+  const generation = auth.generation;
+  const result = await decode<T>(await requestResponse(path, options));
+  if (options.authenticated && auth.generation !== generation) {
+    throw new ApiError("aborted");
+  }
+  return result;
 }
 
 async function decode<T>(response: Response): Promise<T> {

@@ -25,6 +25,54 @@ function jsonRequestBody(call: FetchCall): Record<string, unknown> {
 }
 
 describe("TransferPage", () => {
+  it.each(["USD", "EUR"] as const)(
+    "submits maximum-safe %s decimal text exactly",
+    async (currency) => {
+      accounts.items = [{ ...accounts.items[0], currency, balance: Number.MAX_SAFE_INTEGER }];
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, {
+            [currency]: { max_per_transfer: Number.MAX_SAFE_INTEGER, daily: 0 },
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse(422, { code: "insufficient_balance" }));
+      render(TransferPage);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await fireEvent.input(screen.getByRole("textbox", { name: "Recipient account id" }), {
+        target: { value: "recipient" },
+      });
+      const amount = screen.getByRole("textbox", { name: `Amount (${currency})` });
+      await fireEvent.input(amount, { target: { value: "90071992547409.91" } });
+      await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+      await screen.findByRole("alert");
+      expect(jsonRequestBody(fetchMock.mock.calls[1]).amount).toBe(Number.MAX_SAFE_INTEGER);
+      expect(amount).toHaveValue("90071992547409.91");
+    },
+  );
+
+  it.each([
+    ["USD", "1.0000000000000001"],
+    ["USD", "1e3"],
+    ["USD", "90071992547409.92"],
+    ["USD", "-1"],
+    ["USD", ""],
+    ["VND", "1.1"],
+  ] as const)("rejects %s raw amount %s", async (currency, value) => {
+    accounts.items = [{ ...accounts.items[0], currency }];
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+    render(TransferPage);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await fireEvent.input(screen.getByRole("textbox", { name: "Recipient account id" }), {
+      target: { value: "recipient" },
+    });
+    const amount = screen.getByRole("textbox", { name: `Amount (${currency})` });
+    await fireEvent.input(amount, { target: { value: "12" } });
+    await fireEvent.input(amount, { target: { value } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
+    expect(amount).toHaveAttribute("aria-invalid", "true");
+    expect(amount).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   const fetchMock = vi.fn<(...args: FetchCall) => Promise<Response>>();
 
   beforeEach(() => {
@@ -118,13 +166,18 @@ describe("TransferPage", () => {
     expect(loadSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps stale transfer controls gated while a retry reload is pending", async () => {
+  it("retains focused transfer controls during background failure and retry without changing source", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
     render(TransferPage);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/transfer-limits", expect.any(Object));
     });
 
+    const recipient = screen.getByRole("textbox", { name: "Recipient account id" });
+    const amount = screen.getByRole("textbox", { name: "Amount (USD)" });
+    await fireEvent.input(recipient, { target: { value: "acct-recipient" } });
+    await fireEvent.input(amount, { target: { value: "12.340" } });
+    amount.focus();
     accounts.error = "SimpleBank is temporarily unavailable. Please try again.";
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "We couldn't load your accounts. SimpleBank is temporarily unavailable. Please try again.",
@@ -155,13 +208,18 @@ describe("TransferPage", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Loading your accounts");
-    expect(screen.queryByRole("combobox", { name: "From account" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Send transfer" })).not.toBeInTheDocument();
+    expect(amount).toHaveFocus();
+    expect(amount).toHaveValue("12.340");
+    expect(recipient).toHaveValue("acct-recipient");
+    expect(screen.getByRole("combobox", { name: "From account" })).toHaveValue("acct-1");
 
     resolveReload();
 
     const source = await screen.findByRole("combobox", { name: "From account" });
-    expect(source).toHaveValue("acct-fresh");
+    expect(source).toHaveValue("acct-1");
+    expect(source).toHaveAttribute("aria-invalid", "true");
+    expect(amount).toHaveFocus();
+    expect(amount).toHaveValue("12.340");
     expect(screen.getByRole("button", { name: "Send transfer" })).toBeInTheDocument();
   });
 
@@ -210,7 +268,7 @@ describe("TransferPage", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: "Recipient account id" }), {
       target: { value: "acct-2" },
     });
-    const amount = screen.getByRole("spinbutton", { name: "Amount (USD)" });
+    const amount = screen.getByRole("textbox", { name: "Amount (USD)" });
     await fireEvent.input(amount, { target: { value: "100.01" } });
     await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
 
@@ -276,7 +334,7 @@ describe("TransferPage", () => {
     );
 
     const toField = screen.getByRole("textbox", { name: /recipient account id/i });
-    const amountField = screen.getByRole("spinbutton", { name: /amount/i });
+    const amountField = screen.getByRole("textbox", { name: /amount/i });
     const submitButton = screen.getByRole("button", { name: /send transfer/i });
 
     await fireEvent.input(toField, { target: { value: "acct-2" } });
@@ -349,7 +407,7 @@ describe("TransferPage", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
       target: { value: "acct-2" },
     });
-    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+    await fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
       target: { value: "50.00" },
     });
     const submitButton = screen.getByRole("button", { name: /send transfer/i });
@@ -407,7 +465,7 @@ describe("TransferPage", () => {
     });
 
     const recipient = screen.getByRole("textbox", { name: /recipient account id/i });
-    const amount = screen.getByRole("spinbutton", { name: /amount/i });
+    const amount = screen.getByRole("textbox", { name: /amount/i });
     const submit = screen.getByRole("button", { name: /send transfer/i });
     await fireEvent.input(recipient, { target: { value: " acct-2 " } });
     await fireEvent.input(amount, { target: { value: "50.00" } });
@@ -420,7 +478,7 @@ describe("TransferPage", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
       target: { value: "acct-2" },
     });
-    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+    await fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
       target: { value: "50.0" },
     });
     await fireEvent.click(screen.getByRole("button", { name: /send transfer/i }));
@@ -455,7 +513,7 @@ describe("TransferPage", () => {
     });
 
     const recipient = screen.getByRole("textbox", { name: /recipient account id/i });
-    const amount = screen.getByRole("spinbutton", { name: /amount/i });
+    const amount = screen.getByRole("textbox", { name: /amount/i });
     const submit = screen.getByRole("button", { name: /send transfer/i });
     await fireEvent.input(recipient, { target: { value: " acct-2 " } });
     await fireEvent.input(amount, { target: { value: "50.00" } });
@@ -486,7 +544,7 @@ describe("TransferPage", () => {
     {
       field: "minor amount",
       edit: () =>
-        fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+        fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
           target: { value: "50.01" },
         }),
       changedField: "amount",
@@ -511,7 +569,7 @@ describe("TransferPage", () => {
       await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
         target: { value: "acct-2" },
       });
-      await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+      await fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
         target: { value: "50.00" },
       });
       const submitButton = screen.getByRole("button", { name: /send transfer/i });
@@ -561,7 +619,7 @@ describe("TransferPage", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
       target: { value: "acct-3" },
     });
-    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+    await fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
       target: { value: "50.00" },
     });
     const submitButton = screen.getByRole("button", { name: /send transfer/i });
@@ -603,7 +661,7 @@ describe("TransferPage", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
       target: { value: "acct-2" },
     });
-    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+    await fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
       target: { value: "50.00" },
     });
     await fireEvent.click(submitButton);
@@ -649,7 +707,7 @@ describe("TransferPage", () => {
     });
     await fireEvent.click(screen.getByRole("button", { name: "Send transfer" }));
 
-    const amount = screen.getByRole("spinbutton", { name: "Amount (USD)" });
+    const amount = screen.getByRole("textbox", { name: "Amount (USD)" });
     expect(amount).toHaveFocus();
     expect(amount).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("alert")).toHaveTextContent("Enter an amount greater than zero.");
@@ -675,7 +733,7 @@ describe("TransferPage", () => {
     await fireEvent.input(screen.getByRole("textbox", { name: /recipient account id/i }), {
       target: { value: "acct-2" },
     });
-    await fireEvent.input(screen.getByRole("spinbutton", { name: /amount/i }), {
+    await fireEvent.input(screen.getByRole("textbox", { name: /amount/i }), {
       target: { value: "50.00" },
     });
 

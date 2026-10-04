@@ -56,6 +56,16 @@ func (s *SQLStore) TransferTx(ctx context.Context, arg TransferTxParams) (Transf
 		if err != nil {
 			return err
 		}
+		// A same-key winner may have committed while we waited for these locks.
+		// Replay before its balance changes can cause mutable limit checks to fail.
+		if existing, lookupErr := q.GetTransferBySourceAndIdempotencyKey(ctx, sqlcdb.GetTransferBySourceAndIdempotencyKeyParams{
+			FromAccountID: arg.FromAccountID, IdempotencyKey: arg.IdempotencyKey,
+		}); lookupErr == nil {
+			result, err = transferReplay(existing, arg, fromAccount, toAccount)
+			return err
+		} else if classified := ClassifyError(lookupErr); !errors.Is(classified, ErrRecordNotFound) {
+			return classified
+		}
 		if fromAccount.Currency != arg.Currency || toAccount.Currency != arg.Currency {
 			return ErrCurrencyMismatch
 		}
@@ -201,15 +211,6 @@ func (s *SQLStore) replayTransfer(
 	existing sqlcdb.Transfer,
 	arg TransferTxParams,
 ) (TransferTxResult, error) {
-	// Verify all request-bound immutable fields match the existing transfer.
-	// If the caller is reusing the same key for a different transfer, reject
-	// it as a conflict instead of silently returning the wrong transfer.
-	if existing.FromAccountID != arg.FromAccountID ||
-		existing.ToAccountID != arg.ToAccountID ||
-		existing.Amount != arg.Amount {
-		return TransferTxResult{}, ErrIdempotencyConflict
-	}
-
 	fromAccount, err := s.GetAccount(ctx, existing.FromAccountID)
 	if err != nil {
 		return TransferTxResult{}, ClassifyError(err)
@@ -219,8 +220,15 @@ func (s *SQLStore) replayTransfer(
 		return TransferTxResult{}, ClassifyError(err)
 	}
 
-	// Currency is not stored on the transfer, but it must match the accounts.
-	if fromAccount.Currency != arg.Currency || toAccount.Currency != arg.Currency {
+	return transferReplay(existing, arg, fromAccount, toAccount)
+}
+
+// transferReplay validates immutable parameters using supplied account snapshots.
+// Locked replays reuse their rows without acquiring another pool connection.
+func transferReplay(existing sqlcdb.Transfer, arg TransferTxParams, fromAccount, toAccount sqlcdb.Account) (TransferTxResult, error) {
+	if existing.FromAccountID != arg.FromAccountID ||
+		existing.ToAccountID != arg.ToAccountID || existing.Amount != arg.Amount ||
+		fromAccount.Currency != arg.Currency || toAccount.Currency != arg.Currency {
 		return TransferTxResult{}, ErrIdempotencyConflict
 	}
 

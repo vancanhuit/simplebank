@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { toMessage } from "../api/client";
+  import { ApiError, toMessage } from "../api/client";
   import { auth } from "../stores/auth.svelte";
   import { navigate, replaceNavigationState, router, safeReturnPath } from "../router.svelte";
   import AuthLayout from "./AuthLayout.svelte";
@@ -15,6 +15,7 @@
   let usernameError = $state<string | undefined>();
   let passwordError = $state<string | undefined>();
   let error = $state<string | null>(null);
+  let verificationRequired = $state(false);
   let submitting = $state(false);
   let logoutFailed = $state(false);
   let sessionExpired = $state(false);
@@ -63,6 +64,7 @@
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     error = null;
+    verificationRequired = false;
     const validation = validateLogin({ username, password });
     usernameError = validation.errors.username;
     passwordError = validation.errors.password;
@@ -72,11 +74,16 @@
     }
 
     submitting = true;
+    const login = auth.login(validation.values.username, validation.values.password);
+    const generation = auth.generation;
     try {
-      await auth.login(validation.values.username, validation.values.password);
+      await login;
+      if (generation !== auth.generation) return;
       navigate(returnTo ?? "/");
     } catch (err) {
+      if (generation !== auth.generation) return;
       error = toMessage(err);
+      verificationRequired = err instanceof ApiError && err.code === "email_verification_required";
     } finally {
       submitting = false;
     }
@@ -100,6 +107,9 @@
     {/if}
     {#if error}
       <Alert variant="error">{error}</Alert>
+    {/if}
+    {#if verificationRequired}
+      <Link href="/verify-email" class="link link-primary">Request a new verification email</Link>
     {/if}
 
     <TextField

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"uuid"
 
 	"github.com/vancanhuit/simplebank/internal/currency"
@@ -78,10 +79,41 @@ func TestTransferTxIdempotent(t *testing.T) {
 // TestTransferTxConcurrentSameKey fires the same key from many goroutines. The
 // unique constraint plus replay must collapse them to a single money movement.
 func TestTransferTxConcurrentSameKey(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		dailyLimit         int64
+		destinationBalance int64
+	}{
+		{"unlimited", 0, 1000},
+		{"daily_limit", 150, 1000},
+		{"destination_limit", 0, currency.MaxSafeMinorUnits - 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testConcurrentReplay(t, tc.dailyLimit, tc.destinationBalance)
+		})
+	}
+}
+
+func testConcurrentReplay(t *testing.T, dailyLimit, destinationBalance int64) {
+	t.Helper()
 	u1 := createTestUser(t)
 	u2 := createTestUser(t)
 	acc1 := createTestAccount(t, u1.Username)
 	acc2 := createTestAccount(t, u2.Username)
+	if _, err := testPool.Exec(t.Context(), "UPDATE accounts SET balance=$1 WHERE id=$2", destinationBalance, acc2.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Exactly two connections are available to the two concurrent transactions.
+	// A locked replay must not acquire a third connection from this pool.
+	poolConfig := testPool.Config().Copy()
+	poolConfig.MaxConns = 2
+	poolConfig.MinConns = 0
+	pool, err := pgxpool.NewWithConfig(t.Context(), poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	st := New(pool)
 	listener, err := pgx.ConnectConfig(t.Context(), testPool.Config().ConnConfig.Copy())
 	if err != nil {
 		t.Fatal(err)
@@ -102,10 +134,7 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 
 	key := uuid.New()
 	amount := int64(100)
-	n := min(8, int(testPool.Config().MaxConns)-2)
-	if n < 2 {
-		t.Fatalf("database pool needs at least 4 connections, got %d", testPool.Config().MaxConns)
-	}
+	n := 2
 	type outcome struct {
 		result TransferTxResult
 		err    error
@@ -118,12 +147,13 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 	for range n {
 		go func() {
 			<-start
-			result, err := testStore.TransferTx(ctx, TransferTxParams{
+			result, err := st.TransferTx(ctx, TransferTxParams{
 				FromAccountID:  acc1.ID,
 				ToAccountID:    acc2.ID,
 				Amount:         amount,
 				Currency:       currency.USD,
 				IdempotencyKey: key,
+				DailyLimit:     dailyLimit,
 			})
 			outcomes <- outcome{result: result, err: err}
 		}()
@@ -210,8 +240,8 @@ func TestTransferTxConcurrentSameKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated2.Balance != 1000+amount {
-		t.Errorf("destination balance = %d, want %d", updated2.Balance, 1000+amount)
+	if updated2.Balance != destinationBalance+amount {
+		t.Errorf("destination balance = %d, want %d", updated2.Balance, destinationBalance+amount)
 	}
 }
 

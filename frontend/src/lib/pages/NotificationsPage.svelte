@@ -5,17 +5,21 @@
   import NotificationItem from "../components/NotificationItem.svelte";
   import { navigate } from "../router.svelte";
   import { notifications } from "../stores/notifications.svelte";
+  import { auth } from "../stores/auth.svelte";
 
   let mutationPending = $state(false);
   let mutationError = $state<string | null>(null);
 
   async function activate(notification: Notification) {
+    const generation = auth.generation;
     if (notification.read_at === null) {
       mutationPending = true;
       mutationError = null;
       try {
         await notifications.markRead(notification.id);
+        if (generation !== auth.generation) return;
       } catch (cause) {
+        if (generation !== auth.generation) return;
         mutationError = toMessage(cause);
         mutationPending = false;
         return;

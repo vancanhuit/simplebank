@@ -47,6 +47,8 @@ class NotificationsStore {
   #queuedReason: ReconcileReason | null = null;
   #mutationQueue: Promise<void> = Promise.resolve();
   #mutationEpoch = 0;
+  #readEpoch = 0;
+  #loadedPages = 1;
   #activityVersions = new SvelteMap<string, number>();
 
   get recent(): Notification[] {
@@ -112,6 +114,8 @@ class NotificationsStore {
     this.#queuedReason = null;
     this.#mutationQueue = Promise.resolve();
     this.#mutationEpoch = 0;
+    this.#readEpoch += 1;
+    this.#loadedPages = 1;
 
     this.items = [];
     this.unreadCount = 0;
@@ -153,8 +157,7 @@ class NotificationsStore {
   }
 
   async loadMore(): Promise<void> {
-    const cursor = this.nextCursor;
-    if (cursor === null || this.loadingMore) {
+    if (this.nextCursor === null || this.loadingMore) {
       return;
     }
 
@@ -163,7 +166,6 @@ class NotificationsStore {
       return;
     }
     const signal = context.controller.signal;
-    const mutationEpoch = this.#mutationEpoch;
     if (!this.#isCurrent(context)) {
       return;
     }
@@ -171,26 +173,39 @@ class NotificationsStore {
     this.loadMoreError = null;
 
     try {
-      const page = notificationPage(
-        await request<unknown>(`/notifications?size=20&cursor=${encodeURIComponent(cursor)}`, {
-          authenticated: true,
-          signal,
-        }),
-      );
-      if (!this.#isCurrent(context)) {
+      // A refresh owns the cursor chain. Never send a queued page with an old cursor.
+      while (this.#isCurrent(context)) {
+        if (this.#reconcilePromise !== null) await this.#reconcilePromise;
+        if (!this.#isCurrent(context) || this.nextCursor === null) return;
+        const cursor = this.nextCursor;
+        const readEpoch = this.#readEpoch;
+        const mutationEpoch = this.#mutationEpoch;
+        const page = notificationPage(
+          await request<unknown>(`/notifications?size=20&cursor=${encodeURIComponent(cursor)}`, {
+            authenticated: true,
+            signal,
+          }),
+        );
+        if (!this.#isCurrent(context)) {
+          return;
+        }
+        if (mutationEpoch !== this.#mutationEpoch) {
+          await this.#reconcileForSession("recovery", context);
+          continue;
+        }
+        if (readEpoch !== this.#readEpoch) continue;
+        const rows = new SvelteMap(
+          this.items.map((notification) => [notification.id, notification]),
+        );
+        for (const notification of page.notifications) rows.set(notification.id, notification);
+        this.items = [...rows.values()];
+        this.unreadCount = page.unread_count;
+        this.nextCursor = page.next_cursor;
+        this.#loadedPages += 1;
+        for (const notification of page.notifications) {
+          this.#knownIds.add(notification.id);
+        }
         return;
-      }
-      if (mutationEpoch !== this.#mutationEpoch) {
-        this.#queueReconcile("recovery", context);
-        return;
-      }
-      const ids = new Set(this.items.map((notification) => notification.id));
-      const additions = page.notifications.filter((notification) => !ids.has(notification.id));
-      this.items = [...this.items, ...additions];
-      this.unreadCount = page.unread_count;
-      this.nextCursor = page.next_cursor;
-      for (const notification of additions) {
-        this.#knownIds.add(notification.id);
       }
     } catch (cause) {
       if (this.#isCurrent(context)) {
@@ -302,6 +317,9 @@ class NotificationsStore {
           ids.has(item.id) ? { ...item, read_at: readAt } : item,
         );
         this.unreadCount = result.unread_count;
+        if (this.items.some((item) => item.read_at === null && !ids.has(item.id))) {
+          this.#queueReconcile("recovery", context);
+        }
       }
     } catch (cause) {
       if (this.#isCurrent(context)) {
@@ -348,6 +366,7 @@ class NotificationsStore {
     }
     const signal = context.controller.signal;
     const mutationEpoch = this.#mutationEpoch;
+    this.#readEpoch += 1;
     const initial = this.items.length === 0;
     if (initial) {
       this.loading = true;
@@ -357,32 +376,42 @@ class NotificationsStore {
     this.error = null;
 
     try {
-      const page = notificationPage(
-        await request<unknown>("/notifications?size=20", {
-          authenticated: true,
-          signal,
-        }),
-      );
-      if (!this.#isCurrent(context)) {
-        return;
-      }
-      if (mutationEpoch !== this.#mutationEpoch) {
-        this.#queuedReason = this.#mergeQueuedReason(this.#queuedReason, "recovery");
-        return;
-      }
+      const rows = new SvelteMap<string, Notification>();
+      let cursor: string | null = null;
+      let count = 0;
+      let pages = 0;
+      do {
+        const page = notificationPage(
+          await request<unknown>(
+            `/notifications?size=20${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+            {
+              authenticated: true,
+              signal,
+            },
+          ),
+        );
+        if (!this.#isCurrent(context)) {
+          return;
+        }
+        if (mutationEpoch !== this.#mutationEpoch) {
+          this.#queuedReason = this.#mergeQueuedReason(this.#queuedReason, "recovery");
+          return;
+        }
+        for (const notification of page.notifications) rows.set(notification.id, notification);
+        cursor = page.next_cursor;
+        count = page.unread_count;
+        pages += 1;
+      } while (pages < this.#loadedPages && cursor !== null);
+      const refreshed = [...rows.values()];
 
       const establishingBaseline = !this.#hasBaseline;
       const newlyDiscovered = establishingBaseline
         ? []
-        : page.notifications.filter((notification) => !this.#knownIds.has(notification.id));
-      this.items = [
-        ...page.notifications,
-        ...this.items.filter(
-          (notification) => !page.notifications.some((current) => current.id === notification.id),
-        ),
-      ];
-      this.unreadCount = page.unread_count;
-      this.nextCursor = page.next_cursor;
+        : refreshed.filter((notification) => !this.#knownIds.has(notification.id));
+      this.items = refreshed;
+      this.unreadCount = count;
+      this.nextCursor = cursor;
+      this.#loadedPages = pages;
       this.#hasBaseline = true;
 
       if (reason !== "initial" && newlyDiscovered.length > 0) {
@@ -394,7 +423,7 @@ class NotificationsStore {
         }
       }
 
-      for (const notification of page.notifications) {
+      for (const notification of refreshed) {
         this.#knownIds.add(notification.id);
         if (!establishingBaseline && reason === "live" && newlyDiscovered.includes(notification)) {
           this.#pendingLive.set(notification.id, notification);
